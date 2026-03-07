@@ -1,0 +1,13 @@
+import { BaseProvider, ProviderConfig, TextGenerationRequest, ImageGenerationRequest, VideoGenerationRequest, AudioGenerationRequest, GenerationResult, StreamChunk, TaskStatusResult } from './base-provider.abstract';
+export declare class KieProvider extends BaseProvider {
+    private client;
+    constructor(config: ProviderConfig);
+    generateText(request: TextGenerationRequest): Promise<GenerationResult>;
+    generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk>;
+    generateImage(request: ImageGenerationRequest): Promise<GenerationResult>;
+    generateVideo(request: VideoGenerationRequest): Promise<GenerationResult>;
+    generateAudio(request: AudioGenerationRequest): Promise<GenerationResult>;
+    checkTaskStatus(taskId: string): Promise<TaskStatusResult>;
+    healthCheck(): Promise<boolean>;
+    private handleError;
+}

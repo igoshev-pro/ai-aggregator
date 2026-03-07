@@ -1,0 +1,112 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # ─── NestJS App ────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-agg-app
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - MONGO_URI=mongodb://admin:password123@mongodb:27017/ai-aggregator?authSource=admin
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=redis123
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-minimum-32-chars
+      - JWT_EXPIRATION=7d
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+      - EVOLINK_API_KEY=${EVOLINK_API_KEY:-}
+      - EVOLINK_BASE_URL=${EVOLINK_BASE_URL:-}
+      - KIE_API_KEY=${KIE_API_KEY:-}
+      - KIE_BASE_URL=${KIE_BASE_URL:-}
+      - REPLICATE_API_KEY=${REPLICATE_API_KEY:-}
+      - YOOKASSA_SHOP_ID=${YOOKASSA_SHOP_ID:-}
+      - YOOKASSA_SECRET_KEY=${YOOKASSA_SECRET_KEY:-}
+      - CRYPTOMUS_MERCHANT_ID=${CRYPTOMUS_MERCHANT_ID:-}
+      - CRYPTOMUS_API_KEY=${CRYPTOMUS_API_KEY:-}
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+      - THROTTLE_TTL=60
+      - THROTTLE_LIMIT=120
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # ─── MongoDB ───────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: ai-agg-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: ai-aggregator
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # ─── Redis ─────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ai-agg-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass redis123 --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+  # ─── MongoDB GUI (опционально, убери для production) ───────────
+  mongo-express:
+    image: mongo-express
+    container_name: ai-agg-mongo-ui
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: password123
+      ME_CONFIG_MONGODB_URL: mongodb://admin:password123@mongodb:27017/
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ai-network
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  ai-network:
+    driver: bridge
