@@ -1,0 +1,384 @@
+{
+  "info": {
+    "name": "AI Aggregator - Chat Testing",
+    "description": "Тестирование чата с дешевыми моделями",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth - Get Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    const response = pm.response.json();",
+              "    if (response.accessToken) {",
+              "        pm.collectionVariables.set('token', response.accessToken);",
+              "        console.log('Token saved:', response.accessToken);",
+              "    } else if (response.data && response.data.accessToken) {",
+              "        pm.collectionVariables.set('token', response.data.accessToken);",
+              "        console.log('Token saved:', response.data.accessToken);",
+              "    }",
+              "}",
+              "",
+              "pm.test('Status code is 200 or 201', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              "",
+              "pm.test('Response has token', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('accessToken').or.to.have.nested.property('data.accessToken');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Генерируем тестовые данные",
+              "const userId = Math.floor(Math.random() * 1000000000);",
+              "const timestamp = Math.floor(Date.now() / 1000);",
+              "",
+              "const user = {",
+              "    id: userId,",
+              "    first_name: 'Test',",
+              "    last_name: 'User',",
+              "    username: 'testuser_' + userId",
+              "};",
+              "",
+              "const initData = `user=${encodeURIComponent(JSON.stringify(user))}&auth_date=${timestamp}&hash=test_hash_${timestamp}`;",
+              "",
+              "pm.collectionVariables.set('testInitData', initData);",
+              "console.log('Generated initData:', initData);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"initData\": \"{{testInitData}}\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/telegram",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "telegram"]
+        },
+        "description": "Получить JWT токен через Telegram авторизацию"
+      }
+    },
+    {
+      "name": "1.1 Auth - Dev Mode (Alternative)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "    const response = pm.response.json();",
+              "    if (response.accessToken) {",
+              "        pm.collectionVariables.set('token', response.accessToken);",
+              "    } else if (response.data && response.data.accessToken) {",
+              "        pm.collectionVariables.set('token', response.data.accessToken);",
+              "    }",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"userId\": 123456789,\n  \"username\": \"testuser\"\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/auth/dev",
+          "host": ["{{baseUrl}}"],
+          "path": ["auth", "dev"]
+        },
+        "description": "DEV режим авторизации (если включен)"
+      }
+    },
+    {
+      "name": "2. Check Balance",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Has balance info', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('credits');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/billing/balance",
+          "host": ["{{baseUrl}}"],
+          "path": ["billing", "balance"]
+        },
+        "description": "Проверить баланс пользователя"
+      }
+    },
+    {
+      "name": "3. Get Available Models",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/ai-providers/models?type=text",
+          "host": ["{{baseUrl}}"],
+          "path": ["ai-providers", "models"],
+          "query": [
+            {
+              "key": "type",
+              "value": "text"
+            }
+          ]
+        },
+        "description": "Получить список доступных текстовых моделей"
+      }
+    },
+    {
+      "name": "4. Chat - GPT-4o-mini (Cheapest)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Has response message', function () {",
+              "    const jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('content');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"modelSlug\": \"gpt-4o-mini\",\n  \"content\": \"Ответь одним словом: работаешь?\",\n  \"temperature\": 0.7,\n  \"maxTokens\": 100\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/chat/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["chat", "send"]
+        },
+        "description": "Отправить сообщение в GPT-4o-mini (самая дешевая)"
+      }
+    },
+    {
+      "name": "5. Chat - GPT-3.5-turbo",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"modelSlug\": \"gpt-3.5-turbo\",\n  \"content\": \"Привет! Как дела?\",\n  \"temperature\": 0.5,\n  \"maxTokens\": 150\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/chat/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["chat", "send"]
+        }
+      }
+    },
+    {
+      "name": "6. Chat - Claude Haiku",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"modelSlug\": \"claude-3-haiku\",\n  \"content\": \"Сколько будет 2+2?\",\n  \"temperature\": 0.1,\n  \"maxTokens\": 50\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/chat/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["chat", "send"]
+        }
+      }
+    },
+    {
+      "name": "7. Chat - DeepSeek",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"modelSlug\": \"deepseek-chat\",\n  \"content\": \"Hello, how are you?\",\n  \"temperature\": 0.3,\n  \"maxTokens\": 100\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/chat/send",
+          "host": ["{{baseUrl}}"],
+          "path": ["chat", "send"]
+        }
+      }
+    },
+    {
+      "name": "8. Chat - Stream Response",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Accept",
+            "value": "text/event-stream"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"modelSlug\": \"gpt-4o-mini\",\n  \"content\": \"Сосчитай от 1 до 5\",\n  \"temperature\": 0.5\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/chat/stream",
+          "host": ["{{baseUrl}}"],
+          "path": ["chat", "stream"]
+        },
+        "description": "Стриминг ответа (SSE)"
+      }
+    },
+    {
+      "name": "9. Get Chat History",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/chat/conversations?page=1&limit=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["chat", "conversations"],
+          "query": [
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "10. Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Проверка работоспособности API"
+      }
+    }
+  ]
+}

@@ -1,0 +1,305 @@
+# =====================================================
+# Node.js & NPM
+# =====================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# =====================================================
+# Build & Dist
+# =====================================================
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+*.tsbuildinfo
+
+# =====================================================
+# Environment & Config
+# =====================================================
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env*.local
+!.env.example
+!.env.template
+
+# API Keys and secrets
+*.key
+*.pem
+*.cert
+*.crt
+secrets/
+credentials/
+
+# =====================================================
+# Logs
+# =====================================================
+logs/
+*.log
+logs/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =====================================================
+# Testing
+# =====================================================
+coverage/
+.nyc_output/
+test-results/
+*.lcov
+.coverage
+*.cover
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+junit.xml
+
+# =====================================================
+# Database
+# =====================================================
+*.sqlite
+*.sqlite3
+*.db
+data/
+mongodb_data/
+redis_data/
+postgres_data/
+mysql_data/
+
+# Database dumps
+*.sql
+*.dump
+*.bak
+backup/
+backups/
+
+# =====================================================
+# IDE & Editors
+# =====================================================
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+*~
+tags
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =====================================================
+# OS Files
+# =====================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =====================================================
+# Docker
+# =====================================================
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+volumes/
+container_data/
+
+# =====================================================
+# Project Specific
+# =====================================================
+# Uploads and generated files
+uploads/
+upload/
+public/uploads/
+public/images/generated/
+tmp/
+temp/
+cache/
+.cache/
+storage/
+
+# Generated documentation
+docs/generated/
+api-docs/
+documentation/build/
+
+# Session files
+sessions/
+*.session
+
+# PM2
+.pm2/
+pm2.log
+pm2.pid
+
+# Certificates
+ssl/
+certs/
+*.p12
+*.pfx
+
+# Swagger
+swagger-stats.json
+
+# =====================================================
+# Monitoring & Analytics
+# =====================================================
+.monitoring/
+grafana-storage/
+prometheus-data/
+newrelic.js
+newrelic_agent.log
+
+# =====================================================
+# Misc
+# =====================================================
+*.pid
+*.seed
+*.pid.lock
+*.tgz
+.grunt
+.lock-wscript
+.node_repl_history
+.npm
+.yarn-integrity
+.eslintcache
+.stylelintcache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# =====================================================
+# Keep these files
+# =====================================================
+!.gitignore
+!.gitkeep
+!.editorconfig
+!.prettierrc
+!.eslintrc.js
+!README.md
+!CONTEXT.md
+!tsconfig.json
+!nest-cli.json
+!package.json
+!docker-compose.yml
+!Dockerfile
