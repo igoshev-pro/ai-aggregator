@@ -18,16 +18,15 @@ export class AuthController {
     return { success: true, data: result };
   }
 
-  // DEV ENDPOINT для тестирования
   @Post('dev')
-  @ApiOperation({ summary: 'DEV: Test authentication (только для разработки)' })
+  @ApiOperation({ summary: 'DEV: Test authentication (development only)' })
+  @HttpCode(200)
   async devAuth(@Body() dto: { userId: number; username?: string }) {
-    // Проверяем что это не production
     if (process.env.NODE_ENV === 'production') {
       throw new Error('Dev auth is not available in production');
     }
-
-    return this.authService.devAuth(dto.userId, dto.username);
+    const result = await this.authService.devAuth(dto.userId, dto.username);
+    return { success: true, data: result };
   }
 
   @Get('refresh')

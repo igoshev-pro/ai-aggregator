@@ -22,26 +22,41 @@ export class UsersController {
   @ApiOperation({ summary: 'Get current user profile' })
   async getProfile(@CurrentUser('sub') userId: string) {
     const user = await this.usersService.findById(userId);
+
+    const now = new Date();
+    const subscriptionActive =
+      user.subscriptionPlan !== 'free' &&
+      user.subscriptionExpiresAt !== null &&
+      user.subscriptionExpiresAt > now;
+
     return {
       success: true,
       data: {
-        id: user._id,
+        id: user._id.toString(),
         telegramId: user.telegramId,
+        authProvider: user.authProvider,
+        email: user.email || null,
         firstName: user.firstName,
         lastName: user.lastName,
         username: user.username,
         photoUrl: user.photoUrl,
+        role: user.role,
         tokenBalance: user.tokenBalance,
         bonusTokens: user.bonusTokens,
-        totalAvailable: user.tokenBalance + user.bonusTokens,
+        totalBalance: user.tokenBalance + user.bonusTokens,
         totalTokensSpent: user.totalTokensSpent,
-        subscriptionPlan: user.subscriptionPlan,
-        subscriptionExpiresAt: user.subscriptionExpiresAt,
+        subscription: {
+          plan: user.subscriptionPlan,
+          expiresAt: user.subscriptionExpiresAt
+            ? user.subscriptionExpiresAt.toISOString()
+            : null,
+          isActive: subscriptionActive,
+        },
         referralCode: user.referralCode,
         referralCount: user.referralCount,
         referralEarnings: user.referralEarnings,
         settings: user.settings,
-        role: user.role,
+        createdAt: user.createdAt ? user.createdAt.toISOString() : null,
       },
     };
   }

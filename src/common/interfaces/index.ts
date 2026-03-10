@@ -9,9 +9,17 @@ export interface TelegramUser {
 }
 
 export interface JwtPayload {
-  sub: string; // MongoDB user _id
-  telegramId: number;
+  sub: string;
+  telegramId?: number;
+  email?: string;
+  authProvider: AuthProvider;
   role: UserRole;
+}
+
+export enum AuthProvider {
+  TELEGRAM = 'telegram',
+  EMAIL = 'email',
+  GOOGLE = 'google',
 }
 
 export enum UserRole {

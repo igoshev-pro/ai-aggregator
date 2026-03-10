@@ -1,10 +1,10 @@
-// src/modules/auth/auth.service.ts - исправленная версия
 import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/modules/users/users.service';
-import { TelegramUser, JwtPayload } from '@/common/interfaces';
+import { TelegramUser, JwtPayload, AuthProvider } from '@/common/interfaces';
 import { TelegramAuthDto, AuthResponseDto } from './dto/telegram-auth.dto';
+import { UserDocument } from '@/modules/users/schemas/user.schema';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -23,7 +23,6 @@ export class AuthService {
   async authenticateWithTelegram(dto: TelegramAuthDto): Promise<AuthResponseDto> {
     // ─── DEV Mode Bypass ─────────────────────────────────────────
     if (this.isDev) {
-      // Проверяем, есть ли в initData тестовые данные
       if (dto.initData.includes('test') || dto.initData.includes('dev')) {
         this.logger.log('🔧 DEV mode: bypassing Telegram validation');
         return this.handleDevTelegramAuth(dto.initData, dto.referralCode);
@@ -46,34 +45,58 @@ export class AuthService {
       throw new UnauthorizedException('Account is banned: ' + (user.banReason || 'No reason'));
     }
 
+    return this.buildAuthResponse(user);
+  }
+
+  // ─── Build unified auth response ─────────────────────────────
+
+  private buildAuthResponse(user: UserDocument): AuthResponseDto {
     const payload: JwtPayload = {
       sub: user._id.toString(),
-      telegramId: user.telegramId,
+      telegramId: user.telegramId || undefined,
+      email: user.email || undefined,
+      authProvider: user.authProvider || AuthProvider.TELEGRAM,
       role: user.role,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const token = this.jwtService.sign(payload);
+
+    const now = new Date();
+    const subscriptionActive =
+      user.subscriptionPlan !== 'free' &&
+      user.subscriptionExpiresAt !== null &&
+      user.subscriptionExpiresAt > now;
 
     return {
-      accessToken,
+      token,
       user: {
         id: user._id.toString(),
-        telegramId: user.telegramId,
-        firstName: user.firstName,
-        username: user.username,
+        telegramId: user.telegramId || null,
+        authProvider: user.authProvider || AuthProvider.TELEGRAM,
+        email: user.email || null,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        username: user.username || '',
+        photoUrl: user.photoUrl || '',
+        role: user.role,
         tokenBalance: user.tokenBalance,
         bonusTokens: user.bonusTokens,
-        role: user.role,
-        subscriptionPlan: user.subscriptionPlan,
+        totalBalance: user.tokenBalance + user.bonusTokens,
+        subscription: {
+          plan: user.subscriptionPlan,
+          expiresAt: user.subscriptionExpiresAt
+            ? user.subscriptionExpiresAt.toISOString()
+            : null,
+          isActive: subscriptionActive,
+        },
+        referralCode: user.referralCode,
+        createdAt: user.createdAt ? user.createdAt.toISOString() : null,
       },
     };
   }
 
   // ─── DEV Methods ─────────────────────────────────────────────
-  
-  /**
-   * DEV: Direct authentication for testing
-   */
+
   async devAuth(userId: number, username?: string, role?: string): Promise<AuthResponseDto> {
     if (!this.isDev) {
       throw new UnauthorizedException('Dev auth is only available in development mode');
@@ -81,68 +104,36 @@ export class AuthService {
 
     this.logger.log(`🔧 DEV Auth for user ${userId} (${username})`);
 
-    // Создаем тестового пользователя
     const telegramUser: TelegramUser = {
       id: userId,
       first_name: 'Test',
       last_name: 'User',
       username: username || `testuser_${userId}`,
       language_code: 'en',
-      // Убрали is_bot - его нет в интерфейсе
     };
 
-    // Передаем undefined вместо null для опционального параметра
-    const user = await this.usersService.findOrCreateByTelegram(
-      telegramUser, 
-      undefined  // ← исправлено с null на undefined
-    );
+    const user = await this.usersService.findOrCreateByTelegram(telegramUser, undefined);
 
-    // В DEV режиме можем установить роль
     if (role && (role === 'admin' || role === 'moderator')) {
       user.role = role as any;
       await user.save();
     }
 
-    // Даем бонусные токены для тестирования
-    if (user.tokenBalance === 0) {
-      user.tokenBalance = 10000; // 10k токенов для тестов
-      user.bonusTokens = 5000;   // 5k бонусных
+    if (user.tokenBalance === 0 && user.bonusTokens <= 50) {
+      user.tokenBalance = 10000;
+      user.bonusTokens = 5000;
       await user.save();
       this.logger.log(`🎁 DEV: Added test tokens to user ${userId}`);
     }
 
-    const payload: JwtPayload = {
-      sub: user._id.toString(),
-      telegramId: user.telegramId,
-      role: user.role,
-    };
-
-    const accessToken = this.jwtService.sign(payload);
-
-    return {
-      accessToken,
-      user: {
-        id: user._id.toString(),
-        telegramId: user.telegramId,
-        firstName: user.firstName,
-        username: user.username,
-        tokenBalance: user.tokenBalance,
-        bonusTokens: user.bonusTokens,
-        role: user.role,
-        subscriptionPlan: user.subscriptionPlan,
-      },
-    };
+    return this.buildAuthResponse(user);
   }
 
-  /**
-   * DEV: Handle test Telegram auth data
-   */
   private async handleDevTelegramAuth(
     initData: string,
-    referralCode?: string,
+    _referralCode?: string,
   ): Promise<AuthResponseDto> {
     try {
-      // Пытаемся распарсить тестовые данные
       const params = new URLSearchParams(initData);
       const userStr = params.get('user');
 
@@ -154,7 +145,7 @@ export class AuthService {
           const userData = JSON.parse(decodeURIComponent(userStr));
           userId = userData.id || userId;
           username = userData.username || username;
-        } catch (e) {
+        } catch {
           this.logger.warn('Failed to parse test user data, using defaults');
         }
       }
@@ -162,62 +153,16 @@ export class AuthService {
       return this.devAuth(userId, username);
     } catch (error) {
       this.logger.error('Error in handleDevTelegramAuth:', error);
-      // Fallback на дефолтного пользователя
       return this.devAuth(123456789, 'testuser');
     }
   }
 
-  /**
-   * DEV: Create test JWT token without auth
-   */
-  async devCreateToken(
-    userId: string,
-    telegramId: number,
-    role: string = 'user',
-  ): Promise<string> {
-    if (!this.isDev) {
-      throw new UnauthorizedException('Dev methods are only available in development mode');
-    }
-
-    const payload: JwtPayload = {
-      sub: userId,
-      telegramId,
-      role: role as any,
-    };
-
-    return this.jwtService.sign(payload);
-  }
-
-  /**
-   * DEV: Validate any token (for debugging)
-   */
-  async devValidateToken(token: string): Promise<any> {
-    if (!this.isDev) {
-      throw new UnauthorizedException('Dev methods are only available in development mode');
-    }
-
-    try {
-      const decoded = this.jwtService.verify(token);
-      return {
-        valid: true,
-        decoded,
-        expiresAt: new Date((decoded as any).exp * 1000),
-      };
-    } catch (error: any) {
-      return {
-        valid: false,
-        error: error.message,
-      };
-    }
-  }
-
-  // ─── Original Methods ────────────────────────────────────────
+  // ─── Telegram Validation ─────────────────────────────────────
 
   private validateAndParseInitData(initData: string): TelegramUser | null {
     try {
       const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
-      
-      // В DEV режиме, если нет токена - логируем предупреждение
+
       if (!botToken) {
         if (this.isDev) {
           this.logger.warn('⚠️ TELEGRAM_BOT_TOKEN not set, validation will fail');
@@ -256,8 +201,7 @@ export class AuthService {
 
       const authDate = parseInt(params.get('auth_date') || '0', 10);
       const now = Math.floor(Date.now() / 1000);
-      
-      // В DEV режиме увеличиваем время валидности до 30 дней
+
       const maxAge = this.isDev ? 86400 * 30 : 86400;
       if (now - authDate > maxAge) {
         if (this.isDev) {
@@ -278,13 +222,15 @@ export class AuthService {
     }
   }
 
-  async refreshToken(userId: string): Promise<{ accessToken: string }> {
+  async refreshToken(userId: string): Promise<{ token: string }> {
     const user = await this.usersService.findById(userId);
     const payload: JwtPayload = {
       sub: user._id.toString(),
-      telegramId: user.telegramId,
+      telegramId: user.telegramId || undefined,
+      email: user.email || undefined,
+      authProvider: user.authProvider || AuthProvider.TELEGRAM,
       role: user.role,
     };
-    return { accessToken: this.jwtService.sign(payload) };
+    return { token: this.jwtService.sign(payload) };
   }
 }

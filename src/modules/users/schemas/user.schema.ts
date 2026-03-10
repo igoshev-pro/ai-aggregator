@@ -1,15 +1,35 @@
-// src/modules/users/schemas/user.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
-import { UserRole, SubscriptionPlan } from '@/common/interfaces';
-
-export type UserDocument = User & Document;
+import { HydratedDocument, Types } from 'mongoose';
+import { UserRole, SubscriptionPlan, AuthProvider } from '@/common/interfaces';
 
 @Schema({ timestamps: true })
 export class User {
-  @Prop({ required: true, unique: true, index: true })
-  telegramId: number;
+  // ─── Auth Provider ────────────────────────────────────────
+  @Prop({ type: String, enum: AuthProvider, default: AuthProvider.TELEGRAM })
+  authProvider: AuthProvider;
 
+  // ─── Telegram Auth (optional for email/google users) ──────
+  @Prop({ type: Number, default: null, sparse: true, index: true })
+  telegramId: number | null;
+
+  @Prop({ default: false })
+  isPremiumTelegram: boolean;
+
+  // ─── Email Auth (optional for telegram users) ─────────────
+  @Prop({ type: String, default: null, sparse: true, index: true })
+  email: string | null;
+
+  @Prop({ type: String, default: null, select: false })
+  passwordHash: string | null;
+
+  @Prop({ default: false })
+  isEmailVerified: boolean;
+
+  // ─── Google Auth ──────────────────────────────────────────
+  @Prop({ type: String, default: null, sparse: true })
+  googleId: string | null;
+
+  // ─── Profile ──────────────────────────────────────────────
   @Prop({ default: '' })
   firstName: string;
 
@@ -25,9 +45,7 @@ export class User {
   @Prop({ default: '' })
   languageCode: string;
 
-  @Prop({ default: false })
-  isPremiumTelegram: boolean;
-
+  // ─── Balance ──────────────────────────────────────────────
   @Prop({ default: 0, min: 0 })
   tokenBalance: number;
 
@@ -40,6 +58,7 @@ export class User {
   @Prop({ default: 0 })
   totalDeposited: number;
 
+  // ─── Role & Subscription ─────────────────────────────────
   @Prop({ type: String, enum: UserRole, default: UserRole.USER })
   role: UserRole;
 
@@ -49,6 +68,7 @@ export class User {
   @Prop({ type: Date, default: null })
   subscriptionExpiresAt: Date | null;
 
+  // ─── Referral ─────────────────────────────────────────────
   @Prop({ unique: true, sparse: true })
   referralCode: string;
 
@@ -61,12 +81,14 @@ export class User {
   @Prop({ default: 0 })
   referralEarnings: number;
 
+  // ─── Limits ───────────────────────────────────────────────
   @Prop({ default: 0 })
   dailyGenerations: number;
 
   @Prop({ type: Date, default: null })
   dailyGenerationsResetAt: Date | null;
 
+  // ─── Status ───────────────────────────────────────────────
   @Prop({ default: true })
   isActive: boolean;
 
@@ -79,6 +101,7 @@ export class User {
   @Prop({ type: Date, default: null })
   lastActiveAt: Date | null;
 
+  // ─── Settings ─────────────────────────────────────────────
   @Prop({ type: Object, default: {} })
   settings: {
     defaultTextModel?: string;
@@ -88,11 +111,28 @@ export class User {
     language?: string;
     notifications?: boolean;
   };
+
+  // ─── Timestamps (виртуальные, заполняются Mongoose) ───────
+  createdAt: Date;
+  updatedAt: Date;
 }
+
+export type UserDocument = HydratedDocument<User>;
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
-UserSchema.index({ telegramId: 1 });
+UserSchema.index(
+  { telegramId: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { telegramId: { $ne: null } } },
+);
+UserSchema.index(
+  { email: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { email: { $ne: null } } },
+);
+UserSchema.index(
+  { googleId: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { googleId: { $ne: null } } },
+);
 UserSchema.index({ username: 1 });
 UserSchema.index({ referralCode: 1 });
 UserSchema.index({ role: 1 });

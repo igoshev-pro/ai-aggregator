@@ -1,9 +1,8 @@
-// src/modules/users/users.service.ts
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
-import { TelegramUser } from '@/common/interfaces';
+import { TelegramUser, AuthProvider } from '@/common/interfaces';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -16,7 +15,6 @@ export class UsersService {
     let user = await this.userModel.findOne({ telegramId: telegramUser.id });
 
     if (user) {
-      // Update user info from Telegram
       user.firstName = telegramUser.first_name;
       user.lastName = telegramUser.last_name || '';
       user.username = telegramUser.username || '';
@@ -28,7 +26,8 @@ export class UsersService {
     }
 
     // New user
-    const newUser: Partial<User> = {
+    user = new this.userModel({
+      authProvider: AuthProvider.TELEGRAM,
       telegramId: telegramUser.id,
       firstName: telegramUser.first_name,
       lastName: telegramUser.last_name || '',
@@ -38,16 +37,16 @@ export class UsersService {
       isPremiumTelegram: telegramUser.is_premium || false,
       referralCode: this.generateReferralCode(),
       tokenBalance: 0,
-      bonusTokens: 50, // Welcome bonus
+      bonusTokens: 50,
       lastActiveAt: new Date(),
-    };
+    });
 
     // Handle referral
     if (referralCode) {
       const referrer = await this.userModel.findOne({ referralCode });
       if (referrer) {
-        newUser.referredBy = referrer._id;
-        newUser.bonusTokens = 100;
+        user.referredBy = referrer._id;
+        user.bonusTokens = 100;
         referrer.referralCount += 1;
         referrer.bonusTokens += 50;
         referrer.referralEarnings += 50;
@@ -55,7 +54,6 @@ export class UsersService {
       }
     }
 
-    user = new this.userModel(newUser);
     await user.save();
     return user;
   }
@@ -72,6 +70,10 @@ export class UsersService {
     return user;
   }
 
+  async findByEmail(email: string): Promise<UserDocument | null> {
+    return this.userModel.findOne({ email }).select('+passwordHash');
+  }
+
   async deductTokens(userId: string, amount: number, _type: string): Promise<UserDocument> {
     const user = await this.findById(userId);
 
@@ -82,7 +84,6 @@ export class UsersService {
       );
     }
 
-    // Сначала списываем бонусные токены
     if (user.bonusTokens >= amount) {
       user.bonusTokens -= amount;
     } else {
@@ -143,7 +144,6 @@ export class UsersService {
     const user = await this.findById(userId);
     const now = new Date();
 
-    // Reset daily counter
     if (!user.dailyGenerationsResetAt || user.dailyGenerationsResetAt < now) {
       user.dailyGenerations = 0;
       user.dailyGenerationsResetAt = new Date(
