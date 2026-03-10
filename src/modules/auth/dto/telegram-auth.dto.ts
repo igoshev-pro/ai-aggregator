@@ -13,15 +13,26 @@ export class TelegramAuthDto {
 }
 
 export class AuthResponseDto {
-  accessToken: string;
+  token: string;
   user: {
     id: string;
-    telegramId: number;
+    telegramId: number | null;
+    authProvider: string;
+    email: string | null;
     firstName: string;
+    lastName: string;
     username: string;
+    photoUrl: string;
+    role: string;
     tokenBalance: number;
     bonusTokens: number;
-    role: string;
-    subscriptionPlan: string;
+    totalBalance: number;
+    subscription: {
+      plan: string;
+      expiresAt: string | null;
+      isActive: boolean;
+    };
+    referralCode: string;
+    createdAt: string | null;
   };
 }
