@@ -13,7 +13,8 @@ import {
   StreamChunk,
   TaskStatusResult,
 } from './providers/base-provider.abstract';
-import { GenerationType } from '@/common/interfaces';
+import { GenerationType, SubscriptionPlan } from '@/common/interfaces';
+import { ModelAccessResponseDto } from './dto/model-access.dto';
 
 @Injectable()
 export class AiProvidersService {
@@ -25,9 +26,6 @@ export class AiProvidersService {
     private registry: ProviderRegistryService,
   ) {}
 
-  /**
-   * Получить все модели по типу
-   */
   async getModelsByType(type: GenerationType): Promise<ModelDocument[]> {
     return this.modelModel
       .find({ type, isActive: true })
@@ -35,9 +33,6 @@ export class AiProvidersService {
       .exec();
   }
 
-  /**
-   * Получить все доступные модели
-   */
   async getAllModels(): Promise<ModelDocument[]> {
     return this.modelModel
       .find({ isActive: true })
@@ -45,9 +40,6 @@ export class AiProvidersService {
       .exec();
   }
 
-  /**
-   * Получить модель по slug
-   */
   async getModelBySlug(slug: string): Promise<ModelDocument> {
     const model = await this.modelModel.findOne({ slug, isActive: true });
     if (!model) {
@@ -56,17 +48,12 @@ export class AiProvidersService {
     return model;
   }
 
-  /**
-   * Получить стоимость модели в токенах
-   */
   async getModelCost(slug: string): Promise<number> {
     const model = await this.getModelBySlug(slug);
-    return model.tokenCost;
+    // Для обратной совместимости возвращаем tokenCost или minTokenCost
+    return model.tokenCost || model.minTokenCost;
   }
 
-  /**
-   * Генерация текста с fallback
-   */
   async generateText(
     modelSlug: string,
     request: Omit<TextGenerationRequest, 'model'>,
@@ -90,7 +77,6 @@ export class AiProvidersService {
           model: modelId,
         });
 
-        // Обновляем статистику провайдера
         await this.registry.updateProviderStats(
           provider.getSlug(),
           result.responseTimeMs,
@@ -98,12 +84,27 @@ export class AiProvidersService {
         );
 
         if (result.success) {
-          // Обновляем статистику модели
           await this.updateModelStats(modelSlug, result.responseTimeMs, true);
+          
+          // Убеждаемся что возвращаем usage с правильными полями
+          if (result.usage) {
+            const inputTokens =
+              result.usage.inputTokens ?? result.usage['prompt_tokens'] ?? 0;
+            const outputTokens =
+              result.usage.outputTokens ?? result.usage['completion_tokens'] ?? 0;
+            const totalTokens =
+              result.usage.totalTokens ?? result.usage['total_tokens'] ?? inputTokens + outputTokens;
+
+            result.usage = {
+              inputTokens,
+              outputTokens,
+              totalTokens,
+            } as any;
+          }
+          
           return result;
         }
 
-        // Если ошибка retriable — пробуем следующего провайдера
         if (result.error?.retryable) {
           this.logger.warn(
             `Provider ${provider.getSlug()} failed (retryable): ${result.error.message}`,
@@ -112,7 +113,6 @@ export class AiProvidersService {
           continue;
         }
 
-        // Не-retryable ошибка — возвращаем сразу
         await this.updateModelStats(modelSlug, result.responseTimeMs, false);
         return result;
       } catch (error) {
@@ -132,7 +132,6 @@ export class AiProvidersService {
       }
     }
 
-    // Все провайдеры не сработали
     await this.updateModelStats(modelSlug, 0, false);
     return lastError || {
       success: false,
@@ -146,9 +145,6 @@ export class AiProvidersService {
     };
   }
 
-  /**
-   * Стриминг текста с fallback
-   */
   async *generateTextStream(
     modelSlug: string,
     request: Omit<TextGenerationRequest, 'model'>,
@@ -168,6 +164,8 @@ export class AiProvidersService {
 
         let hasYielded = false;
         let hasError = false;
+        let totalInputTokens = 0;
+        let totalOutputTokens = 0;
 
         const stream = provider.generateTextStream({
           ...request,
@@ -183,6 +181,20 @@ export class AiProvidersService {
             break;
           }
 
+          // Собираем usage информацию
+          if (chunk.usage) {
+            totalInputTokens =
+              chunk.usage.inputTokens ?? chunk.usage['prompt_tokens'] ?? totalInputTokens;
+            totalOutputTokens =
+              chunk.usage.outputTokens ?? chunk.usage['completion_tokens'] ?? totalOutputTokens;
+
+            chunk.usage = {
+              inputTokens: totalInputTokens,
+              outputTokens: totalOutputTokens,
+              totalTokens: totalInputTokens + totalOutputTokens,
+            } as any;
+          }
+
           yield chunk;
 
           if (chunk.done) {
@@ -192,7 +204,7 @@ export class AiProvidersService {
         }
 
         if (hasYielded && !hasError) {
-          return; // Стрим закончился нормально
+          return;
         }
 
         this.logger.warn(`Stream from ${provider.getSlug()} failed, trying next`);
@@ -204,9 +216,6 @@ export class AiProvidersService {
     yield { content: 'Error: All providers failed', done: true };
   }
 
-  /**
-   * Генерация изображения с fallback
-   */
   async generateImage(
     modelSlug: string,
     request: Omit<ImageGenerationRequest, 'model'>,
@@ -214,9 +223,6 @@ export class AiProvidersService {
     return this.executeWithFallback(modelSlug, 'generateImage', request);
   }
 
-  /**
-   * Генерация видео с fallback
-   */
   async generateVideo(
     modelSlug: string,
     request: Omit<VideoGenerationRequest, 'model'>,
@@ -224,9 +230,6 @@ export class AiProvidersService {
     return this.executeWithFallback(modelSlug, 'generateVideo', request);
   }
 
-  /**
-   * Генерация аудио с fallback
-   */
   async generateAudio(
     modelSlug: string,
     request: Omit<AudioGenerationRequest, 'model'>,
@@ -234,9 +237,6 @@ export class AiProvidersService {
     return this.executeWithFallback(modelSlug, 'generateAudio', request);
   }
 
-  /**
-   * Проверка статуса async задачи
-   */
   async checkTaskStatus(
     providerSlug: string,
     taskId: string,
@@ -248,16 +248,10 @@ export class AiProvidersService {
     return provider.checkTaskStatus(taskId);
   }
 
-  /**
-   * Получить все провайдеры (для админки)
-   */
   async getAllProviders(): Promise<ProviderDocument[]> {
     return this.providerModel.find().sort({ priority: 1 }).exec();
   }
 
-  /**
-   * Обновить провайдер (для админки)
-   */
   async updateProvider(slug: string, updates: Partial<Provider>): Promise<ProviderDocument> {
     const provider = await this.providerModel.findOneAndUpdate(
       { slug },
@@ -268,9 +262,6 @@ export class AiProvidersService {
     return provider;
   }
 
-  /**
-   * Обновить модель (для админки)
-   */
   async updateModel(slug: string, updates: Partial<AIModel>): Promise<ModelDocument> {
     const model = await this.modelModel.findOneAndUpdate(
       { slug },
@@ -281,9 +272,6 @@ export class AiProvidersService {
     return model;
   }
 
-  /**
-   * Универсальный метод с fallback для image/video/audio
-   */
   private async executeWithFallback(
     modelSlug: string,
     method: 'generateImage' | 'generateVideo' | 'generateAudio',
@@ -355,9 +343,6 @@ export class AiProvidersService {
     };
   }
 
-  /**
-   * Обновление статистики модели
-   */
   private async updateModelStats(
     modelSlug: string,
     responseTimeMs: number,
@@ -383,4 +368,70 @@ export class AiProvidersService {
       },
     );
   }
+
+  // Добавить в ai-providers.service.ts
+
+async checkModelAccess(
+  modelSlug: string,
+  userPlan: SubscriptionPlan,
+): Promise<ModelAccessResponseDto> {
+  const model = await this.getModelBySlug(modelSlug);
+  
+  // Если модель не премиум - доступна всем
+  if (!model.isPremium) {
+    return { hasAccess: true };
+  }
+  
+  // Проверяем includedInPlans
+  const includedPlans = model.limits?.includedInPlans || [];
+  
+  if (includedPlans.length === 0) {
+    // Если не указаны планы - доступна всем премиум пользователям
+    if (userPlan === SubscriptionPlan.PRO || userPlan === SubscriptionPlan.UNLIMITED) {
+      return { hasAccess: true };
+    }
+  } else {
+    // Проверяем конкретные планы
+    if (includedPlans.includes(userPlan)) {
+      return { hasAccess: true };
+    }
+  }
+  
+  // Определяем минимально необходимый план
+  let requiredPlan = SubscriptionPlan.PRO;
+  if (includedPlans.includes(SubscriptionPlan.UNLIMITED) && !includedPlans.includes(SubscriptionPlan.PRO)) {
+    requiredPlan = SubscriptionPlan.UNLIMITED;
+  }
+  
+  return {
+    hasAccess: false,
+    reason: `This model requires ${requiredPlan} subscription`,
+    requiredPlan,
+  };
+}
+
+// Добавить фильтрацию моделей по подписке
+async getAvailableModelsForUser(
+  userPlan: SubscriptionPlan,
+  type?: GenerationType,
+): Promise<ModelDocument[]> {
+  const query: any = { isActive: true };
+  if (type) query.type = type;
+  
+  const models = await this.modelModel
+    .find(query)
+    .sort({ type: 1, sortOrder: 1 })
+    .exec();
+  
+  // Фильтруем по доступности
+  const availableModels: ModelDocument[] = [];
+  for (const model of models) {
+    const access = await this.checkModelAccess(model.slug, userPlan);
+    if (access.hasAccess) {
+      availableModels.push(model);
+    }
+  }
+  
+  return availableModels;
+}
 }

@@ -1,3 +1,4 @@
+// src/modules/generation/schemas/generation.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { GenerationType, GenerationStatus } from '@/common/interfaces';
@@ -18,14 +19,12 @@ export class Generation {
   @Prop({ required: true, enum: GenerationStatus, default: GenerationStatus.PENDING })
   status: GenerationStatus;
 
-  // Промпт/запрос
   @Prop({ required: true })
   prompt: string;
 
   @Prop()
   negativePrompt: string;
 
-  // Параметры генерации
   @Prop({ type: Object, default: {} })
   params: {
     width?: number;
@@ -38,20 +37,18 @@ export class Generation {
     duration?: number;
     fps?: number;
     resolution?: string;
-    imageUrl?: string; // for img2img, img2video
+    imageUrl?: string;
     instrumental?: boolean;
     voiceId?: string;
     language?: string;
   };
 
-  // Результат
   @Prop({ type: [String], default: [] })
   resultUrls: string[];
 
   @Prop()
-  resultContent: string; // для текстовых результатов
+  resultContent: string;
 
-  // Task tracking для async генераций
   @Prop()
   taskId: string;
 
@@ -59,19 +56,30 @@ export class Generation {
   providerSlug: string;
 
   @Prop({ default: 0 })
-  progress: number; // 0-100
+  progress: number;
 
   @Prop()
-  eta: number; // секунды до завершения
+  eta: number;
 
-  // Стоимость
+  // НОВЫЕ ПОЛЯ для точного учёта токенов
   @Prop({ default: 0 })
-  tokensCost: number;
+  inputTokens: number; // реальные токены от провайдера
+
+  @Prop({ default: 0 })
+  outputTokens: number; // реальные токены от провайдера
+
+  @Prop({ default: 0 })
+  totalProviderTokens: number; // inputTokens + outputTokens
+
+  @Prop({ default: 0 })
+  costInDollars: number; // стоимость в долларах
+
+  @Prop({ default: 0 })
+  tokensCost: number; // стоимость в наших внутренних токенах
 
   @Prop({ default: false })
   isRefunded: boolean;
 
-  // Время
   @Prop()
   startedAt: Date;
 
@@ -81,18 +89,15 @@ export class Generation {
   @Prop()
   responseTimeMs: number;
 
-  // Ошибки
   @Prop()
   errorMessage: string;
 
   @Prop({ default: 0 })
   retryCount: number;
 
-  // Метаданные
   @Prop({ type: Object, default: {} })
   metadata: Record<string, any>;
 
-  // Пользователь добавил в избранное
   @Prop({ default: false })
   isFavorite: boolean;
 }

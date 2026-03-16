@@ -1,3 +1,4 @@
+// src/modules/ai-providers/schemas/model.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { GenerationType } from '@/common/interfaces';
@@ -7,10 +8,10 @@ export type ModelDocument = AIModel & Document;
 @Schema({ timestamps: true })
 export class AIModel {
   @Prop({ required: true, unique: true })
-  slug: string; // 'gpt-4o', 'claude-3.5-sonnet', 'midjourney', etc.
+  slug: string;
 
   @Prop({ required: true })
-  name: string; // Display name
+  name: string;
 
   @Prop({ required: true })
   displayName: string;
@@ -19,7 +20,7 @@ export class AIModel {
   description: string;
 
   @Prop()
-  icon: string; // URL к иконке
+  icon: string;
 
   @Prop({ required: true, enum: GenerationType })
   type: GenerationType;
@@ -28,21 +29,39 @@ export class AIModel {
   isActive: boolean;
 
   @Prop({ default: false })
-  isPremium: boolean; // Доступен только premium пользователям
+  isPremium: boolean;
 
   @Prop({ default: 0 })
   sortOrder: number;
 
-  // Стоимость в токенах
-  @Prop({ required: true })
+  // НОВЫЕ ПОЛЯ - стоимость за миллион токенов
+  @Prop({ default: 0 })
+  costPerMillionInputTokens: number; // в долларах
+
+  @Prop({ default: 0 })
+  costPerMillionOutputTokens: number; // в долларах
+
+  // Фиксированная стоимость за генерацию (для изображений/видео/аудио)
+  @Prop({ default: 0 })
+  fixedCostPerGeneration: number; // в долларах
+
+  // Курс конвертации долларов в наши внутренние токены
+  @Prop({ default: 100 })
+  tokensPerDollar: number; // 1$ = 100 токенов по умолчанию
+
+  // Минимальная стоимость генерации в токенах
+  @Prop({ default: 1 })
+  minTokenCost: number;
+
+  // DEPRECATED - оставляем для обратной совместимости
+  @Prop({ required: false })
   tokenCost: number;
 
-  // Маппинг на провайдеров (fallback chain)
   @Prop({
     type: [{
       providerId: { type: Types.ObjectId, ref: 'Provider' },
       providerSlug: String,
-      modelId: String, // ID модели у провайдера
+      modelId: String,
       priority: Number,
       isActive: Boolean,
     }],
@@ -51,40 +70,36 @@ export class AIModel {
   providerMappings: {
     providerId: Types.ObjectId;
     providerSlug: string;
-    modelId: string; // e.g., 'openai/gpt-4o' for openrouter
+    modelId: string;
     priority: number;
     isActive: boolean;
   }[];
 
-  // Настройки модели
   @Prop({ type: Object, default: {} })
   defaultParams: {
     maxTokens?: number;
     temperature?: number;
     topP?: number;
-    // Image params
     width?: number;
     height?: number;
     steps?: number;
-    // Video params
     duration?: number;
     fps?: number;
   };
 
-  // Лимиты
   @Prop({ type: Object, default: {} })
   limits: {
     maxInputTokens?: number;
     maxOutputTokens?: number;
     maxImagesPerRequest?: number;
     maxResolution?: string;
-    maxDuration?: number; // seconds for video
-    cooldownSeconds?: number; // Between requests
+    maxDuration?: number;
+    cooldownSeconds?: number;
+    includedInPlans?: string[]; // ['pro', 'unlimited'] - в каких подписках доступна
   };
 
-  // Поддерживаемые возможности
   @Prop({ type: [String], default: [] })
-  capabilities: string[]; // 'streaming', 'vision', 'function_calling', etc.
+  capabilities: string[];
 
   @Prop({ type: Object, default: {} })
   stats: {

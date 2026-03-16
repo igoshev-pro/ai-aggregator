@@ -26,6 +26,7 @@ export interface SendMessageDto {
   maxTokens?: number;
 }
 
+@Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
 
@@ -40,9 +41,6 @@ export class ChatService {
     private billingService: BillingService,
   ) {}
 
-  /**
-   * Получить все чаты пользователя
-   */
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
 
@@ -65,9 +63,6 @@ export class ChatService {
     };
   }
 
-  /**
-   * Получить сообщения чата
-   */
   async getMessages(
     userId: string,
     conversationId: string,
@@ -93,22 +88,18 @@ export class ChatService {
     };
   }
 
-  /**
-   * Отправить сообщение (без стриминга)
-   */
   async sendMessage(userId: string, dto: SendMessageDto) {
-    // Проверяем модель и баланс
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
     const user = await this.usersService.findById(userId);
     const totalBalance = user.tokenBalance + user.bonusTokens;
 
-    if (totalBalance < model.tokenCost) {
+    // Проверяем минимальный баланс
+    if (totalBalance < model.minTokenCost) {
       throw new BadRequestException(
-        `Insufficient tokens. Need ${model.tokenCost}, have ${totalBalance}`,
+        `Insufficient tokens. Need at least ${model.minTokenCost}, have ${totalBalance}`,
       );
     }
 
-    // Получаем или создаём чат
     let conversation: ConversationDocument;
     if (dto.conversationId) {
       conversation = await this.getConversationWithAccess(userId, dto.conversationId);
@@ -116,7 +107,6 @@ export class ChatService {
       conversation = await this.createConversation(userId, dto);
     }
 
-    // Сохраняем сообщение пользователя
     const userMessage = new this.messageModel({
       conversationId: conversation._id,
       userId: new Types.ObjectId(userId),
@@ -126,10 +116,8 @@ export class ChatService {
     });
     await userMessage.save();
 
-    // Получаем контекст (последние сообщения)
     const contextMessages = await this.buildContext(conversation, dto);
 
-    // Генерируем ответ
     try {
       const result = await this.aiProvidersService.generateText(dto.modelSlug, {
         messages: contextMessages,
@@ -138,7 +126,6 @@ export class ChatService {
       });
 
       if (!result.success) {
-        // Сохраняем ошибку
         const errorMessage = new this.messageModel({
           conversationId: conversation._id,
           userId: new Types.ObjectId(userId),
@@ -154,16 +141,17 @@ export class ChatService {
         throw new BadRequestException(result.error?.message || 'Generation failed');
       }
 
-      // Списываем токены
-      await this.billingService.chargeForGeneration(
+      // НОВОЕ: Списываем токены на основе реального использования
+      const { costInTokens, costInDollars } = await this.billingService.chargeForGeneration(
         userId,
-        model.tokenCost,
-        'text',
         dto.modelSlug,
+        'text',
         conversation._id.toString(),
+        result.usage?.inputTokens,
+        result.usage?.outputTokens,
       );
 
-      // Сохраняем ответ ассистента
+      // Сохраняем ответ с НОВЫМИ полями
       const assistantMessage = new this.messageModel({
         conversationId: conversation._id,
         userId: new Types.ObjectId(userId),
@@ -173,22 +161,21 @@ export class ChatService {
         providerSlug: result.providerSlug,
         usage: result.usage,
         responseTimeMs: result.responseTimeMs,
-        tokensCost: model.tokenCost,
+        tokensCost: costInTokens,
+        inputTokens: result.usage?.inputTokens,
+        outputTokens: result.usage?.outputTokens,
       });
       await assistantMessage.save();
 
-      // Обновляем чат
       conversation.messageCount += 2;
       conversation.totalTokensUsed += result.usage?.totalTokens || 0;
       conversation.lastMessageAt = new Date();
 
-      // Auto-title на первое сообщение
       if (conversation.messageCount <= 2) {
         conversation.title = this.generateTitle(dto.content);
       }
       await conversation.save();
 
-      // Обновляем daily generations
       await this.usersService.incrementDailyGenerations(userId);
 
       return {
@@ -205,9 +192,6 @@ export class ChatService {
     }
   }
 
-  /**
-   * Стриминг сообщения — возвращает AsyncGenerator
-   */
   async *streamMessage(
     userId: string,
     dto: SendMessageDto,
@@ -216,17 +200,16 @@ export class ChatService {
     const user = await this.usersService.findById(userId);
     const totalBalance = user.tokenBalance + user.bonusTokens;
 
-    if (totalBalance < model.tokenCost) {
+    if (totalBalance < model.minTokenCost) {
       yield {
         type: 'error',
         data: {
-          message: `Insufficient tokens. Need ${model.tokenCost}, have ${totalBalance}`,
+          message: `Insufficient tokens. Need at least ${model.minTokenCost}, have ${totalBalance}`,
         },
       };
       return;
     }
 
-    // Получаем или создаём чат
     let conversation: ConversationDocument;
     if (dto.conversationId) {
       conversation = await this.getConversationWithAccess(userId, dto.conversationId);
@@ -234,13 +217,11 @@ export class ChatService {
       conversation = await this.createConversation(userId, dto);
     }
 
-    // Отправляем ID чата
     yield {
       type: 'conversation',
       data: { id: conversation._id.toString(), title: conversation.title },
     };
 
-    // Сохраняем сообщение пользователя
     const userMessage = new this.messageModel({
       conversationId: conversation._id,
       userId: new Types.ObjectId(userId),
@@ -250,10 +231,8 @@ export class ChatService {
     });
     await userMessage.save();
 
-    // Получаем контекст
     const contextMessages = await this.buildContext(conversation, dto);
 
-    // Создаём placeholder для ответа ассистента
     const assistantMessage = new this.messageModel({
       conversationId: conversation._id,
       userId: new Types.ObjectId(userId),
@@ -272,6 +251,7 @@ export class ChatService {
     let fullContent = '';
     let lastUsage: any = null;
     let success = false;
+    let costInTokens = 0;
 
     try {
       const stream = this.aiProvidersService.generateTextStream(dto.modelSlug, {
@@ -302,23 +282,26 @@ export class ChatService {
     }
 
     if (success && fullContent) {
-      // Списываем токены
-      await this.billingService.chargeForGeneration(
+      // НОВОЕ: Списываем на основе реального использования
+      const { costInTokens: billedTokens, costInDollars } = await this.billingService.chargeForGeneration(
         userId,
-        model.tokenCost,
-        'text',
         dto.modelSlug,
+        'text',
         conversation._id.toString(),
+        lastUsage?.inputTokens,
+        lastUsage?.outputTokens,
       );
 
-      // Обновляем сообщение ассистента
+      costInTokens = billedTokens;
+
       assistantMessage.content = fullContent;
       assistantMessage.isStreaming = false;
       assistantMessage.usage = lastUsage || {};
-      assistantMessage.tokensCost = model.tokenCost;
+      assistantMessage.tokensCost = costInTokens;
+      assistantMessage.inputTokens = lastUsage?.inputTokens;
+      assistantMessage.outputTokens = lastUsage?.outputTokens;
       await assistantMessage.save();
 
-      // Обновляем чат
       conversation.messageCount += 2;
       conversation.lastMessageAt = new Date();
       if (conversation.messageCount <= 2) {
@@ -328,7 +311,6 @@ export class ChatService {
 
       await this.usersService.incrementDailyGenerations(userId);
     } else if (!success) {
-      // Удаляем пустое сообщение ассистента
       await this.messageModel.findByIdAndDelete(assistantMessage._id);
     }
 
@@ -337,14 +319,11 @@ export class ChatService {
       data: {
         messageId: assistantMessage._id.toString(),
         usage: lastUsage,
-        tokensCost: success ? model.tokenCost : 0,
+        tokensCost: success ? costInTokens : 0,
       },
     };
   }
 
-  /**
-   * Создать чат
-   */
   async createConversation(
     userId: string,
     dto: Partial<SendMessageDto>,
@@ -362,9 +341,6 @@ export class ChatService {
     return conversation.save();
   }
 
-  /**
-   * Удалить чат
-   */
   async deleteConversation(userId: string, conversationId: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
     await this.messageModel.deleteMany({ conversationId: conversation._id });
@@ -372,9 +348,6 @@ export class ChatService {
     return { deleted: true };
   }
 
-  /**
-   * Переименовать чат
-   */
   async renameConversation(userId: string, conversationId: string, title: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
     conversation.title = title;
@@ -382,9 +355,6 @@ export class ChatService {
     return conversation;
   }
 
-  /**
-   * Закрепить/открепить чат
-   */
   async togglePin(userId: string, conversationId: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
     conversation.isPinned = !conversation.isPinned;
@@ -392,23 +362,18 @@ export class ChatService {
     return conversation;
   }
 
-  /**
-   * Построить контекст для AI
-   */
   private async buildContext(
     conversation: ConversationDocument,
     dto: SendMessageDto,
   ): Promise<{ role: string; content: string }[]> {
     const messages: { role: string; content: string }[] = [];
 
-    // System prompt
     const systemPrompt = dto.systemPrompt || conversation.systemPrompt;
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
     }
 
-    // Последние N сообщений из чата (контекстное окно)
-    const maxContextMessages = 20; // Можно настраивать
+    const maxContextMessages = 20;
     const history = await this.messageModel
       .find({
         conversationId: conversation._id,
@@ -419,7 +384,6 @@ export class ChatService {
       .limit(maxContextMessages)
       .exec();
 
-    // Реверсируем для хронологического порядка
     const orderedHistory = history.reverse();
 
     for (const msg of orderedHistory) {
@@ -429,7 +393,6 @@ export class ChatService {
       });
     }
 
-    // Добавляем текущее сообщение
     messages.push({ role: 'user', content: dto.content });
 
     return messages;
@@ -450,7 +413,6 @@ export class ChatService {
   }
 
   private generateTitle(content: string): string {
-    // Берём первые 50 символов сообщения как заголовок
     const cleaned = content.replace(/\n/g, ' ').trim();
     return cleaned.length > 50 ? cleaned.substring(0, 50) + '...' : cleaned;
   }

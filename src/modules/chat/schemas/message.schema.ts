@@ -17,7 +17,6 @@ export class Message {
   @Prop({ required: true })
   content: string;
 
-  // Для сообщений с изображениями (vision)
   @Prop({ type: [String], default: [] })
   imageUrls: string[];
 
@@ -26,6 +25,13 @@ export class Message {
 
   @Prop()
   providerSlug: string;
+
+  // НОВЫЕ ПОЛЯ для точного учёта токенов
+  @Prop({ default: 0 })
+  inputTokens: number;
+
+  @Prop({ default: 0 })
+  outputTokens: number;
 
   @Prop({ type: Object })
   usage: {
@@ -46,11 +52,9 @@ export class Message {
   @Prop()
   errorMessage: string;
 
-  // Для streaming — помечаем что сообщение ещё генерируется
   @Prop({ default: false })
   isStreaming: boolean;
 }
 
 export const MessageSchema = SchemaFactory.createForClass(Message);
-
 MessageSchema.index({ conversationId: 1, createdAt: 1 });

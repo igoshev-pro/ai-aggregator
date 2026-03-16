@@ -13,6 +13,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Transaction, TransactionDocument } from './schemas/transaction.schema';
 import { Subscription, SubscriptionDocument } from './schemas/subscription.schema';
 import { PromoCode, PromoCodeDocument } from './schemas/promo-code.schema';
+import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
 import { UsersService } from '../users/users.service';
 import { YookassaProvider } from './providers/yookassa.provider';
 import { CryptomusProvider } from './providers/cryptomus.provider';
@@ -83,6 +84,8 @@ export class BillingService {
     private subscriptionModel: Model<SubscriptionDocument>,
     @InjectModel(PromoCode.name)
     private promoCodeModel: Model<PromoCodeDocument>,
+    @InjectModel(AIModel.name)
+    private modelModel: Model<ModelDocument>,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
     private yookassaProvider: YookassaProvider,
@@ -228,27 +231,44 @@ export class BillingService {
 
   // ─── Списание за генерацию ──────────────────────────────────────
 
-  async chargeForGeneration(
-    userId: string,
-    amount: number,
-    generationType: string,
-    modelSlug: string,
-    generationId: string,
-  ) {
-    const user = await this.usersService.findById(userId);
+// Обновляем метод chargeForGeneration
+async chargeForGeneration(
+  userId: string,
+  modelSlug: string,
+  generationType: string,
+  generationId: string,
+  inputTokens?: number,
+  outputTokens?: number,
+) {
+  const user = await this.usersService.findById(userId);
+  const { costInDollars, costInTokens } = await this.calculateGenerationCost(
+    modelSlug,
+    inputTokens,
+    outputTokens,
+  );
 
-    await this.createTransaction(userId, {
-      type: TransactionType.GENERATION,
-      amount: -amount,
-      description: `Генерация ${generationType}: ${modelSlug}`,
-      paymentStatus: PaymentStatus.COMPLETED,
-      generationId,
-      generationType,
-      modelSlug,
-      balanceBefore: user.tokenBalance + user.bonusTokens + amount,
-      balanceAfter: user.tokenBalance + user.bonusTokens,
-    });
-  }
+  // Списываем токены
+  await this.usersService.deductTokens(userId, costInTokens, 'generation');
+
+  await this.createTransaction(userId, {
+    type: TransactionType.GENERATION,
+    amount: -costInTokens,
+    description: `Генерация ${generationType}: ${modelSlug}`,
+    paymentStatus: PaymentStatus.COMPLETED,
+    generationId,
+    generationType,
+    modelSlug,
+    balanceBefore: user.tokenBalance + user.bonusTokens + costInTokens,
+    balanceAfter: user.tokenBalance + user.bonusTokens,
+    metadata: {
+      inputTokens,
+      outputTokens,
+      costInDollars,
+    },
+  });
+
+  return { costInTokens, costInDollars };
+}
 
   // ─── Рефанд ─────────────────────────────────────────────────────
 
@@ -621,4 +641,36 @@ export class BillingService {
     });
     return transaction.save();
   }
+
+  // src/modules/billing/billing.service.ts (новый метод)
+
+async calculateGenerationCost(
+  modelSlug: string,
+  inputTokens?: number,
+  outputTokens?: number,
+): Promise<{ costInDollars: number; costInTokens: number }> {
+  const model = await this.modelModel.findOne({ slug: modelSlug });
+  if (!model) throw new NotFoundException('Model not found');
+
+  let costInDollars = 0;
+  let costInTokens = 0;
+
+  if (model.type === 'text') {
+    // Для текстовых моделей считаем по реальным токенам
+    const inputCost = (inputTokens || 0) * model.costPerMillionInputTokens / 1_000_000;
+    const outputCost = (outputTokens || 0) * model.costPerMillionOutputTokens / 1_000_000;
+    costInDollars = inputCost + outputCost;
+    costInTokens = Math.ceil(costInDollars * model.tokensPerDollar);
+    
+    // Применяем минимальную стоимость
+    costInTokens = Math.max(costInTokens, model.minTokenCost);
+  } else {
+    // Для медиа моделей - фиксированная стоимость
+    costInDollars = model.fixedCostPerGeneration;
+    costInTokens = Math.ceil(costInDollars * model.tokensPerDollar);
+    costInTokens = Math.max(costInTokens, model.minTokenCost);
+  }
+
+  return { costInDollars, costInTokens };
+}
 }

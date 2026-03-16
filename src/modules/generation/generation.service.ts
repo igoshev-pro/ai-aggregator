@@ -37,14 +37,16 @@ export class GenerationService {
     private billingService: BillingService,
   ) {}
 
-  /**
-   * Генерация изображения
-   */
   async generateImage(userId: string, dto: ImageGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
-    await this.validateBalance(userId, model.tokenCost);
+    
+    // Предварительный расчёт стоимости
+    const { costInTokens } = await this.billingService.calculateGenerationCost(
+      dto.modelSlug,
+    );
+    
+    await this.validateBalance(userId, costInTokens);
 
-    // Создаём запись генерации
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
       type: GenerationType.IMAGE,
@@ -60,14 +62,12 @@ export class GenerationService {
         numImages: dto.numImages || 1,
         style: dto.style,
       },
-      tokensCost: model.tokenCost,
+      tokensCost: costInTokens,
     });
     await generation.save();
 
-    // Резервируем токены
-    await this.usersService.deductTokens(userId, model.tokenCost, 'generation_reserve');
+    await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
 
-    // Добавляем в очередь
     await this.generationQueue.add(
       'process-generation',
       {
@@ -90,23 +90,25 @@ export class GenerationService {
         priority: 2,
         attempts: 3,
         backoff: { type: 'exponential', delay: 3000 },
-        timeout: 300000, // 5 min timeout
+        timeout: 300000,
       },
     );
 
     return {
       generationId: generation._id.toString(),
       status: generation.status,
-      tokensCost: model.tokenCost,
+      tokensCost: costInTokens,
     };
   }
 
-  /**
-   * Генерация видео
-   */
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
-    await this.validateBalance(userId, model.tokenCost);
+    
+    const { costInTokens } = await this.billingService.calculateGenerationCost(
+      dto.modelSlug,
+    );
+    
+    await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
@@ -122,11 +124,11 @@ export class GenerationService {
         resolution: dto.resolution || '720p',
         style: dto.style,
       },
-      tokensCost: model.tokenCost,
+      tokensCost: costInTokens,
     });
     await generation.save();
 
-    await this.usersService.deductTokens(userId, model.tokenCost, 'generation_reserve');
+    await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
 
     await this.generationQueue.add(
       'process-generation',
@@ -146,26 +148,28 @@ export class GenerationService {
         },
       },
       {
-        priority: 3, // Видео — ниже приоритет чем изображения
+        priority: 3,
         attempts: 2,
         backoff: { type: 'exponential', delay: 5000 },
-        timeout: 600000, // 10 min timeout для видео
+        timeout: 600000,
       },
     );
 
     return {
       generationId: generation._id.toString(),
       status: generation.status,
-      tokensCost: model.tokenCost,
+      tokensCost: costInTokens,
     };
   }
 
-  /**
-   * Генерация аудио
-   */
   async generateAudio(userId: string, dto: AudioGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
-    await this.validateBalance(userId, model.tokenCost);
+    
+    const { costInTokens } = await this.billingService.calculateGenerationCost(
+      dto.modelSlug,
+    );
+    
+    await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
@@ -180,11 +184,11 @@ export class GenerationService {
         voiceId: dto.voiceId,
         language: dto.language,
       },
-      tokensCost: model.tokenCost,
+      tokensCost: costInTokens,
     });
     await generation.save();
 
-    await this.usersService.deductTokens(userId, model.tokenCost, 'generation_reserve');
+    await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
 
     await this.generationQueue.add(
       'process-generation',
@@ -213,13 +217,10 @@ export class GenerationService {
     return {
       generationId: generation._id.toString(),
       status: generation.status,
-      tokensCost: model.tokenCost,
+      tokensCost: costInTokens,
     };
   }
 
-  /**
-   * Получить статус генерации
-   */
   async getGenerationStatus(userId: string, generationId: string) {
     const generation = await this.generationModel.findById(generationId);
     if (!generation) throw new NotFoundException('Generation not found');
@@ -246,9 +247,6 @@ export class GenerationService {
     };
   }
 
-  /**
-   * Получить историю генераций пользователя
-   */
   async getUserGenerations(
     userId: string,
     type?: GenerationType,
@@ -287,9 +285,6 @@ export class GenerationService {
     };
   }
 
-  /**
-   * Обновить статус генерации (вызывается из consumer)
-   */
   async updateGeneration(
     generationId: string,
     updates: Partial<Generation>,
@@ -301,9 +296,6 @@ export class GenerationService {
     );
   }
 
-  /**
-   * Refund при ошибке
-   */
   async refundGeneration(generationId: string) {
     const generation = await this.generationModel.findById(generationId);
     if (!generation || generation.isRefunded) return;
@@ -324,9 +316,6 @@ export class GenerationService {
     await generation.save();
   }
 
-  /**
-   * Toggle favorite
-   */
   async toggleFavorite(userId: string, generationId: string) {
     const generation = await this.generationModel.findById(generationId);
     if (!generation) throw new NotFoundException('Generation not found');
@@ -339,9 +328,6 @@ export class GenerationService {
     return { isFavorite: generation.isFavorite };
   }
 
-  /**
-   * Получить избранное
-   */
   async getFavorites(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
     const filter = {

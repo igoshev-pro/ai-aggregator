@@ -13,7 +13,7 @@ export class Transaction {
   type: TransactionType;
 
   @Prop({ required: true })
-  amount: number; // в токенах (положительное — приход, отрицательное — расход)
+  amount: number;
 
   @Prop({ default: 0 })
   balanceBefore: number;
@@ -27,33 +27,42 @@ export class Transaction {
   @Prop({ enum: PaymentStatus })
   paymentStatus: PaymentStatus;
 
-  // Связь с генерацией
   @Prop()
   generationId: string;
 
   @Prop()
-  generationType: string; // text, image, video, audio
+  generationType: string;
 
   @Prop()
   modelSlug: string;
 
-  // Связь с платежом
   @Prop()
-  externalPaymentId: string; // ID из платёжной системы
+  externalPaymentId: string;
 
   @Prop()
-  paymentProvider: string; // yookassa, cryptomus, stars
+  paymentProvider: string;
 
   @Prop()
-  paymentAmountRub: number; // сумма в рублях
+  paymentAmountRub: number;
 
-  // Промокод
   @Prop()
   promoCode: string;
 
-  // Реферал
   @Prop({ type: Types.ObjectId, ref: 'User' })
   referralUserId: Types.ObjectId;
+
+  // НОВЫЕ ПОЛЯ для точного учёта
+  @Prop({ default: 0 })
+  inputTokens: number;
+
+  @Prop({ default: 0 })
+  outputTokens: number;
+
+  @Prop({ default: 0 })
+  costInDollars: number;
+
+  @Prop({ default: 0 })
+  costInTokens: number;
 
   @Prop({ type: Object, default: {} })
   metadata: Record<string, any>;
