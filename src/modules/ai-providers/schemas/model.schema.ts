@@ -1,4 +1,3 @@
-// src/modules/ai-providers/schemas/model.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { GenerationType } from '@/common/interfaces';
@@ -111,5 +110,6 @@ export class AIModel {
 
 export const AIModelSchema = SchemaFactory.createForClass(AIModel);
 
+// Составной индекс для поиска
 AIModelSchema.index({ type: 1, isActive: 1, sortOrder: 1 });
-AIModelSchema.index({ slug: 1 });
+// Удалён дублирующийся индекс для slug, так как он уже unique

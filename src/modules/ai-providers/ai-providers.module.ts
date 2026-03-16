@@ -15,6 +15,10 @@ import { Provider, ProviderSchema } from './schemas/provider.schema';
   ],
   controllers: [AiProvidersController],
   providers: [AiProvidersService, ProviderRegistryService],
-  exports: [AiProvidersService, ProviderRegistryService],
+  exports: [
+    AiProvidersService, 
+    ProviderRegistryService,
+    MongooseModule, // ВАЖНО: экспортируем MongooseModule для использования в других модулях
+  ],
 })
 export class AiProvidersModule {}

@@ -9,14 +9,14 @@ export class User {
   authProvider: AuthProvider;
 
   // ─── Telegram Auth (optional for email/google users) ──────
-  @Prop({ type: Number, default: null, sparse: true, index: true })
+  @Prop({ type: Number, default: null, sparse: true })
   telegramId: number | null;
 
   @Prop({ default: false })
   isPremiumTelegram: boolean;
 
   // ─── Email Auth (optional for telegram users) ─────────────
-  @Prop({ type: String, default: null, sparse: true, index: true })
+  @Prop({ type: String, default: null, sparse: true })
   email: string | null;
 
   @Prop({ type: String, default: null, select: false })
@@ -36,7 +36,7 @@ export class User {
   @Prop({ default: '' })
   lastName: string;
 
-  @Prop({ default: '', index: true })
+  @Prop({ default: '' })
   username: string;
 
   @Prop({ default: '' })
@@ -121,6 +121,7 @@ export type UserDocument = HydratedDocument<User>;
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
+// Индексы с правильной конфигурацией
 UserSchema.index(
   { telegramId: 1 },
   { unique: true, sparse: true, partialFilterExpression: { telegramId: { $ne: null } } },
@@ -134,6 +135,6 @@ UserSchema.index(
   { unique: true, sparse: true, partialFilterExpression: { googleId: { $ne: null } } },
 );
 UserSchema.index({ username: 1 });
-UserSchema.index({ referralCode: 1 });
 UserSchema.index({ role: 1 });
 UserSchema.index({ createdAt: -1 });
+// Удалён дублирующийся индекс для referralCode

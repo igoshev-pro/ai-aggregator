@@ -41,4 +41,4 @@ export class PromoCode {
 
 export const PromoCodeSchema = SchemaFactory.createForClass(PromoCode);
 
-PromoCodeSchema.index({ code: 1 });
+// Удалён дублирующийся индекс, так как code уже unique
