@@ -89,7 +89,21 @@ export class ChatService {
   }
 
   async sendMessage(userId: string, dto: SendMessageDto) {
+    this.logger.log(`📥 Received chat request:`, {
+      userId,
+      modelSlug: dto.modelSlug,
+      contentLength: dto.content?.length,
+    });
+  
+    // Проверка существования модели
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
+    if (!model) {
+      this.logger.error(`❌ Model not found: ${dto.modelSlug}`);
+      throw new NotFoundException(`Model ${dto.modelSlug} not found`);
+    }
+  
+    this.logger.log(`✅ Model found: ${model.displayName || model.name}`);
+    
     const user = await this.usersService.findById(userId);
     const totalBalance = user.tokenBalance + user.bonusTokens;
 
