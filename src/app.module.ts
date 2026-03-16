@@ -18,6 +18,7 @@ import { ReferralModule } from './modules/referral/referral.module';
 import { SupportModule } from './modules/support/support.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './modules/health/health.module'
+import { ModelsModule } from './modules/models/models.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { HealthModule } from './modules/health/health.module'
     BillingModule,
     AiProvidersModule,
     GenerationModule,
+    ModelsModule,
     ChatModule,
     FavoritesModule,
     AdminModule,
