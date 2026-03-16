@@ -1,3 +1,5 @@
+// src/modules/chat/chat.service.ts
+
 import {
   Injectable,
   Logger,
@@ -11,10 +13,11 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Conversation, ConversationDocument } from './schemas/conversation.schema';
 import { Message, MessageDocument } from './schemas/message.schema';
+import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
 import { AiProvidersService } from '../ai-providers/ai-providers.service';
 import { UsersService } from '../users/users.service';
 import { BillingService } from '../billing/billing.service';
-import { StreamChunk } from '../ai-providers/providers/base-provider.abstract';
+import { ProviderRegistryService } from '../ai-providers/providers/provider-registry.service';
 
 export interface SendMessageDto {
   conversationId?: string;
@@ -33,12 +36,15 @@ export class ChatService {
   constructor(
     @InjectModel(Conversation.name) private conversationModel: Model<ConversationDocument>,
     @InjectModel(Message.name) private messageModel: Model<MessageDocument>,
+    @InjectModel(AIModel.name) private modelModel: Model<ModelDocument>,
     @Inject(forwardRef(() => AiProvidersService))
     private aiProvidersService: AiProvidersService,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
+    @Inject(forwardRef(() => ProviderRegistryService))
+    private providerRegistry: ProviderRegistryService,
   ) {}
 
   async getConversations(userId: string, page = 1, limit = 20) {
@@ -155,7 +161,7 @@ export class ChatService {
         throw new BadRequestException(result.error?.message || 'Generation failed');
       }
 
-      // НОВОЕ: Списываем токены на основе реального использования
+      // Списываем токены на основе реального использования
       const { costInTokens, costInDollars } = await this.billingService.chargeForGeneration(
         userId,
         dto.modelSlug,
@@ -165,7 +171,7 @@ export class ChatService {
         result.usage?.outputTokens,
       );
 
-      // Сохраняем ответ с НОВЫМИ полями
+      // Сохраняем ответ
       const assistantMessage = new this.messageModel({
         conversationId: conversation._id,
         userId: new Types.ObjectId(userId),
@@ -211,136 +217,221 @@ export class ChatService {
     dto: SendMessageDto,
   ): AsyncGenerator<{ type: string; data: any }> {
     console.log('=== STREAM MESSAGE DEBUG ===');
-  console.log('UserID:', userId);
-  console.log('DTO:', JSON.stringify(dto));
-  console.log('Model slug received:', dto.modelSlug);
-
-    const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
-    const user = await this.usersService.findById(userId);
-    const totalBalance = user.tokenBalance + user.bonusTokens;
-
-    if (totalBalance < model.minTokenCost) {
-      yield {
-        type: 'error',
-        data: {
-          message: `Insufficient tokens. Need at least ${model.minTokenCost}, have ${totalBalance}`,
-        },
-      };
-      return;
-    }
-
-    let conversation: ConversationDocument;
-    if (dto.conversationId) {
-      conversation = await this.getConversationWithAccess(userId, dto.conversationId);
-    } else {
-      conversation = await this.createConversation(userId, dto);
-    }
-
-    yield {
-      type: 'conversation',
-      data: { id: conversation._id.toString(), title: conversation.title },
-    };
-
-    const userMessage = new this.messageModel({
-      conversationId: conversation._id,
-      userId: new Types.ObjectId(userId),
-      role: 'user',
-      content: dto.content,
-      imageUrls: dto.imageUrls || [],
-    });
-    await userMessage.save();
-
-    const contextMessages = await this.buildContext(conversation, dto);
-
-    const assistantMessage = new this.messageModel({
-      conversationId: conversation._id,
-      userId: new Types.ObjectId(userId),
-      role: 'assistant',
-      content: '',
-      modelSlug: dto.modelSlug,
-      isStreaming: true,
-    });
-    await assistantMessage.save();
-
-    yield {
-      type: 'message_start',
-      data: { messageId: assistantMessage._id.toString() },
-    };
-
-    let fullContent = '';
-    let lastUsage: any = null;
-    let success = false;
-    let costInTokens = 0;
+    console.log('1. UserID:', userId);
+    console.log('2. DTO:', JSON.stringify(dto));
+    console.log('3. Model slug received:', dto.modelSlug);
 
     try {
-      const stream = this.aiProvidersService.generateTextStream(dto.modelSlug, {
-        messages: contextMessages,
-        maxTokens: dto.maxTokens || model.defaultParams?.maxTokens || 4096,
-        temperature: dto.temperature ?? model.defaultParams?.temperature ?? 0.7,
-        stream: true,
+      // 1. Проверка пользователя
+      console.log('4. Checking user...');
+      const user = await this.usersService.findById(userId);
+      if (!user) {
+        console.log('ERROR: User not found');
+        yield { type: 'error', data: { message: 'User not found' } };
+        return;
+      }
+      console.log('5. User found:', user.telegramId, 'Balance:', user.tokenBalance + user.bonusTokens);
+
+      // 2. Проверка модели
+      console.log('6. Checking model...');
+      const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
+      if (!model) {
+        console.log('ERROR: Model not found:', dto.modelSlug);
+        
+        // Показать доступные модели
+        const available = await this.modelModel.find({}, {slug: 1}).limit(10);
+        console.log('Available models in DB:', available.map(m => m.slug));
+        
+        yield { type: 'error', data: { message: `Model ${dto.modelSlug} not found` } };
+        return;
+      }
+      console.log('7. Model found:', model.name, '/', model.slug, '/', model.displayName);
+      console.log('   Model details:', {
+        type: model.type,
+        isActive: model.isActive,
+        isPremium: model.isPremium,
+        minTokenCost: model.minTokenCost,
+        providerMappings: model.providerMappings?.length || 0,
       });
 
-      for await (const chunk of stream) {
-        if (chunk.done) {
-          if (chunk.usage) lastUsage = chunk.usage;
-          success = true;
-          break;
-        }
-
-        fullContent += chunk.content;
-        yield {
-          type: 'text_delta',
-          data: { content: chunk.content },
+      // 3. Проверка баланса
+      console.log('8. Checking balance...');
+      const totalBalance = user.tokenBalance + user.bonusTokens;
+      const requiredTokens = model.minTokenCost || 1;
+      console.log(`   Balance: ${totalBalance}, Required: ${requiredTokens}`);
+      
+      if (totalBalance < requiredTokens) {
+        console.log('ERROR: Insufficient balance');
+        yield { 
+          type: 'error', 
+          data: { message: `Недостаточно спичек. Нужно ${requiredTokens}, у вас ${totalBalance}` } 
         };
+        return;
       }
+
+      // 4. Создание/получение conversation
+      console.log('9. Managing conversation...');
+      let conversation: ConversationDocument;
+      if (dto.conversationId) {
+        console.log('   Loading existing conversation:', dto.conversationId);
+        conversation = await this.getConversationWithAccess(userId, dto.conversationId);
+      } else {
+        console.log('   Creating new conversation');
+        conversation = await this.createConversation(userId, dto);
+      }
+      console.log('10. Conversation ready:', conversation._id);
+
+      yield {
+        type: 'conversation',
+        data: { id: conversation._id.toString(), title: conversation.title },
+      };
+
+      // 5. Сохранение сообщения пользователя
+      console.log('11. Saving user message...');
+      const userMessage = new this.messageModel({
+        conversationId: conversation._id,
+        userId: new Types.ObjectId(userId),
+        role: 'user',
+        content: dto.content,
+        imageUrls: dto.imageUrls || [],
+      });
+      await userMessage.save();
+      console.log('12. User message saved:', userMessage._id);
+
+      // 6. Построение контекста
+      console.log('13. Building context...');
+      const contextMessages = await this.buildContext(conversation, dto);
+      console.log('14. Context ready, messages count:', contextMessages.length);
+
+      // 7. Создание сообщения ассистента
+      console.log('15. Creating assistant message placeholder...');
+      const assistantMessage = new this.messageModel({
+        conversationId: conversation._id,
+        userId: new Types.ObjectId(userId),
+        role: 'assistant',
+        content: '',
+        modelSlug: dto.modelSlug,
+        isStreaming: true,
+      });
+      await assistantMessage.save();
+      console.log('16. Assistant message created:', assistantMessage._id);
+
+      yield {
+        type: 'message_start',
+        data: { messageId: assistantMessage._id.toString() },
+      };
+
+      // 8. Начало стриминга
+      console.log('17. Starting stream generation...');
+      let fullContent = '';
+      let lastUsage: any = null;
+      let success = false;
+      let costInTokens = 0;
+
+      try {
+        console.log('18. Calling aiProvidersService.generateTextStream...');
+        const stream = this.aiProvidersService.generateTextStream(dto.modelSlug, {
+          messages: contextMessages,
+          maxTokens: dto.maxTokens || model.defaultParams?.maxTokens || 4096,
+          temperature: dto.temperature ?? model.defaultParams?.temperature ?? 0.7,
+          stream: true,
+        });
+
+        console.log('19. Stream created, starting iteration...');
+        let chunkCount = 0;
+        
+        for await (const chunk of stream) {
+          chunkCount++;
+          if (chunkCount === 1) {
+            console.log('20. First chunk received');
+          }
+          
+          if (chunk.done) {
+            console.log('21. Stream completed, total chunks:', chunkCount);
+            if (chunk.usage) lastUsage = chunk.usage;
+            success = true;
+            break;
+          }
+
+          if (chunk.content) {
+            fullContent += chunk.content;
+            yield {
+              type: 'text_delta',
+              data: { content: chunk.content },
+            };
+          }
+        }
+        
+        console.log('22. Stream iteration finished, success:', success);
+        console.log('    Content length:', fullContent.length);
+        
+      } catch (error) {
+        console.error('ERROR in stream:', error);
+        yield {
+          type: 'error',
+          data: { message: error.message || 'Stream generation failed' },
+        };
+        success = false;
+      }
+
+      // 9. Сохранение результата
+      if (success && fullContent) {
+        console.log('23. Saving successful response...');
+        
+        // Списываем токены
+        const { costInTokens: billedTokens } = await this.billingService.chargeForGeneration(
+          userId,
+          dto.modelSlug,
+          'text',
+          conversation._id.toString(),
+          lastUsage?.inputTokens,
+          lastUsage?.outputTokens,
+        );
+
+        costInTokens = billedTokens;
+
+        assistantMessage.content = fullContent;
+        assistantMessage.isStreaming = false;
+        assistantMessage.usage = lastUsage || {};
+        assistantMessage.tokensCost = costInTokens;
+        assistantMessage.inputTokens = lastUsage?.inputTokens;
+        assistantMessage.outputTokens = lastUsage?.outputTokens;
+        await assistantMessage.save();
+
+        conversation.messageCount += 2;
+        conversation.lastMessageAt = new Date();
+        if (conversation.messageCount <= 2) {
+          conversation.title = this.generateTitle(dto.content);
+        }
+        await conversation.save();
+
+        await this.usersService.incrementDailyGenerations(userId);
+        
+        console.log('24. Response saved successfully');
+      } else if (!success) {
+        console.log('25. Cleaning up failed message');
+        await this.messageModel.findByIdAndDelete(assistantMessage._id);
+      }
+
+      yield {
+        type: 'message_end',
+        data: {
+          messageId: assistantMessage._id.toString(),
+          usage: lastUsage,
+          tokensCost: success ? costInTokens : 0,
+        },
+      };
+      
+      console.log('26. Stream completed');
+      console.log('=== END STREAM MESSAGE ===');
+      
     } catch (error) {
+      console.error('FATAL ERROR in streamMessage:', error);
       yield {
         type: 'error',
-        data: { message: error.message },
+        data: { message: 'Internal server error' },
       };
     }
-
-    if (success && fullContent) {
-      // НОВОЕ: Списываем на основе реального использования
-      const { costInTokens: billedTokens, costInDollars } = await this.billingService.chargeForGeneration(
-        userId,
-        dto.modelSlug,
-        'text',
-        conversation._id.toString(),
-        lastUsage?.inputTokens,
-        lastUsage?.outputTokens,
-      );
-
-      costInTokens = billedTokens;
-
-      assistantMessage.content = fullContent;
-      assistantMessage.isStreaming = false;
-      assistantMessage.usage = lastUsage || {};
-      assistantMessage.tokensCost = costInTokens;
-      assistantMessage.inputTokens = lastUsage?.inputTokens;
-      assistantMessage.outputTokens = lastUsage?.outputTokens;
-      await assistantMessage.save();
-
-      conversation.messageCount += 2;
-      conversation.lastMessageAt = new Date();
-      if (conversation.messageCount <= 2) {
-        conversation.title = this.generateTitle(dto.content);
-      }
-      await conversation.save();
-
-      await this.usersService.incrementDailyGenerations(userId);
-    } else if (!success) {
-      await this.messageModel.findByIdAndDelete(assistantMessage._id);
-    }
-
-    yield {
-      type: 'message_end',
-      data: {
-        messageId: assistantMessage._id.toString(),
-        usage: lastUsage,
-        tokensCost: success ? costInTokens : 0,
-      },
-    };
   }
 
   async createConversation(
