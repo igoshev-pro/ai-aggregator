@@ -210,6 +210,11 @@ export class ChatService {
     userId: string,
     dto: SendMessageDto,
   ): AsyncGenerator<{ type: string; data: any }> {
+    console.log('=== STREAM MESSAGE DEBUG ===');
+  console.log('UserID:', userId);
+  console.log('DTO:', JSON.stringify(dto));
+  console.log('Model slug received:', dto.modelSlug);
+
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
     const user = await this.usersService.findById(userId);
     const totalBalance = user.tokenBalance + user.bonusTokens;
