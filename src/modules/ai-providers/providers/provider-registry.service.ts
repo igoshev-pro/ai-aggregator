@@ -217,7 +217,6 @@ export class ProviderRegistryService implements OnModuleInit {
   /**
    * Seed default models — запускается один раз при старте
    */
-  // src/modules/ai-providers/providers/provider-registry.service.ts (часть с seed)
 
   private async seedDefaultModels() {
     const existingCount = await this.modelModel.countDocuments();

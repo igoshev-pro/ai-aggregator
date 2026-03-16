@@ -14,7 +14,13 @@ export class Message {
   @Prop({ required: true, enum: ['user', 'assistant', 'system'] })
   role: string;
 
-  @Prop({ required: true })
+  @Prop({ 
+    required: function() { 
+      // content обязателен только если не isStreaming
+      return !this.isStreaming; 
+    }, 
+    default: '' 
+  })
   content: string;
 
   @Prop({ type: [String], default: [] })
