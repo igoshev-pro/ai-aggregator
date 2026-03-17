@@ -1,4 +1,5 @@
 // src/modules/ai-providers/providers/openrouter.provider.ts
+import { Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import {
   BaseProvider,
@@ -14,6 +15,7 @@ import {
 
 export class OpenRouterProvider extends BaseProvider {
   private client: AxiosInstance;
+  private readonly logger = new Logger(OpenRouterProvider.name);
 
   constructor(config: ProviderConfig) {
     super('openrouter', config);
@@ -60,6 +62,11 @@ export class OpenRouterProvider extends BaseProvider {
         providerSlug: this.slug,
       };
     } catch (error) {
+      const status = error?.response?.status;
+      const errorData = error?.response?.data;
+      this.logger.error(
+        `OpenRouter generateText error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+      );
       return this.handleError(error, start);
     }
   }
@@ -68,6 +75,8 @@ export class OpenRouterProvider extends BaseProvider {
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
     try {
+      this.logger.debug(`OpenRouter stream request: model=${request.model}, messages=${request.messages?.length}`);
+
       const response = await this.client.post(
         '/chat/completions',
         {
@@ -83,6 +92,8 @@ export class OpenRouterProvider extends BaseProvider {
           timeout: 180000,
         },
       );
+
+      this.logger.debug(`OpenRouter stream response status: ${response.status}`);
 
       let buffer = '';
       const stream = response.data;
@@ -104,6 +115,19 @@ export class OpenRouterProvider extends BaseProvider {
 
           try {
             const parsed = JSON.parse(data);
+
+            // Ошибка внутри SSE потока
+            if (parsed.error) {
+              this.logger.error(
+                `OpenRouter SSE error: ${JSON.stringify(parsed.error)}`,
+              );
+              yield {
+                content: `Error: ${parsed.error.message || JSON.stringify(parsed.error)}`,
+                done: true,
+              };
+              return;
+            }
+
             const content = parsed.choices?.[0]?.delta?.content || '';
             const finishReason = parsed.choices?.[0]?.finish_reason;
 
@@ -127,7 +151,17 @@ export class OpenRouterProvider extends BaseProvider {
           }
         }
       }
+
+      // Поток закончился без [DONE]
+      this.logger.warn(`OpenRouter stream ended without [DONE] for model ${request.model}`);
+      yield { content: '', done: true };
+
     } catch (error) {
+      const status = error?.response?.status;
+      const errorData = error?.response?.data;
+      this.logger.error(
+        `OpenRouter stream error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+      );
       yield { content: `Error: ${error.message}`, done: true };
     }
   }
@@ -135,8 +169,6 @@ export class OpenRouterProvider extends BaseProvider {
   async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
-      // OpenRouter поддерживает некоторые image-модели через chat completions
-      // Для DALL-E и подобных используется /images/generations
       const response = await this.client.post('/images/generations', {
         model: request.model,
         prompt: request.prompt,
@@ -154,12 +186,16 @@ export class OpenRouterProvider extends BaseProvider {
         providerSlug: this.slug,
       };
     } catch (error) {
+      const status = error?.response?.status;
+      const errorData = error?.response?.data;
+      this.logger.error(
+        `OpenRouter generateImage error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+      );
       return this.handleError(error, start);
     }
   }
 
   async generateVideo(_request: VideoGenerationRequest): Promise<GenerationResult> {
-    // OpenRouter не поддерживает видео напрямую
     return {
       success: false,
       error: {
