@@ -201,7 +201,6 @@ tmp/
 temp/
 cache/
 .cache/
-storage/
 
 # Generated documentation
 docs/generated/
