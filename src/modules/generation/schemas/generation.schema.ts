@@ -46,6 +46,15 @@ export class Generation {
   @Prop({ type: [String], default: [] })
   resultUrls: string[];
 
+  @Prop({ type: [String], default: [] })
+  storageUrls: string[]; // постоянные URL в S3
+
+  @Prop({ type: [String], default: [] })
+  storageKeys: string[]; // ключи для удаления из S3
+
+  @Prop({ default: false })
+  savedToStorage: boolean; // флаг что сохранено в S3
+
   @Prop()
   resultContent: string;
 

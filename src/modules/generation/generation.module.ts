@@ -1,4 +1,3 @@
-// src/modules/generation/generation.module.ts
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bull';
@@ -12,6 +11,7 @@ import { Generation, GenerationSchema } from './schemas/generation.schema';
 import { AiProvidersModule } from '../ai-providers/ai-providers.module';
 import { UsersModule } from '../users/users.module';
 import { BillingModule } from '../billing/billing.module';
+import { StorageModule } from '../storage/storage.module'; // ← ДОБАВИТЬ
 
 @Module({
   imports: [
@@ -37,6 +37,7 @@ import { BillingModule } from '../billing/billing.module';
     forwardRef(() => AiProvidersModule),
     forwardRef(() => UsersModule),
     forwardRef(() => BillingModule),
+    StorageModule,
   ],
   controllers: [GenerationController],
   providers: [GenerationService, GenerationGateway, GenerationConsumer],

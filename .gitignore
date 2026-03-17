@@ -303,3 +303,7 @@ newrelic_agent.log
 !package.json
 !docker-compose.yml
 !Dockerfile
+/node_modules
+/node_modules/.bin
+/node_modules/.bin
+/node_modules/.bin

@@ -1,3 +1,4 @@
+// src/modules/ai-providers/providers/provider-registry.service.ts
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -6,6 +7,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { BaseProvider } from './base-provider.abstract';
 import { OpenRouterProvider } from './openrouter.provider';
+import { OpenRouterImageProvider } from './openrouter-image.provider'; // ← НОВЫЙ
 import { EvolinkProvider } from './evolink.provider';
 import { KieProvider } from './kie.provider';
 import { ReplicateProvider } from './replicate.provider';
@@ -21,7 +23,7 @@ export class ProviderRegistryService implements OnModuleInit {
     private configService: ConfigService,
     @InjectModel(Provider.name) private providerModel: Model<ProviderDocument>,
     @InjectModel(AIModel.name) private modelModel: Model<ModelDocument>,
-  ) { }
+  ) {}
 
   async onModuleInit() {
     await this.initializeProviders();
@@ -31,7 +33,7 @@ export class ProviderRegistryService implements OnModuleInit {
   private async initializeProviders() {
     const providerConfigs = this.configService.get('providers');
 
-    // OpenRouter
+    // OpenRouter — текст
     if (providerConfigs.openrouter?.apiKey) {
       this.providers.set(
         'openrouter',
@@ -41,6 +43,18 @@ export class ProviderRegistryService implements OnModuleInit {
         }),
       );
       this.logger.log('✅ OpenRouter provider initialized');
+    }
+
+    // OpenRouter Image — для gpt-5-image через chat completions с modalities
+    if (providerConfigs.openrouter?.apiKey) {
+      this.providers.set(
+        'openrouter-image',
+        new OpenRouterImageProvider({
+          apiKey: providerConfigs.openrouter.apiKey,
+          baseUrl: providerConfigs.openrouter.baseUrl,
+        }),
+      );
+      this.logger.log('✅ OpenRouter Image provider initialized');
     }
 
     // Evolink
@@ -79,7 +93,6 @@ export class ProviderRegistryService implements OnModuleInit {
       this.logger.log('✅ Replicate provider initialized');
     }
 
-    // Sync to DB
     await this.syncProvidersToDB();
   }
 
@@ -107,10 +120,6 @@ export class ProviderRegistryService implements OnModuleInit {
     return this.providers;
   }
 
-  /**
-   * Получить провайдера для конкретной модели с учётом fallback
-   * Возвращает упорядоченный список провайдеров по приоритету
-   */
   async getProvidersForModel(modelSlug: string): Promise<
     { provider: BaseProvider; modelId: string }[]
   > {
@@ -119,13 +128,11 @@ export class ProviderRegistryService implements OnModuleInit {
 
     const result: { provider: BaseProvider; modelId: string }[] = [];
 
-    // Сортируем маппинги по приоритету
     const sortedMappings = [...model.providerMappings]
       .filter((m) => m.isActive)
       .sort((a, b) => a.priority - b.priority);
 
     for (const mapping of sortedMappings) {
-      // Проверяем что провайдер активен в БД
       const providerDoc = await this.providerModel.findOne({
         slug: mapping.providerSlug,
         isActive: true,
@@ -133,9 +140,10 @@ export class ProviderRegistryService implements OnModuleInit {
 
       if (!providerDoc) continue;
 
-      // Проверяем что провайдер healthy
-      if (providerDoc.healthStatus?.isHealthy === false &&
-        providerDoc.healthStatus?.consecutiveErrors > 5) {
+      if (
+        providerDoc.healthStatus?.isHealthy === false &&
+        providerDoc.healthStatus?.consecutiveErrors > 5
+      ) {
         continue;
       }
 
@@ -148,9 +156,6 @@ export class ProviderRegistryService implements OnModuleInit {
     return result;
   }
 
-  /**
-   * Health check всех провайдеров — запускается каждые 2 минуты
-   */
   @Cron(CronExpression.EVERY_MINUTE)
   async healthCheckAll() {
     for (const [slug, provider] of this.providers) {
@@ -188,9 +193,6 @@ export class ProviderRegistryService implements OnModuleInit {
     }
   }
 
-  /**
-   * Обновить статистику провайдера после запроса
-   */
   async updateProviderStats(
     slug: string,
     responseTimeMs: number,
@@ -214,13 +216,27 @@ export class ProviderRegistryService implements OnModuleInit {
     await this.providerModel.findOneAndUpdate({ slug }, { $set: update });
   }
 
-  /**
-   * Seed default models — запускается один раз при старте
-   */
-
   private async seedDefaultModels() {
     const existingCount = await this.modelModel.countDocuments();
-    if (existingCount > 0) return;
+    if (existingCount > 0) {
+      // Даже если модели есть — обновляем gpt-5-image на правильный провайдер
+      await this.modelModel.findOneAndUpdate(
+        { slug: 'gpt-5-image' },
+        {
+          $set: {
+            providerMappings: [
+              {
+                providerSlug: 'openrouter-image', // ← ИСПРАВЛЕНО
+                modelId: 'openai/gpt-5-image',
+                priority: 1,
+                isActive: true,
+              },
+            ],
+          },
+        },
+      );
+      return;
+    }
 
     this.logger.log('🌱 Seeding default AI models...');
 
@@ -229,7 +245,6 @@ export class ProviderRegistryService implements OnModuleInit {
       // ТЕКСТОВЫЕ МОДЕЛИ
       // ==============================
 
-      // OpenRouter модели
       {
         slug: 'gpt-oss-120b',
         name: 'GPT-OSS 120B',
@@ -238,7 +253,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'text',
         costPerMillionInputTokens: 0.039,
         costPerMillionOutputTokens: 0.19,
-        tokensPerDollar: 1000, // 1$ = 1000 внутренних токенов
+        tokensPerDollar: 1000,
         minTokenCost: 0.5,
         sortOrder: 1,
         capabilities: ['streaming', 'function_calling'],
@@ -322,7 +337,7 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: {
           maxInputTokens: 256000,
           maxOutputTokens: 8192,
-          includedInPlans: ['pro', 'unlimited']
+          includedInPlans: ['pro', 'unlimited'],
         },
       },
       {
@@ -343,8 +358,6 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 127000, maxOutputTokens: 4096 },
       },
-
-      // Evolink текстовые модели
       {
         slug: 'gpt-5.4',
         name: 'GPT-5.4',
@@ -365,7 +378,7 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: {
           maxInputTokens: 128000,
           maxOutputTokens: 16384,
-          includedInPlans: ['unlimited']
+          includedInPlans: ['unlimited'],
         },
       },
       {
@@ -388,7 +401,7 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: {
           maxInputTokens: 200000,
           maxOutputTokens: 8192,
-          includedInPlans: ['unlimited']
+          includedInPlans: ['unlimited'],
         },
       },
       {
@@ -411,11 +424,9 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: {
           maxInputTokens: 200000,
           maxOutputTokens: 8192,
-          includedInPlans: ['pro', 'unlimited']
+          includedInPlans: ['pro', 'unlimited'],
         },
       },
-
-      // KIE текстовые модели
       {
         slug: 'gemini-3.1-pro',
         name: 'Gemini 3.1 Pro',
@@ -452,8 +463,6 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 1000000, maxOutputTokens: 8192 },
       },
-
-      // Существующие модели (обновляем с новой системой цен)
       {
         slug: 'gpt-4o',
         name: 'GPT-4o',
@@ -539,13 +548,14 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'GPT-5 Image',
         description: 'Новейший генератор изображений OpenAI',
         type: 'image',
-        fixedCostPerGeneration: 0.04, // $40 за 1000 генераций
-        tokensPerDollar: 125, // 1$ = 125 токенов для изображений
+        fixedCostPerGeneration: 0.04,
+        tokensPerDollar: 125,
         minTokenCost: 5,
         sortOrder: 1,
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'openai/gpt-5-image', priority: 1, isActive: true },
+          // ← ИСПОЛЬЗУЕМ openrouter-image, не openrouter
+          { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5-image', priority: 1, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
@@ -747,7 +757,7 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { duration: 5 },
         limits: {
           maxDuration: 10,
-          includedInPlans: ['pro', 'unlimited']
+          includedInPlans: ['pro', 'unlimited'],
         },
       },
       {
@@ -768,7 +778,7 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { duration: 5 },
         limits: {
           maxDuration: 20,
-          includedInPlans: ['unlimited']
+          includedInPlans: ['unlimited'],
         },
       },
       {
@@ -946,21 +956,18 @@ export class ProviderRegistryService implements OnModuleInit {
         providerId: providerMap.get(m.providerSlug),
       }));
 
-      // Для обратной совместимости вычисляем старый tokenCost
-      const costPerMillionInputTokens = modelData.costPerMillionInputTokens ?? 0;
-      const costPerMillionOutputTokens = modelData.costPerMillionOutputTokens ?? 0;
-      const fixedCostPerGeneration = modelData.fixedCostPerGeneration ?? 0;
+      const costPerMillionInputTokens = (modelData as any).costPerMillionInputTokens ?? 0;
+      const costPerMillionOutputTokens = (modelData as any).costPerMillionOutputTokens ?? 0;
+      const fixedCostPerGeneration = (modelData as any).fixedCostPerGeneration ?? 0;
 
       let tokenCost = modelData.minTokenCost;
       if (modelData.type === 'text') {
-        // Для текстовых моделей берём среднюю стоимость за ~1000 токенов
         const avgCost = (costPerMillionInputTokens + costPerMillionOutputTokens) / 2;
         tokenCost = Math.max(
           modelData.minTokenCost,
           Math.ceil((avgCost * modelData.tokensPerDollar) / 1000),
         );
       } else {
-        // Для медиа моделей конвертируем фиксированную стоимость
         tokenCost = Math.max(
           modelData.minTokenCost,
           Math.ceil(fixedCostPerGeneration * modelData.tokensPerDollar),
@@ -972,7 +979,7 @@ export class ProviderRegistryService implements OnModuleInit {
         {
           ...modelData,
           providerMappings: mappings,
-          tokenCost, // для обратной совместимости
+          tokenCost,
           isActive: true,
           stats: { totalRequests: 0, avgResponseTime: 0, successRate: 100 },
         },
