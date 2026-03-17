@@ -1,4 +1,3 @@
-// src/modules/generation/generation.gateway.ts
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -48,7 +47,6 @@ export class GenerationGateway implements OnGatewayConnection, OnGatewayDisconne
       const userId = payload.sub;
       client.data.userId = userId;
 
-      // Добавляем в маппинг
       const sockets = this.userSockets.get(userId);
       if (sockets) {
         sockets.add(client.id);
@@ -57,7 +55,6 @@ export class GenerationGateway implements OnGatewayConnection, OnGatewayDisconne
       }
 
       client.join(`user:${userId}`);
-
       this.logger.log(`Client connected: ${client.id}, user: ${userId}`);
     } catch (error: any) {
       this.logger.warn(`Connection rejected: ${error.message}`);
@@ -97,7 +94,12 @@ export class GenerationGateway implements OnGatewayConnection, OnGatewayDisconne
     return { event: 'unsubscribed', data: { generationId: data.generationId } };
   }
 
+  // ← ДОБАВЛЕН ЛОГ
   sendToUser(userId: string, event: string, data: any) {
+    const sockets = this.userSockets.get(userId);
+    this.logger.log(
+      `sendToUser userId=${userId} event=${event} online=${!!sockets?.size} sockets=${sockets?.size || 0}`,
+    );
     this.server.to(`user:${userId}`).emit(event, data);
   }
 
