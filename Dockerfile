@@ -7,13 +7,13 @@ WORKDIR /app
 COPY package*.json ./
 
 # Устанавливаем зависимости
-RUN npm ci
+RUN pnpm ci
 
 # Копируем исходники
 COPY . .
 
 # Собираем
-RUN npm run build
+RUN pnpm run build
 
 # ─── Production Stage ────────────────────────────────────────────
 FROM node:20-alpine AS production
