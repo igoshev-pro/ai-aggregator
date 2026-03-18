@@ -174,7 +174,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
   },
 
-  // ── Hailuo ──
+  // Hailuo Standard — text to video
   'hailuo/02-text-to-video-standard': {
     kieModel: 'hailuo/02-text-to-video-standard',
     apiType: 'jobs',
@@ -184,6 +184,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
+  // Hailuo Standard — image to video
   'hailuo/2-3-image-to-video-standard': {
     kieModel: 'hailuo/2-3-image-to-video-standard',
     apiType: 'jobs',
@@ -193,12 +194,23 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
+  // Hailuo Pro — image to video
   'hailuo/2-3-image-to-video-pro': {
     kieModel: 'hailuo/2-3-image-to-video-pro',
     apiType: 'jobs',
     statusApiType: 'jobs',
     hasImageInput: true,
     hasResolution: true,
+    durations: ['6', '10'],
+    aspectRatios: [],
+  },
+  // Hailuo Pro — text to video
+  'hailuo/02-text-to-video-pro': {
+    kieModel: 'hailuo/02-text-to-video-pro',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    hasPromptOptimizer: true,
     durations: ['6', '10'],
     aspectRatios: [],
   },
@@ -306,7 +318,8 @@ export class KieProvider extends BaseProvider {
   async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     const modelSlug = request.model;
-    const config = VIDEO_MODEL_MAP[modelSlug];
+
+    let config = VIDEO_MODEL_MAP[modelSlug];
 
     if (!config) {
       return {
@@ -317,7 +330,40 @@ export class KieProvider extends BaseProvider {
       };
     }
 
-    this.logger.log(`KIE generateVideo: slug=${modelSlug}, kieModel=${config.kieModel}`);
+    // === Динамическое переключение txt2vid ↔ img2vid ===
+    const hasImage = !!(request as any).imageUrl || !!((request as any).imageUrls?.length);
+
+    // Hailuo Standard
+    if (modelSlug === 'hailuo/02-text-to-video-standard' && hasImage && VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-standard']) {
+      config = VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-standard'];
+      this.logger.debug(`Hailuo Standard: switched to img2vid (has image)`);
+    }
+    if (modelSlug === 'hailuo/2-3-image-to-video-standard' && !hasImage && VIDEO_MODEL_MAP['hailuo/02-text-to-video-standard']) {
+      config = VIDEO_MODEL_MAP['hailuo/02-text-to-video-standard'];
+      this.logger.debug(`Hailuo Standard: switched to txt2vid (no image)`);
+    }
+
+    // Hailuo Pro
+    if (modelSlug === 'hailuo/2-3-image-to-video-pro' && !hasImage && VIDEO_MODEL_MAP['hailuo/02-text-to-video-pro']) {
+      config = VIDEO_MODEL_MAP['hailuo/02-text-to-video-pro'];
+      this.logger.debug(`Hailuo Pro: switched to txt2vid (no image)`);
+    }
+    if (modelSlug === 'hailuo/02-text-to-video-pro' && hasImage && VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-pro']) {
+      config = VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-pro'];
+      this.logger.debug(`Hailuo Pro: switched to img2vid (has image)`);
+    }
+
+    // Sora 2: txt2vid ↔ img2vid
+    if (modelSlug === 'sora-2-text-to-video' && hasImage && VIDEO_MODEL_MAP['sora-2-image-to-video']) {
+      config = VIDEO_MODEL_MAP['sora-2-image-to-video'];
+      this.logger.debug(`Sora 2: switched to img2vid (has image)`);
+    }
+    if (modelSlug === 'sora-2-image-to-video' && !hasImage && VIDEO_MODEL_MAP['sora-2-text-to-video']) {
+      config = VIDEO_MODEL_MAP['sora-2-text-to-video'];
+      this.logger.debug(`Sora 2: switched to txt2vid (no image)`);
+    }
+
+    this.logger.log(`KIE generateVideo: slug=${modelSlug}, kieModel=${config.kieModel}, hasImage=${hasImage}`);
 
     try {
       if (config.apiType === 'runway') {
