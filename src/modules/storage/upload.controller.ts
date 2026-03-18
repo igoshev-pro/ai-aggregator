@@ -6,6 +6,9 @@ import {
     UseInterceptors,
     UploadedFile,
     BadRequestException,
+    Get,
+    Query,
+    Res,
   } from '@nestjs/common';
   import { FileInterceptor } from '@nestjs/platform-express';
   import { ApiTags, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -104,5 +107,49 @@ import {
         success: true,
         data: { url, key, size: file.size, mimetype: file.mimetype },
       };
+    }
+
+    @Get('download')
+    async proxyDownload(
+      @Query('url') url: string,
+      @Query('filename') filename: string,
+      @Res() res: Response,
+    ) {
+      if (!url) throw new BadRequestException('url required');
+  
+      // Проверка домена
+      const allowed = [
+        'replicate.delivery', 'replicate.com', 'pbxt.replicate',
+        'tjzk.replicate', 'oaidalleapiprodscus.blob', 'cdn.openai.com',
+        'storage.googleapis.com', 'r2.cloudflarestorage.com',
+        's3.timeweb.cloud', 'suno', 'kie', 'evolink',
+      ];
+  
+      let hostname: string;
+      try {
+        hostname = new URL(url).hostname;
+      } catch {
+        throw new BadRequestException('Invalid URL');
+      }
+  
+      if (!allowed.some((d) => hostname.includes(d))) {
+        throw new BadRequestException('Domain not allowed');
+      }
+  
+      const safeName = (filename || 'spichki_download').replace(/[^a-zA-Z0-9_.\-]/g, '_');
+  
+      const axios = require('axios');
+      const response = await axios.get(url, {
+        responseType: 'stream',
+        timeout: 120000,
+      });
+  
+      res.setHeader('Content-Type', response.headers['content-type'] || 'application/octet-stream');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      if (response.headers['content-length']) {
+        res.setHeader('Content-Length', response.headers['content-length']);
+      }
+  
+      response.data.pipe(res);
     }
   }
