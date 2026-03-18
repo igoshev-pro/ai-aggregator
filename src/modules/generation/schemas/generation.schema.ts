@@ -29,15 +29,17 @@ export class Generation {
   params: {
     width?: number;
     height?: number;
+    aspectRatio?: string;    // ← ДОБАВИТЬ
+    resolution?: string;     // ← ДОБАВИТЬ
+    quality?: string;        // ← ДОБАВИТЬ
+    outputFormat?: string;   // ← ДОБАВИТЬ
     steps?: number;
     seed?: number;
     numImages?: number;
     style?: string;
-    aspectRatio?: string;
-    duration?: number;
-    fps?: number;
-    resolution?: string;
     imageUrl?: string;
+    inputUrls?: string[];    // ← ДОБАВИТЬ
+    duration?: number;
     instrumental?: boolean;
     voiceId?: string;
     language?: string;

@@ -6,61 +6,78 @@ import {
   Min,
   Max,
   MaxLength,
+  IsArray,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ImageGenerationDto {
-  @ApiProperty({ description: 'Model slug', example: 'midjourney' })
+  @ApiProperty()
   @IsString()
   modelSlug: string;
 
-  @ApiProperty({ description: 'Prompt for image generation' })
+  @ApiProperty()
   @IsString()
-  @MaxLength(2000)
   prompt: string;
 
-  @ApiProperty({ required: false })
-  @IsString()
+  @ApiPropertyOptional()
   @IsOptional()
-  @MaxLength(1000)
+  @IsString()
   negativePrompt?: string;
 
-  @ApiProperty({ required: false, default: 1024 })
-  @IsNumber()
+  @ApiPropertyOptional()
   @IsOptional()
-  @Min(256)
-  @Max(2048)
+  @IsNumber()
   width?: number;
 
-  @ApiProperty({ required: false, default: 1024 })
-  @IsNumber()
+  @ApiPropertyOptional()
   @IsOptional()
-  @Min(256)
-  @Max(2048)
+  @IsNumber()
   height?: number;
 
-  @ApiProperty({ required: false })
-  @IsNumber()
+  // ← НОВЫЕ ПОЛЯ для kie.ai
+  @ApiPropertyOptional({ description: 'Aspect ratio: 1:1, 16:9, 9:16, etc.' })
   @IsOptional()
-  @Min(1)
-  @Max(100)
+  @IsString()
+  aspectRatio?: string;
+
+  @ApiPropertyOptional({ description: 'Resolution: 1K, 2K, 4K' })
+  @IsOptional()
+  @IsString()
+  resolution?: string;
+
+  @ApiPropertyOptional({ description: 'Quality for Seedream: basic, high' })
+  @IsOptional()
+  @IsString()
+  quality?: string;
+
+  @ApiPropertyOptional({ description: 'Output format: png, jpg' })
+  @IsOptional()
+  @IsString()
+  outputFormat?: string;
+
+  @ApiPropertyOptional({ description: 'Input images for img2img (URLs)' })
+  @IsOptional()
+  @IsArray()
+  inputUrls?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
   steps?: number;
 
-  @ApiProperty({ required: false })
-  @IsNumber()
+  @ApiPropertyOptional()
   @IsOptional()
+  @IsNumber()
   seed?: number;
 
-  @ApiProperty({ required: false, default: 1 })
-  @IsNumber()
+  @ApiPropertyOptional()
   @IsOptional()
-  @Min(1)
-  @Max(4)
+  @IsNumber()
   numImages?: number;
 
-  @ApiProperty({ required: false })
-  @IsString()
+  @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
   style?: string;
 }
 

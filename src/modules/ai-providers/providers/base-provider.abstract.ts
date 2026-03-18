@@ -20,10 +20,15 @@ export interface ImageGenerationRequest {
   negativePrompt?: string;
   width?: number;
   height?: number;
+  aspectRatio?: string;      // ← ДОБАВИТЬ: '1:1', '16:9' и т.д.
+  resolution?: string;       // ← ДОБАВИТЬ: '1K', '2K', '4K'
+  quality?: string;          // ← ДОБАВИТЬ: 'basic', 'high' (seedream)
+  outputFormat?: string;     // ← ДОБАВИТЬ: 'png', 'jpg' (nano-banana)
   steps?: number;
   seed?: number;
   numImages?: number;
   style?: string;
+  inputUrls?: string[];      // ← ДОБАВИТЬ: для img2img
 }
 
 export interface VideoGenerationRequest {

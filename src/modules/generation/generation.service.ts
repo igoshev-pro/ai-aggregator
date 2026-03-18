@@ -35,18 +35,17 @@ export class GenerationService {
     private usersService: UsersService,
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
-  ) {}
+  ) { }
 
   async generateImage(userId: string, dto: ImageGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
     
-    // Предварительный расчёт стоимости
     const { costInTokens } = await this.billingService.calculateGenerationCost(
       dto.modelSlug,
     );
     
     await this.validateBalance(userId, costInTokens);
-
+  
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
       type: GenerationType.IMAGE,
@@ -57,17 +56,37 @@ export class GenerationService {
       params: {
         width: dto.width || model.defaultParams?.width || 1024,
         height: dto.height || model.defaultParams?.height || 1024,
+        aspectRatio: dto.aspectRatio,
+        resolution: dto.resolution,
+        quality: dto.quality,
+        outputFormat: dto.outputFormat,
         steps: dto.steps || model.defaultParams?.steps,
         seed: dto.seed,
         numImages: dto.numImages || 1,
         style: dto.style,
+        inputUrls: dto.inputUrls,
       },
       tokensCost: costInTokens,
     });
     await generation.save();
-
+  
     await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
-
+  
+    // Типизируем params явно
+    const p = generation.params as {
+      width?: number;
+      height?: number;
+      aspectRatio?: string;
+      resolution?: string;
+      quality?: string;
+      outputFormat?: string;
+      steps?: number;
+      seed?: number;
+      numImages?: number;
+      style?: string;
+      inputUrls?: string[];
+    };
+  
     await this.generationQueue.add(
       'process-generation',
       {
@@ -78,12 +97,17 @@ export class GenerationService {
         request: {
           prompt: dto.prompt,
           negativePrompt: dto.negativePrompt,
-          width: generation.params.width,
-          height: generation.params.height,
-          steps: generation.params.steps,
-          seed: generation.params.seed,
-          numImages: generation.params.numImages,
-          style: generation.params.style,
+          width: p.width,
+          height: p.height,
+          aspectRatio: p.aspectRatio,
+          resolution: p.resolution,
+          quality: p.quality,
+          outputFormat: p.outputFormat,
+          steps: p.steps,
+          seed: p.seed,
+          numImages: p.numImages,
+          style: p.style,
+          inputUrls: p.inputUrls,
         },
       },
       {
@@ -93,7 +117,7 @@ export class GenerationService {
         timeout: 300000,
       },
     );
-
+  
     return {
       generationId: generation._id.toString(),
       status: generation.status,
@@ -103,11 +127,11 @@ export class GenerationService {
 
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
-    
+
     const { costInTokens } = await this.billingService.calculateGenerationCost(
       dto.modelSlug,
     );
-    
+
     await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
@@ -164,11 +188,11 @@ export class GenerationService {
 
   async generateAudio(userId: string, dto: AudioGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
-    
+
     const { costInTokens } = await this.billingService.calculateGenerationCost(
       dto.modelSlug,
     );
-    
+
     await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
