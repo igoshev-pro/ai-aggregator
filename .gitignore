@@ -7,9 +7,6 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
 
 # =====================================================
 # Build & Dist
@@ -299,9 +296,6 @@ newrelic_agent.log
 !CONTEXT.md
 !tsconfig.json
 !nest-cli.json
-!package.json
-!docker-compose.yml
-!Dockerfile
 /node_modules
 /node_modules/.bin
 /node_modules/.bin
