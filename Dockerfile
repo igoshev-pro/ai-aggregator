@@ -1,13 +1,15 @@
-# Dockerfile
 FROM node:20-alpine AS builder
 
 WORKDIR /app
+
+# Устанавливаем pnpm
+RUN npm install -g pnpm
 
 # Копируем package files
 COPY package*.json ./
 
 # Устанавливаем зависимости
-RUN pnpm ci
+RUN pnpm install --frozen-lockfile
 
 # Копируем исходники
 COPY . .
