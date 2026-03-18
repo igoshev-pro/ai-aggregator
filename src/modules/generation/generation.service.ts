@@ -143,9 +143,16 @@ export class GenerationService {
       negativePrompt: dto.negativePrompt,
       params: {
         imageUrl: dto.imageUrl,
-        duration: dto.duration || model.defaultParams?.duration || 5,
-        aspectRatio: dto.aspectRatio || '16:9',
-        resolution: dto.resolution || '720p',
+        imageUrls: dto.imageUrls,
+        duration: dto.duration || (model.defaultParams as any)?.duration || 5,
+        aspectRatio: dto.aspectRatio || (model.defaultParams as any)?.aspectRatio || '16:9',
+        resolution: dto.resolution || (model.defaultParams as any)?.resolution || '720p',
+        mode: dto.mode,
+        quality: dto.quality,
+        sound: dto.sound,
+        removeWatermark: dto.removeWatermark,
+        promptOptimizer: dto.promptOptimizer,
+        waterMark: dto.waterMark,
         style: dto.style,
       },
       tokensCost: costInTokens,
@@ -153,6 +160,8 @@ export class GenerationService {
     await generation.save();
 
     await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
+
+    const p = generation.params as any;
 
     await this.generationQueue.add(
       'process-generation',
@@ -164,11 +173,18 @@ export class GenerationService {
         request: {
           prompt: dto.prompt,
           negativePrompt: dto.negativePrompt,
-          imageUrl: dto.imageUrl,
-          duration: generation.params.duration,
-          aspectRatio: generation.params.aspectRatio,
-          resolution: generation.params.resolution,
-          style: generation.params.style,
+          imageUrl: p.imageUrl,
+          imageUrls: p.imageUrls,
+          duration: p.duration,
+          aspectRatio: p.aspectRatio,
+          resolution: p.resolution,
+          mode: p.mode,
+          quality: p.quality,
+          sound: p.sound,
+          removeWatermark: p.removeWatermark,
+          promptOptimizer: p.promptOptimizer,
+          waterMark: p.waterMark,
+          style: p.style,
         },
       },
       {

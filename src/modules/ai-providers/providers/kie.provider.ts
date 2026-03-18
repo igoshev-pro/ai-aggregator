@@ -123,7 +123,7 @@ interface VideoModelConfig {
 
 const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
   // ── Sora 2 ──
-  'sora-2-txt2vid': {
+  'sora-2': {
     kieModel: 'sora-2-text-to-video',
     apiType: 'jobs',
     statusApiType: 'jobs',
@@ -141,29 +141,10 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     nFrames: ['10', '15'],
     aspectRatios: ['portrait', 'landscape'],
   },
-  'sora-2-pro-txt2vid': {
-    kieModel: 'sora-2-pro-text-to-video',
-    apiType: 'jobs',
-    statusApiType: 'jobs',
-    hasImageInput: false,
-    hasRemoveWatermark: true,
-    hasSize: true,
-    nFrames: ['10', '15'],
-    aspectRatios: ['portrait', 'landscape'],
-  },
-  'sora-2-pro-img2vid': {
-    kieModel: 'sora-2-pro-image-to-video',
-    apiType: 'jobs',
-    statusApiType: 'jobs',
-    hasImageInput: true,
-    hasRemoveWatermark: true,
-    hasSize: true,
-    nFrames: ['10', '15'],
-    aspectRatios: ['portrait', 'landscape'],
-  },
+  // sora-2-pro через evolink (нет в KIE VIDEO_MODEL_MAP, обрабатывается evolink)
 
   // ── Kling 3.0 ──
-  'kling-3': {
+  'kling-3.0': {
     kieModel: 'kling-3.0/video',
     apiType: 'jobs',
     statusApiType: 'jobs',
@@ -175,7 +156,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
   },
 
   // ── Runway ──
-  'runway-gen3': {
+  'runway': {
     kieModel: 'runway',
     apiType: 'runway',
     statusApiType: 'runway',
@@ -184,29 +165,17 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
   },
 
-  // ── Hailuo 2.3 Standard ──
-  'hailuo-std-txt2vid': {
+  // ── Hailuo ──
+  'hailuo-2.3-standard': {
     kieModel: 'hailuo/02-text-to-video-standard',
     apiType: 'jobs',
     statusApiType: 'jobs',
     hasImageInput: false,
     hasPromptOptimizer: true,
-    hasResolution: false,
     durations: ['6', '10'],
     aspectRatios: [],
   },
-  'hailuo-std-img2vid': {
-    kieModel: 'hailuo/2-3-image-to-video-standard',
-    apiType: 'jobs',
-    statusApiType: 'jobs',
-    hasImageInput: true,
-    hasResolution: true,
-    durations: ['6', '10'],
-    aspectRatios: [],
-  },
-
-  // ── Hailuo 2.3 Pro ──
-  'hailuo-pro-img2vid': {
+  'hailuo-2.3-pro': {
     kieModel: 'hailuo/2-3-image-to-video-pro',
     apiType: 'jobs',
     statusApiType: 'jobs',
