@@ -1,13 +1,13 @@
-// src/modules/ai-providers/providers/provider-registry.service.ts
+// src/modules/ai-providers/provider-registry.service.ts
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 
 import { BaseProvider } from './base-provider.abstract';
 import { OpenRouterProvider } from './openrouter.provider';
-import { OpenRouterImageProvider } from './openrouter-image.provider'; // ← НОВЫЙ
+import { OpenRouterImageProvider } from './openrouter-image.provider';
 import { EvolinkProvider } from './evolink.provider';
 import { KieProvider } from './kie.provider';
 import { ReplicateProvider } from './replicate.provider';
@@ -33,7 +33,6 @@ export class ProviderRegistryService implements OnModuleInit {
   private async initializeProviders() {
     const providerConfigs = this.configService.get('providers');
 
-    // OpenRouter — текст
     if (providerConfigs.openrouter?.apiKey) {
       this.providers.set(
         'openrouter',
@@ -45,7 +44,6 @@ export class ProviderRegistryService implements OnModuleInit {
       this.logger.log('✅ OpenRouter provider initialized');
     }
 
-    // OpenRouter Image — для gpt-5-image через chat completions с modalities
     if (providerConfigs.openrouter?.apiKey) {
       this.providers.set(
         'openrouter-image',
@@ -57,7 +55,6 @@ export class ProviderRegistryService implements OnModuleInit {
       this.logger.log('✅ OpenRouter Image provider initialized');
     }
 
-    // Evolink
     if (providerConfigs.evolink?.apiKey) {
       this.providers.set(
         'evolink',
@@ -69,7 +66,6 @@ export class ProviderRegistryService implements OnModuleInit {
       this.logger.log('✅ Evolink provider initialized');
     }
 
-    // KIE
     if (providerConfigs.kie?.apiKey) {
       this.providers.set(
         'kie',
@@ -81,7 +77,6 @@ export class ProviderRegistryService implements OnModuleInit {
       this.logger.log('✅ KIE provider initialized');
     }
 
-    // Replicate
     if (providerConfigs.replicate?.apiKey) {
       this.providers.set(
         'replicate',
@@ -156,7 +151,8 @@ export class ProviderRegistryService implements OnModuleInit {
     return result;
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  // Каждые 5 минут вместо каждой минуты
+  @Cron('0 */5 * * * *')
   async healthCheckAll() {
     for (const [slug, provider] of this.providers) {
       try {
@@ -164,6 +160,9 @@ export class ProviderRegistryService implements OnModuleInit {
         const now = new Date();
 
         if (isHealthy) {
+          const prev = await this.providerModel.findOne({ slug });
+          const wasUnhealthy = (prev?.healthStatus?.consecutiveErrors ?? 0) > 0;
+
           await this.providerModel.findOneAndUpdate(
             { slug },
             {
@@ -174,8 +173,12 @@ export class ProviderRegistryService implements OnModuleInit {
               },
             },
           );
+
+          if (wasUnhealthy) {
+            this.logger.log(`✅ Provider ${slug} recovered`);
+          }
         } else {
-          await this.providerModel.findOneAndUpdate(
+          const doc = await this.providerModel.findOneAndUpdate(
             { slug },
             {
               $set: {
@@ -184,8 +187,15 @@ export class ProviderRegistryService implements OnModuleInit {
               },
               $inc: { 'healthStatus.consecutiveErrors': 1 },
             },
+            { new: true },
           );
-          this.logger.warn(`⚠️ Provider ${slug} health check failed`);
+
+          const errors = doc?.healthStatus?.consecutiveErrors ?? 1;
+
+          // Логируем только первый раз и каждые 10 проверок чтобы не спамить
+          if (errors === 1 || errors % 10 === 0) {
+            this.logger.warn(`⚠️ Provider ${slug} health check failed (${errors} times)`);
+          }
         }
       } catch (error: any) {
         this.logger.error(`❌ Health check error for ${slug}: ${error.message}`);
@@ -217,34 +227,14 @@ export class ProviderRegistryService implements OnModuleInit {
   }
 
   private async seedDefaultModels() {
+    // Всегда синхронизируем модели при старте
     const existingCount = await this.modelModel.countDocuments();
-    if (existingCount > 0) {
-      // Даже если модели есть — обновляем gpt-5-image на правильный провайдер
-      await this.modelModel.findOneAndUpdate(
-        { slug: 'gpt-5-image' },
-        {
-          $set: {
-            providerMappings: [
-              {
-                providerSlug: 'openrouter-image', // ← ИСПРАВЛЕНО
-                modelId: 'openai/gpt-5-image',
-                priority: 1,
-                isActive: true,
-              },
-            ],
-          },
-        },
-      );
-      return;
-    }
-
-    this.logger.log('🌱 Seeding default AI models...');
+    this.logger.log(`🌱 Syncing ${existingCount > 0 ? 'existing' : 'new'} AI models...`);
 
     const defaultModels = [
       // ==============================
       // ТЕКСТОВЫЕ МОДЕЛИ
       // ==============================
-
       {
         slug: 'gpt-oss-120b',
         name: 'GPT-OSS 120B',
@@ -541,7 +531,6 @@ export class ProviderRegistryService implements OnModuleInit {
       // ==============================
       // МОДЕЛИ ИЗОБРАЖЕНИЙ
       // ==============================
-
       {
         slug: 'gpt-5-image',
         name: 'GPT-5 Image',
@@ -554,7 +543,6 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 1,
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
-          // ← ИСПОЛЬЗУЕМ openrouter-image, не openrouter
           { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5-image', priority: 1, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
@@ -721,7 +709,6 @@ export class ProviderRegistryService implements OnModuleInit {
       // ==============================
       // МОДЕЛИ ВИДЕО
       // ==============================
-
       {
         slug: 'veo-3.1-fast',
         name: 'Veo 3.1 Fast',
@@ -907,7 +894,6 @@ export class ProviderRegistryService implements OnModuleInit {
       // ==============================
       // МОДЕЛИ АУДИО
       // ==============================
-
       {
         slug: 'suno-v4',
         name: 'Suno V4',
@@ -946,7 +932,6 @@ export class ProviderRegistryService implements OnModuleInit {
       },
     ];
 
-    // Получаем providerIds из БД для маппинга
     const providerDocs = await this.providerModel.find();
     const providerMap = new Map(providerDocs.map((p) => [p.slug, p._id]));
 
@@ -987,6 +972,6 @@ export class ProviderRegistryService implements OnModuleInit {
       );
     }
 
-    this.logger.log(`🌱 Seeded ${defaultModels.length} AI models`);
+    this.logger.log(`🌱 Synced ${defaultModels.length} AI models`);
   }
 }

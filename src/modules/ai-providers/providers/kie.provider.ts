@@ -323,17 +323,23 @@ export class KieProvider extends BaseProvider {
 
   async healthCheck(): Promise<boolean> {
     try {
-      // Проверяем через простой запрос
       const res = await this.client.get('/api/v1/jobs/recordInfo', {
         params: { taskId: 'health_check_test' },
         timeout: 5000,
       });
-      // 422 (recordInfo is null) значит API работает, просто taskId не найден
-      return res.status === 200 || res.data?.code === 422 || res.data?.code === 404;
+      // Любой HTTP ответ = сервер живой
+      this.logger.debug(`KIE health OK: status=${res.status}, code=${res.data?.code}`);
+      return true;
     } catch (error) {
-      // 422/404 через axios exception тоже значит API живой
       const status = error?.response?.status;
-      return status === 422 || status === 404;
+      // Если сервер ответил с любым HTTP кодом — он живой
+      if (status) {
+        this.logger.debug(`KIE health OK (error response): status=${status}`);
+        return true;
+      }
+      // Только сетевая ошибка = недоступен
+      this.logger.warn(`KIE health FAIL (network error): ${error.message}`);
+      return false;
     }
   }
 
