@@ -135,12 +135,12 @@ export class ProviderRegistryService implements OnModuleInit {
 
       if (!providerDoc) continue;
 
-      if (
-        providerDoc.healthStatus?.isHealthy === false &&
-        providerDoc.healthStatus?.consecutiveErrors > 5
-      ) {
-        continue;
-      }
+      // if (
+      //   providerDoc.healthStatus?.isHealthy === false &&
+      //   providerDoc.healthStatus?.consecutiveErrors > 1000
+      // ) {
+      //   continue;
+      // }
 
       const provider = this.providers.get(mapping.providerSlug);
       if (provider) {
