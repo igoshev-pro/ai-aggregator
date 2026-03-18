@@ -814,8 +814,8 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 6,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'kling-v3-text-to-video', priority: 1, isActive: true },
-          { providerSlug: 'kie', modelId: 'kling-3.0/motion-control', priority: 2, isActive: true },
+          { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'kling-v3-text-to-video', priority: 2, isActive: false },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
@@ -832,7 +832,8 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 7,
         capabilities: ['image_to_video', 'motion_control'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'kling-v3-image-to-video', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'kling-v3-image-to-video', priority: 2, isActive: false },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
@@ -850,7 +851,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'runway', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'runway-gen3', priority: 2, isActive: true },
+          { providerSlug: 'evolink', modelId: 'runway-gen3', priority: 2, isActive: false },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
@@ -867,8 +868,8 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 9,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'hailuo/2-3-image-to-video-standard', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'hailuo', priority: 2, isActive: true },
+          { providerSlug: 'kie', modelId: 'hailuo/02-text-to-video-standard', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'hailuo', priority: 2, isActive: false },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 6 },
