@@ -19,6 +19,7 @@ import {
   import { v4 as uuidv4 } from 'uuid';
   import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
   import { ConfigService } from '@nestjs/config';
+  import type { Response } from 'express';
   
   // Локальный тип чтобы не зависеть от глобального namespace
   interface UploadedFileType {
@@ -113,7 +114,7 @@ import {
     async proxyDownload(
       @Query('url') url: string,
       @Query('filename') filename: string,
-      @Res() res: Response,
+      @Res() res: any,
     ) {
       if (!url) throw new BadRequestException('url required');
   
