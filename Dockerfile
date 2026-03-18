@@ -5,8 +5,8 @@ WORKDIR /app
 # Устанавливаем pnpm
 RUN npm install -g pnpm
 
-# Копируем package files
-COPY package*.json ./
+# Копируем package files + lock файл
+COPY package.json pnpm-lock.yaml ./
 
 # Устанавливаем зависимости
 RUN pnpm install --frozen-lockfile
@@ -22,21 +22,17 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Безопасность: non-root пользователь
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001
 
-# Копируем только то что нужно
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/package.json ./
 
-# Переключаемся на non-root
 USER nestjs
 
 EXPOSE 3001
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
   CMD wget -qO- http://localhost:3001/api/v1/health || exit 1
 
