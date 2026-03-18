@@ -122,8 +122,8 @@ interface VideoModelConfig {
 }
 
 const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
-  // ── Sora 2 ──
-  'sora-2': {
+  // ── Sora 2 (modelId from providerMappings) ──
+  'sora-2-text-to-video': {
     kieModel: 'sora-2-text-to-video',
     apiType: 'jobs',
     statusApiType: 'jobs',
@@ -132,7 +132,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     nFrames: ['10', '15'],
     aspectRatios: ['portrait', 'landscape'],
   },
-  'sora-2-img2vid': {
+  'sora-2-image-to-video': {
     kieModel: 'sora-2-image-to-video',
     apiType: 'jobs',
     statusApiType: 'jobs',
@@ -141,15 +141,24 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     nFrames: ['10', '15'],
     aspectRatios: ['portrait', 'landscape'],
   },
-  // sora-2-pro через evolink (нет в KIE VIDEO_MODEL_MAP, обрабатывается evolink)
 
   // ── Kling 3.0 ──
-  'kling-3.0': {
+  'kling-3.0/video': {
     kieModel: 'kling-3.0/video',
     apiType: 'jobs',
     statusApiType: 'jobs',
     hasImageInput: true,
     hasSound: true,
+    hasMode: true,
+    durations: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+  },
+  'kling-3.0/motion-control': {
+    kieModel: 'kling-3.0/motion-control',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasSound: false,
     hasMode: true,
     durations: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
     aspectRatios: ['16:9', '9:16', '1:1'],
@@ -166,7 +175,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
   },
 
   // ── Hailuo ──
-  'hailuo-2.3-standard': {
+  'hailuo/02-text-to-video-standard': {
     kieModel: 'hailuo/02-text-to-video-standard',
     apiType: 'jobs',
     statusApiType: 'jobs',
@@ -175,7 +184,16 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
-  'hailuo-2.3-pro': {
+  'hailuo/2-3-image-to-video-standard': {
+    kieModel: 'hailuo/2-3-image-to-video-standard',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasResolution: true,
+    durations: ['6', '10'],
+    aspectRatios: [],
+  },
+  'hailuo/2-3-image-to-video-pro': {
     kieModel: 'hailuo/2-3-image-to-video-pro',
     apiType: 'jobs',
     statusApiType: 'jobs',
