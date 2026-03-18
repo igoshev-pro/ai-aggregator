@@ -1,4 +1,3 @@
-// src/modules/ai-providers/providers/kie.provider.ts
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import {
@@ -13,19 +12,19 @@ import {
   TaskStatusResult,
 } from './base-provider.abstract';
 
-// Карта модель-слаг → реальный modelId kie.ai
-// Это нужно потому что один наш slug может маппиться на разные kie модели
-// в зависимости от наличия input images (img2img vs txt2img)
+// ═══════════════════════════════════════════════════════
+// IMAGE MODEL PARAMS (existing)
+// ═══════════════════════════════════════════════════════
 const KIE_MODEL_PARAMS: Record<string, {
   aspectRatios: string[];
   resolutions: string[];
-  hasQuality?: boolean;        // seedream: basic/high
-  hasNegativePrompt?: boolean; // imagen4
-  hasSeed?: boolean;           // imagen4
-  hasInputImages?: boolean;    // поддерживает img2img
-  inputImagesField?: string;   // имя поля для картинок (input_urls / image_input / image_urls)
+  hasQuality?: boolean;
+  hasNegativePrompt?: boolean;
+  hasSeed?: boolean;
+  hasInputImages?: boolean;
+  inputImagesField?: string;
   maxInputImages?: number;
-  hasOutputFormat?: boolean;   // nano-banana
+  hasOutputFormat?: boolean;
 }> = {
   'flux-2/flex-text-to-image': {
     aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3'],
@@ -51,7 +50,7 @@ const KIE_MODEL_PARAMS: Record<string, {
   },
   'seedream/5-lite-text-to-image': {
     aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '2:3', '3:2', '21:9'],
-    resolutions: ['basic', 'high'], // здесь resolutions = quality
+    resolutions: ['basic', 'high'],
     hasQuality: true,
   },
   'seedream/5-lite-image-to-image': {
@@ -103,7 +102,122 @@ const KIE_MODEL_PARAMS: Record<string, {
   },
 };
 
-@Injectable()  
+// ═══════════════════════════════════════════════════════
+// VIDEO MODEL CONFIG
+// ═══════════════════════════════════════════════════════
+interface VideoModelConfig {
+  kieModel: string;           // KIE API model name
+  apiType: 'jobs' | 'runway'; // /api/v1/jobs/createTask or /api/v1/runway/generate
+  statusApiType: 'jobs' | 'runway'; // different status endpoints
+  hasImageInput: boolean;
+  hasSound?: boolean;         // Kling
+  hasMode?: boolean;          // Kling std/pro
+  hasSize?: boolean;          // Sora Pro standard/high
+  hasRemoveWatermark?: boolean;
+  hasPromptOptimizer?: boolean; // Hailuo
+  hasResolution?: boolean;    // Hailuo 768P/1080P
+  nFrames?: string[];         // Sora frame options
+  durations?: string[];       // fixed duration options
+  aspectRatios: string[];
+}
+
+const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
+  // ── Sora 2 ──
+  'sora-2-txt2vid': {
+    kieModel: 'sora-2-text-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    hasRemoveWatermark: true,
+    nFrames: ['10', '15'],
+    aspectRatios: ['portrait', 'landscape'],
+  },
+  'sora-2-img2vid': {
+    kieModel: 'sora-2-image-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasRemoveWatermark: true,
+    nFrames: ['10', '15'],
+    aspectRatios: ['portrait', 'landscape'],
+  },
+  'sora-2-pro-txt2vid': {
+    kieModel: 'sora-2-pro-text-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    hasRemoveWatermark: true,
+    hasSize: true,
+    nFrames: ['10', '15'],
+    aspectRatios: ['portrait', 'landscape'],
+  },
+  'sora-2-pro-img2vid': {
+    kieModel: 'sora-2-pro-image-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasRemoveWatermark: true,
+    hasSize: true,
+    nFrames: ['10', '15'],
+    aspectRatios: ['portrait', 'landscape'],
+  },
+
+  // ── Kling 3.0 ──
+  'kling-3': {
+    kieModel: 'kling-3.0/video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasSound: true,
+    hasMode: true,
+    durations: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+  },
+
+  // ── Runway ──
+  'runway-gen3': {
+    kieModel: 'runway',
+    apiType: 'runway',
+    statusApiType: 'runway',
+    hasImageInput: true,
+    durations: ['5', '10'],
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+  },
+
+  // ── Hailuo 2.3 Standard ──
+  'hailuo-std-txt2vid': {
+    kieModel: 'hailuo/02-text-to-video-standard',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    hasPromptOptimizer: true,
+    hasResolution: false,
+    durations: ['6', '10'],
+    aspectRatios: [],
+  },
+  'hailuo-std-img2vid': {
+    kieModel: 'hailuo/2-3-image-to-video-standard',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasResolution: true,
+    durations: ['6', '10'],
+    aspectRatios: [],
+  },
+
+  // ── Hailuo 2.3 Pro ──
+  'hailuo-pro-img2vid': {
+    kieModel: 'hailuo/2-3-image-to-video-pro',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasResolution: true,
+    durations: ['6', '10'],
+    aspectRatios: [],
+  },
+};
+
+@Injectable()
 export class KieProvider extends BaseProvider {
   private client: AxiosInstance;
   private readonly logger = new Logger(KieProvider.name);
@@ -120,6 +234,9 @@ export class KieProvider extends BaseProvider {
     });
   }
 
+  // ═══════════════════════════════════════════════════════
+  // IMAGE GENERATION (existing — unchanged)
+  // ═══════════════════════════════════════════════════════
   async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
@@ -130,48 +247,39 @@ export class KieProvider extends BaseProvider {
         `KIE generateImage: model=${modelId}, prompt="${request.prompt?.substring(0, 60)}"`,
       );
 
-      // Строим input объект в зависимости от модели
       const input: Record<string, any> = {
         prompt: request.prompt,
       };
 
-      // Aspect ratio — конвертируем из WxH в ratio если нужно
       const aspectRatio = this.toAspectRatio(request.width, request.height);
       input.aspect_ratio = aspectRatio;
 
-      // Seedream использует quality вместо resolution
       if (modelParams?.hasQuality) {
         input.quality = (request as any).quality || 'basic';
       } else if (modelParams?.resolutions?.length > 0) {
         input.resolution = (request as any).resolution || '1K';
       }
 
-      // Negative prompt (imagen4)
       if (modelParams?.hasNegativePrompt && request.negativePrompt) {
         input.negative_prompt = request.negativePrompt;
       }
 
-      // Seed (imagen4)
       if (modelParams?.hasSeed && request.seed !== undefined) {
         input.seed = String(request.seed);
       }
 
-      // Input images для img2img
       if (modelParams?.hasInputImages) {
         const inputUrls: string[] = (request as any).inputUrls || [];
         const field = modelParams.inputImagesField;
-        
         if (field) {
           if (inputUrls.length > 0) {
             input[field] = inputUrls;
           } else if (field === 'image_input') {
-            // nano-banana требует поле даже пустым
             input[field] = [];
           }
         }
       }
 
-      // Output format (nano-banana)
       if (modelParams?.hasOutputFormat) {
         input.output_format = (request as any).outputFormat || 'png';
       }
@@ -182,7 +290,6 @@ export class KieProvider extends BaseProvider {
       });
 
       const data = response.data;
-
       if (data.code !== 200) {
         throw new Error(data.msg || 'KIE task creation failed');
       }
@@ -192,16 +299,11 @@ export class KieProvider extends BaseProvider {
         throw new Error('No taskId in KIE response');
       }
 
-      this.logger.debug(`KIE task created: ${taskId}`);
+      this.logger.debug(`KIE image task created: ${taskId}`);
 
-      // Возвращаем taskId — polling будет в consumer
       return {
         success: true,
-        data: {
-          taskId,
-          urls: [],
-          metadata: { model: modelId },
-        },
+        data: { taskId, urls: [], metadata: { model: modelId } },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
       };
@@ -211,7 +313,201 @@ export class KieProvider extends BaseProvider {
     }
   }
 
+  // ═══════════════════════════════════════════════════════
+  // VIDEO GENERATION — NEW
+  // ═══════════════════════════════════════════════════════
+  async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
+    const start = Date.now();
+    const modelSlug = request.model;
+    const config = VIDEO_MODEL_MAP[modelSlug];
+
+    if (!config) {
+      return {
+        success: false,
+        error: { code: 'UNKNOWN_MODEL', message: `Unknown video model: ${modelSlug}`, retryable: false },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    }
+
+    this.logger.log(`KIE generateVideo: slug=${modelSlug}, kieModel=${config.kieModel}`);
+
+    try {
+      if (config.apiType === 'runway') {
+        return await this.generateRunwayVideo(request, config, start);
+      }
+      return await this.generateJobsVideo(request, config, start);
+    } catch (error) {
+      this.logger.error(`KIE generateVideo error: ${error.message}`);
+      return this.handleError(error, start);
+    }
+  }
+
+  // ── Jobs API video (Sora, Kling, Hailuo) ──
+  private async generateJobsVideo(
+    request: VideoGenerationRequest,
+    config: VideoModelConfig,
+    start: number,
+  ): Promise<GenerationResult> {
+    const r = request as any;
+    const input: Record<string, any> = {
+      prompt: request.prompt,
+    };
+
+    // Aspect ratio
+    if (config.aspectRatios.length > 0) {
+      let ar = r.aspectRatio || config.aspectRatios[0];
+      // Sora uses portrait/landscape
+      if (config.aspectRatios.includes('portrait') && !config.aspectRatios.includes(ar)) {
+        ar = ar === '9:16' ? 'portrait' : 'landscape';
+      }
+      input.aspect_ratio = ar;
+    }
+
+    // Duration / n_frames
+    if (config.nFrames) {
+      // Sora: n_frames = '10' or '15' (seconds → closest frame option)
+      const dur = r.duration || 10;
+      input.n_frames = dur >= 13 ? '15' : '10';
+    } else if (config.durations) {
+      input.duration = String(r.duration || config.durations[0]);
+    }
+
+    // Image input
+    if (config.hasImageInput && r.imageUrl) {
+      input.image_urls = [r.imageUrl];
+    }
+    if (config.hasImageInput && r.imageUrls?.length > 0) {
+      input.image_urls = r.imageUrls;
+    }
+
+    // Kling-specific
+    if (config.hasSound) {
+      input.sound = r.sound !== undefined ? r.sound : false;
+    }
+    if (config.hasMode) {
+      input.mode = r.mode || 'std';
+      // Kling requires these fields
+      input.multi_shots = false;
+      input.multi_prompt = [];
+    }
+
+    // Sora Pro size
+    if (config.hasSize) {
+      input.size = r.quality || 'standard';
+    }
+
+    // Remove watermark (Sora)
+    if (config.hasRemoveWatermark) {
+      input.remove_watermark = r.removeWatermark !== false;
+    }
+
+    // Hailuo prompt optimizer
+    if (config.hasPromptOptimizer) {
+      input.prompt_optimizer = r.promptOptimizer !== false;
+    }
+
+    // Hailuo resolution
+    if (config.hasResolution) {
+      input.resolution = r.resolution || '768P';
+    }
+
+    this.logger.debug(`KIE jobs video request: model=${config.kieModel}, input=${JSON.stringify(input).substring(0, 200)}`);
+
+    const response = await this.client.post('/api/v1/jobs/createTask', {
+      model: config.kieModel,
+      input,
+    });
+
+    const data = response.data;
+    if (data.code !== 200) {
+      throw new Error(data.msg || `KIE video task creation failed (code ${data.code})`);
+    }
+
+    const taskId = data.data?.taskId;
+    if (!taskId) {
+      throw new Error('No taskId in KIE video response');
+    }
+
+    this.logger.log(`KIE video task created: ${taskId} for model ${config.kieModel}`);
+
+    return {
+      success: true,
+      data: {
+        taskId,
+        urls: [],
+        metadata: { model: config.kieModel, apiType: config.statusApiType },
+      },
+      responseTimeMs: Date.now() - start,
+      providerSlug: this.slug,
+    };
+  }
+
+  // ── Runway API video ──
+  private async generateRunwayVideo(
+    request: VideoGenerationRequest,
+    config: VideoModelConfig,
+    start: number,
+  ): Promise<GenerationResult> {
+    const r = request as any;
+    const body: Record<string, any> = {
+      prompt: request.prompt,
+      duration: r.duration || 5,
+      quality: r.resolution || '720p',
+      aspectRatio: r.aspectRatio || '16:9',
+      waterMark: r.waterMark || '',
+    };
+
+    // Image input
+    if (r.imageUrl) {
+      body.imageUrl = r.imageUrl;
+    }
+
+    this.logger.debug(`KIE runway video request: ${JSON.stringify(body).substring(0, 200)}`);
+
+    const response = await this.client.post('/api/v1/runway/generate', body);
+
+    const data = response.data;
+    if (data.code !== 200) {
+      throw new Error(data.msg || `Runway video creation failed (code ${data.code})`);
+    }
+
+    const taskId = data.data?.taskId;
+    if (!taskId) {
+      throw new Error('No taskId in Runway response');
+    }
+
+    this.logger.log(`Runway video task created: ${taskId}`);
+
+    return {
+      success: true,
+      data: {
+        taskId,
+        urls: [],
+        metadata: { model: 'runway', apiType: 'runway' },
+      },
+      responseTimeMs: Date.now() - start,
+      providerSlug: this.slug,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // TASK STATUS CHECK — handles both Jobs and Runway APIs
+  // ═══════════════════════════════════════════════════════
   async checkTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    // Try to detect Runway tasks by prefix
+    const isRunway = taskId.includes('runway') ||
+      taskId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/); // UUID format = Runway
+
+    if (isRunway) {
+      return this.checkRunwayTaskStatus(taskId);
+    }
+
+    return this.checkJobsTaskStatus(taskId);
+  }
+
+  // ── Jobs API status (Sora, Kling, Hailuo) ──
+  private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/jobs/recordInfo', {
         params: { taskId },
@@ -228,9 +524,8 @@ export class KieProvider extends BaseProvider {
         return { status: 'pending' };
       }
 
-      this.logger.debug(`KIE task ${taskId} state: ${task.state}, progress: ${task.progress}`);
+      this.logger.debug(`KIE jobs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
 
-      // Маппинг статусов kie → наши
       const stateMap: Record<string, TaskStatusResult['status']> = {
         waiting: 'pending',
         queuing: 'pending',
@@ -272,43 +567,87 @@ export class KieProvider extends BaseProvider {
         progress: task.progress || 0,
       };
     } catch (error) {
-      this.logger.error(`KIE checkTaskStatus error: ${error.message}`);
+      this.logger.error(`KIE checkJobsTaskStatus error: ${error.message}`);
       return { status: 'failed', error: `Status check failed: ${error.message}` };
     }
   }
 
-  // Конвертация WxH → aspect ratio строку
-  private toAspectRatio(width?: number, height?: number): string {
-    if (!width || !height) return '1:1';
-    
-    // Если уже передан как строка в aspectRatio
-    const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
-    const g = gcd(width, height);
-    return `${width / g}:${height / g}`;
+  // ── Runway API status ──
+  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/runway/record-detail', {
+        params: { taskId },
+      });
+
+      const data = response.data;
+
+      if (data.code !== 200) {
+        return { status: 'failed', error: data.msg || 'Runway status check failed' };
+      }
+
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+
+      this.logger.debug(`Runway task ${taskId} state: ${task.state}`);
+
+      const stateMap: Record<string, TaskStatusResult['status']> = {
+        wait: 'pending',
+        queueing: 'pending',
+        generating: 'processing',
+        success: 'completed',
+        fail: 'failed',
+      };
+
+      const status = stateMap[task.state] || 'pending';
+
+      if (status === 'failed') {
+        return {
+          status: 'failed',
+          error: task.failMsg || 'Runway generation failed',
+        };
+      }
+
+      if (status === 'completed') {
+        const resultUrls: string[] = [];
+        if (task.videoInfo?.videoUrl) {
+          resultUrls.push(task.videoInfo.videoUrl);
+        }
+
+        return {
+          status: 'completed',
+          resultUrls,
+          progress: 100,
+        };
+      }
+
+      return {
+        status,
+        progress: 0,
+      };
+    } catch (error) {
+      this.logger.error(`Runway checkTaskStatus error: ${error.message}`);
+      return { status: 'failed', error: `Runway status check failed: ${error.message}` };
+    }
   }
 
-  async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
-    // Будет реализовано в следующем шаге (видео модели)
-    return {
-      success: false,
-      error: { code: 'NOT_IMPLEMENTED', message: 'Use specific video model slug', retryable: false },
-      responseTimeMs: 0,
-      providerSlug: this.slug,
-    };
-  }
-
+  // ═══════════════════════════════════════════════════════
+  // AUDIO (stub)
+  // ═══════════════════════════════════════════════════════
   async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
-    // Будет реализовано в следующем шаге (аудио модели)
     return {
       success: false,
-      error: { code: 'NOT_IMPLEMENTED', message: 'Use specific audio model slug', retryable: false },
+      error: { code: 'NOT_IMPLEMENTED', message: 'Audio via KIE not yet implemented', retryable: false },
       responseTimeMs: 0,
       providerSlug: this.slug,
     };
   }
 
+  // ═══════════════════════════════════════════════════════
+  // TEXT (stub)
+  // ═══════════════════════════════════════════════════════
   async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
-    // Gemini через kie — будет реализовано отдельно
     return {
       success: false,
       error: { code: 'NOT_IMPLEMENTED', message: 'Text via KIE not yet implemented', retryable: false },
@@ -321,26 +660,36 @@ export class KieProvider extends BaseProvider {
     yield { content: 'Error: Not supported', done: true };
   }
 
+  // ═══════════════════════════════════════════════════════
+  // HEALTH CHECK
+  // ═══════════════════════════════════════════════════════
   async healthCheck(): Promise<boolean> {
     try {
       const res = await this.client.get('/api/v1/jobs/recordInfo', {
         params: { taskId: 'health_check_test' },
         timeout: 5000,
       });
-      // Любой HTTP ответ = сервер живой
       this.logger.debug(`KIE health OK: status=${res.status}, code=${res.data?.code}`);
       return true;
     } catch (error) {
       const status = error?.response?.status;
-      // Если сервер ответил с любым HTTP кодом — он живой
       if (status) {
         this.logger.debug(`KIE health OK (error response): status=${status}`);
         return true;
       }
-      // Только сетевая ошибка = недоступен
       this.logger.warn(`KIE health FAIL (network error): ${error.message}`);
       return false;
     }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════════════
+  private toAspectRatio(width?: number, height?: number): string {
+    if (!width || !height) return '1:1';
+    const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
+    const g = gcd(width, height);
+    return `${width / g}:${height / g}`;
   }
 
   private handleError(error: any, start: number): GenerationResult {

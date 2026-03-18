@@ -2,11 +2,11 @@ import {
   IsString,
   IsOptional,
   IsNumber,
-  IsEnum,
+  IsBoolean,
+  IsArray,
   Min,
   Max,
   MaxLength,
-  IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -34,7 +34,6 @@ export class ImageGenerationDto {
   @IsNumber()
   height?: number;
 
-  // ← НОВЫЕ ПОЛЯ для kie.ai
   @ApiPropertyOptional({ description: 'Aspect ratio: 1:1, 16:9, 9:16, etc.' })
   @IsOptional()
   @IsString()
@@ -82,43 +81,78 @@ export class ImageGenerationDto {
 }
 
 export class VideoGenerationDto {
-  @ApiProperty({ example: 'kling-1.6' })
+  @ApiProperty({ example: 'sora-2-txt2vid' })
   @IsString()
   modelSlug: string;
 
   @ApiProperty()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(10000)
   prompt: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional()
   @IsString()
   @IsOptional()
   negativePrompt?: string;
 
-  @ApiProperty({ required: false, description: 'Image URL for img2video' })
+  @ApiPropertyOptional({ description: 'Image URL for img2video (single image)' })
   @IsString()
   @IsOptional()
   imageUrl?: string;
 
-  @ApiProperty({ required: false, default: 5 })
+  @ApiPropertyOptional({ description: 'Array of image URLs (for models supporting multiple)' })
+  @IsOptional()
+  @IsArray()
+  imageUrls?: string[];
+
+  @ApiPropertyOptional({ default: 5, description: 'Duration in seconds' })
   @IsNumber()
   @IsOptional()
-  @Min(1)
-  @Max(30)
+  @Min(3)
+  @Max(15)
   duration?: number;
 
-  @ApiProperty({ required: false, enum: ['16:9', '9:16', '1:1', '4:3'] })
+  @ApiPropertyOptional({ enum: ['16:9', '9:16', '1:1', '4:3', '3:4', 'portrait', 'landscape'] })
   @IsString()
   @IsOptional()
   aspectRatio?: string;
 
-  @ApiProperty({ required: false, enum: ['480p', '720p', '1080p'] })
+  @ApiPropertyOptional({ enum: ['720p', '1080p', '768P', '1080P', 'std', 'pro'] })
   @IsString()
   @IsOptional()
   resolution?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional({ enum: ['std', 'pro'], description: 'Kling mode: std (720p) or pro (1080p)' })
+  @IsString()
+  @IsOptional()
+  mode?: string;
+
+  @ApiPropertyOptional({ enum: ['standard', 'high'], description: 'Sora Pro size quality' })
+  @IsString()
+  @IsOptional()
+  quality?: string;
+
+  @ApiPropertyOptional({ description: 'Enable sound effects (Kling)' })
+  @IsOptional()
+  @IsBoolean()
+  sound?: boolean;
+
+  @ApiPropertyOptional({ description: 'Remove watermark (Sora)' })
+  @IsOptional()
+  @IsBoolean()
+  removeWatermark?: boolean;
+
+  @ApiPropertyOptional({ description: 'Watermark text (Runway)' })
+  @IsString()
+  @IsOptional()
+  waterMark?: string;
+
+  @ApiPropertyOptional({ description: 'Prompt optimizer (Hailuo)' })
+  @IsOptional()
+  @IsBoolean()
+  promptOptimizer?: boolean;
+
+  @ApiPropertyOptional()
   @IsString()
   @IsOptional()
   style?: string;
@@ -134,28 +168,28 @@ export class AudioGenerationDto {
   @MaxLength(5000)
   prompt: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional()
   @IsString()
   @IsOptional()
   style?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional()
   @IsNumber()
   @IsOptional()
   @Min(5)
   @Max(300)
   duration?: number;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional()
   @IsOptional()
   instrumental?: boolean;
 
-  @ApiProperty({ required: false, description: 'Voice ID for ElevenLabs' })
+  @ApiPropertyOptional({ description: 'Voice ID for ElevenLabs' })
   @IsString()
   @IsOptional()
   voiceId?: string;
 
-  @ApiProperty({ required: false })
+  @ApiPropertyOptional()
   @IsString()
   @IsOptional()
   language?: string;
