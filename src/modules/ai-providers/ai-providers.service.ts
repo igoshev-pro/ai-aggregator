@@ -67,8 +67,7 @@ export class AiProvidersService {
   for (const { provider, modelId } of providers) {
     try {
       this.logger.debug(`generateTextStream via ${provider.getSlug()} with model ${modelId}`);
-      
-      // Запускаем стриминг у провайдера
+
       const stream = provider.generateTextStream({
         ...request,
         model: modelId,
@@ -78,10 +77,10 @@ export class AiProvidersService {
         yield chunk;
       }
 
-      // Если успешный поток, выходим из цикла
       return;
     } catch (error) {
       this.logger.error(`${provider.getSlug()} generateTextStream error: ${error.message}`);
+
       lastError = {
         success: false,
         error: {
@@ -92,12 +91,10 @@ export class AiProvidersService {
         responseTimeMs: 0,
         providerSlug: provider.getSlug(),
       };
-      // Продолжаем попытку с другим провайдером
     }
   }
 
-  // Если все провайдеры не сработали, пробрасываем ошибку
-  throw new BadRequestException(lastError?.error.message || 'All providers failed to stream text');
+  throw new BadRequestException(lastError?.error?.message ?? 'All providers failed to stream text');
 }
 
   async generateImage(
