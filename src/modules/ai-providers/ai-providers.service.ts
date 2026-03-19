@@ -53,11 +53,52 @@ export class AiProvidersService {
   }
 
   async *generateTextStream(
-    modelSlug: string,
-    request: Omit<TextGenerationRequest, 'model'>,
-  ): AsyncGenerator<StreamChunk> {
-    // Ваша реализация из проекта
+  modelSlug: string,
+  request: Omit<TextGenerationRequest, 'model'>,
+): AsyncGenerator<StreamChunk> {
+  const providers = await this.registry.getProvidersForModel(modelSlug);
+
+  if (providers.length === 0) {
+    throw new BadRequestException(`No providers available for ${modelSlug}`);
   }
+
+  let lastError: GenerationResult | null = null;
+
+  for (const { provider, modelId } of providers) {
+    try {
+      this.logger.debug(`generateTextStream via ${provider.getSlug()} with model ${modelId}`);
+      
+      // Запускаем стриминг у провайдера
+      const stream = provider.generateTextStream({
+        ...request,
+        model: modelId,
+      });
+
+      for await (const chunk of stream) {
+        yield chunk;
+      }
+
+      // Если успешный поток, выходим из цикла
+      return;
+    } catch (error) {
+      this.logger.error(`${provider.getSlug()} generateTextStream error: ${error.message}`);
+      lastError = {
+        success: false,
+        error: {
+          code: 'PROVIDER_ERROR',
+          message: error.message,
+          retryable: true,
+        },
+        responseTimeMs: 0,
+        providerSlug: provider.getSlug(),
+      };
+      // Продолжаем попытку с другим провайдером
+    }
+  }
+
+  // Если все провайдеры не сработали, пробрасываем ошибку
+  throw new BadRequestException(lastError?.error.message || 'All providers failed to stream text');
+}
 
   async generateImage(
     modelSlug: string,
