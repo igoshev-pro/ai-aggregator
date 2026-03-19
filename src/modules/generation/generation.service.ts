@@ -223,6 +223,22 @@ export class GenerationService {
 
     await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
 
+    const isElevenLabsModel = dto.modelSlug.startsWith('elevenlabs/');
+
+  const requestPayload: any = {
+    style: dto.style,
+    duration: generation.params.duration,
+    instrumental: generation.params.instrumental,
+    voiceId: generation.params.voiceId,
+    language: generation.params.language,
+  };
+
+  if (isElevenLabsModel) {
+    requestPayload.text = dto.prompt;    // используем поле 'text' для ElevenLabs
+  } else {
+    requestPayload.prompt = dto.prompt;  // для остальных моделей оставляем 'prompt'
+  }
+
     await this.generationQueue.add(
       'process-generation',
       {
