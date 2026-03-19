@@ -5,7 +5,7 @@ import { GenerationService } from '../generation.service';
 import { AiProvidersService } from '../../ai-providers/ai-providers.service';
 import { GenerationStatus, GenerationType } from '@/common/interfaces';
 import { GenerationGateway } from '../generation.gateway';
-import { StorageService } from '../../storage/storage.service'; // ← ДОБАВИТЬ
+import { StorageService } from '../../storage/storage.service';
 
 interface GenerationJobData {
   generationId: string;
@@ -25,16 +25,14 @@ export class GenerationConsumer {
     @Inject(forwardRef(() => AiProvidersService))
     private aiProvidersService: AiProvidersService,
     private generationGateway: GenerationGateway,
-    private storageService: StorageService, // ← ДОБАВИТЬ
+    private storageService: StorageService,
   ) {}
 
   @Process('process-generation')
   async handleGeneration(job: Job<GenerationJobData>) {
     const { generationId, userId, type, modelSlug, request } = job.data;
 
-    this.logger.log(
-      `Processing ${type} generation ${generationId} with model ${modelSlug}`,
-    );
+    this.logger.log(`Processing ${type} generation ${generationId} with model ${modelSlug}`);
 
     await this.generationService.updateGeneration(generationId, {
       status: GenerationStatus.PROCESSING,
@@ -67,7 +65,6 @@ export class GenerationConsumer {
         throw new Error(result.error?.message || 'Generation failed');
       }
 
-      // Async генерация с polling
       if (result.data?.taskId && (!result.data?.urls || result.data.urls.length === 0)) {
         await this.pollTaskUntilComplete(
           generationId,
@@ -79,7 +76,6 @@ export class GenerationConsumer {
         return;
       }
 
-      // Результат готов — сохраняем в S3
       const providerUrls: string[] = result.data?.urls || [];
       const { storageUrls, storageKeys } = await this.saveToStorage(
         providerUrls,
@@ -90,7 +86,7 @@ export class GenerationConsumer {
       const now = new Date();
       await this.generationService.updateGeneration(generationId, {
         status: GenerationStatus.COMPLETED,
-        resultUrls: storageUrls.length ? storageUrls : providerUrls, // S3 или оригинал
+        resultUrls: storageUrls.length ? storageUrls : providerUrls,
         storageUrls,
         storageKeys,
         savedToStorage: storageUrls.length > 0,
@@ -135,7 +131,6 @@ export class GenerationConsumer {
     }
   }
 
-  // ← НОВЫЙ МЕТОД: сохраняем все URL в S3
   private async saveToStorage(
     urls: string[],
     userId: string,
@@ -143,9 +138,10 @@ export class GenerationConsumer {
   ): Promise<{ storageUrls: string[]; storageKeys: string[] }> {
     if (!urls.length) return { storageUrls: [], storageKeys: [] };
 
-    const mediaType = type === GenerationType.IMAGE
-      ? 'image'
-      : type === GenerationType.VIDEO
+    const mediaType =
+      type === GenerationType.IMAGE
+        ? 'image'
+        : type === GenerationType.VIDEO
         ? 'video'
         : 'audio';
 
@@ -211,7 +207,6 @@ export class GenerationConsumer {
         if (taskResult.status === 'completed') {
           const providerUrls = taskResult.resultUrls || [];
 
-          // Сохраняем в S3 после polling
           const { storageUrls, storageKeys } = await this.saveToStorage(
             providerUrls,
             userId,

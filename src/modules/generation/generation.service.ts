@@ -35,17 +35,15 @@ export class GenerationService {
     private usersService: UsersService,
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
-  ) { }
+  ) {}
 
   async generateImage(userId: string, dto: ImageGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
-    
-    const { costInTokens } = await this.billingService.calculateGenerationCost(
-      dto.modelSlug,
-    );
-    
+
+    const { costInTokens } = await this.billingService.calculateGenerationCost(dto.modelSlug);
+
     await this.validateBalance(userId, costInTokens);
-  
+
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
       type: GenerationType.IMAGE,
@@ -69,10 +67,9 @@ export class GenerationService {
       tokensCost: costInTokens,
     });
     await generation.save();
-  
+
     await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
-  
-    // Типизируем params явно
+
     const p = generation.params as {
       width?: number;
       height?: number;
@@ -86,7 +83,7 @@ export class GenerationService {
       style?: string;
       inputUrls?: string[];
     };
-  
+
     await this.generationQueue.add(
       'process-generation',
       {
@@ -117,7 +114,7 @@ export class GenerationService {
         timeout: 300000,
       },
     );
-  
+
     return {
       generationId: generation._id.toString(),
       status: generation.status,
@@ -128,9 +125,7 @@ export class GenerationService {
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    const { costInTokens } = await this.billingService.calculateGenerationCost(
-      dto.modelSlug,
-    );
+    const { costInTokens } = await this.billingService.calculateGenerationCost(dto.modelSlug);
 
     await this.validateBalance(userId, costInTokens);
 
@@ -205,9 +200,7 @@ export class GenerationService {
   async generateAudio(userId: string, dto: AudioGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    const { costInTokens } = await this.billingService.calculateGenerationCost(
-      dto.modelSlug,
-    );
+    const { costInTokens } = await this.billingService.calculateGenerationCost(dto.modelSlug);
 
     await this.validateBalance(userId, costInTokens);
 
@@ -273,7 +266,7 @@ export class GenerationService {
       type: generation.type,
       modelSlug: generation.modelSlug,
       status: generation.status,
-      progress: generation.progress,
+            progress: generation.progress,
       eta: generation.eta,
       resultUrls: generation.resultUrls,
       resultContent: generation.resultContent,
@@ -402,3 +395,4 @@ export class GenerationService {
     }
   }
 }
+     

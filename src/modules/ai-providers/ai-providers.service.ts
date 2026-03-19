@@ -27,6 +27,68 @@ export class AiProvidersService {
   ) {}
 
   async getModelsByType(type: GenerationType): Promise<ModelDocument[]> {
+    return this.modelModel.find({ type, isActive: true }).sort({ sortOrder: 1 }).exec();
+  }
+
+  async getAllModels(): Promise<ModelDocument[]> {
+    return this.modelModel.find({ isActive: true }).sort({ type: 1, sortOrder: 1 }).exec();
+  }
+
+  async getModelBySlug(slug: string): Promise<ModelDocument> {
+    const model = await this.modelModel.findOne({ slug, isActive: true });
+    if (!model) throw new NotFoundException(`Model ${slug} not found or disabled`);
+    return model;
+  }
+
+  async getModelCost(slug: string): Promise<number> {
+    const model = await this.getModelBySlug(slug);
+    return model.tokenCost || model.minTokenCost;
+  }
+
+  async generateText(
+    modelSlug: string,
+    request: Omit<TextGenerationRequest, 'model'>,
+  ): Promise<GenerationResult> {
+    return this.executeWithFallback(modelSlug, 'generateText', request);
+  }
+  async *generateTextStream(
+    modelSlug: string,
+    request: Omit<TextGenerationRequest, 'model'>,
+  ): AsyncGenerator<StreamChunk> {
+    // Ваша реализация из проекта
+  }
+
+  async generateImage(
+    modelSlug: string,
+    request: Omit<ImageGenerationRequest, 'model'>,
+  ): Promise<GenerationResult> {
+    return this.executeWithFallback(modelSlug, 'generateImage', request);
+  }
+
+  async generateVideo(
+    modelSlug: string,
+    request: Omit<VideoGenerationRequest, 'model'>,
+  ): Promise<GenerationResult> {
+    return this.executeWithFallback(modelSlug, 'generateVideo', request);
+  }
+
+  async generateAudio(
+    modelSlug: string,
+    request: Omit<AudioGenerationRequest, 'model'>,
+  ): Promise<GenerationResult> {
+    return this.executeWithFallback(modelSlug, 'generateAudio', request);
+  }
+
+  async checkTaskStatus(
+    providerSlug: string,
+    taskId: string,
+  ): Promise<TaskStatusResult> {
+    const provider = this.registry.getProvider(providerSlug);
+    if (!provider) return { status: 'failed', error: `Provider ${providerSlug} not found` };
+    return provider.checkTaskStatus(taskId);
+  }
+
+  async getModelsByType(type: GenerationType): Promise<ModelDocument[]> {
     return this.modelModel
       .find({ type, isActive: true })
       .sort({ sortOrder: 1 })
@@ -58,93 +120,8 @@ export class AiProvidersService {
     modelSlug: string,
     request: Omit<TextGenerationRequest, 'model'>,
   ): Promise<GenerationResult> {
-    const providers = await this.registry.getProvidersForModel(modelSlug);
-
-    if (providers.length === 0) {
-      throw new BadRequestException(`No available providers for model ${modelSlug}`);
-    }
-
-    let lastError: GenerationResult | null = null;
-
-    for (const { provider, modelId } of providers) {
-      try {
-        this.logger.debug(
-          `Trying ${provider.getSlug()} with model ${modelId} for ${modelSlug}`,
-        );
-
-        const result = await provider.generateText({
-          ...request,
-          model: modelId,
-        });
-
-        await this.registry.updateProviderStats(
-          provider.getSlug(),
-          result.responseTimeMs,
-          result.success,
-        );
-
-        if (result.success) {
-          await this.updateModelStats(modelSlug, result.responseTimeMs, true);
-          
-          // Убеждаемся что возвращаем usage с правильными полями
-          if (result.usage) {
-            const inputTokens =
-              result.usage.inputTokens ?? result.usage['prompt_tokens'] ?? 0;
-            const outputTokens =
-              result.usage.outputTokens ?? result.usage['completion_tokens'] ?? 0;
-            const totalTokens =
-              result.usage.totalTokens ?? result.usage['total_tokens'] ?? inputTokens + outputTokens;
-
-            result.usage = {
-              inputTokens,
-              outputTokens,
-              totalTokens,
-            } as any;
-          }
-          
-          return result;
-        }
-
-        if (result.error?.retryable) {
-          this.logger.warn(
-            `Provider ${provider.getSlug()} failed (retryable): ${result.error.message}`,
-          );
-          lastError = result;
-          continue;
-        }
-
-        await this.updateModelStats(modelSlug, result.responseTimeMs, false);
-        return result;
-      } catch (error) {
-        this.logger.error(
-          `Provider ${provider.getSlug()} threw exception: ${error.message}`,
-        );
-        lastError = {
-          success: false,
-          error: {
-            code: 'PROVIDER_ERROR',
-            message: error.message,
-            retryable: true,
-          },
-          responseTimeMs: 0,
-          providerSlug: provider.getSlug(),
-        };
-      }
-    }
-
-    await this.updateModelStats(modelSlug, 0, false);
-    return lastError || {
-      success: false,
-      error: {
-        code: 'ALL_PROVIDERS_FAILED',
-        message: 'All providers failed for this model',
-        retryable: false,
-      },
-      responseTimeMs: 0,
-      providerSlug: 'none',
-    };
+    return this.executeWithFallback(modelSlug, 'generateText', request);
   }
-
   async *generateTextStream(
     modelSlug: string,
     request: Omit<TextGenerationRequest, 'model'>,
@@ -274,7 +251,7 @@ export class AiProvidersService {
 
   private async executeWithFallback(
     modelSlug: string,
-    method: 'generateImage' | 'generateVideo' | 'generateAudio',
+    method: 'generateImage' | 'generateVideo' | 'generateAudio' | 'generateText',
     request: any,
   ): Promise<GenerationResult> {
     const providers = await this.registry.getProvidersForModel(modelSlug);
@@ -287,62 +264,39 @@ export class AiProvidersService {
 
     for (const { provider, modelId } of providers) {
       try {
-        this.logger.debug(
-          `${method} via ${provider.getSlug()} with model ${modelId}`,
-        );
-
+        this.logger.debug(`${method} via ${provider.getSlug()} with model ${modelId}`);
         const result = await provider[method]({
           ...request,
           model: modelId,
         });
-
-        await this.registry.updateProviderStats(
-          provider.getSlug(),
-          result.responseTimeMs,
-          result.success,
-        );
-
+        await this.registry.updateProviderStats(provider.getSlug(), result.responseTimeMs, result.success);
         if (result.success) {
           await this.updateModelStats(modelSlug, result.responseTimeMs, true);
           return result;
         }
-
         if (result.error?.retryable) {
           lastError = result;
           continue;
         }
-
         return result;
       } catch (error) {
-        this.logger.error(
-          `${method} error from ${provider.getSlug()}: ${error.message}`,
-        );
+        this.logger.error(`${method} error from ${provider.getSlug()}: ${error.message}`);
         lastError = {
           success: false,
-          error: {
-            code: 'PROVIDER_ERROR',
-            message: error.message,
-            retryable: true,
-          },
+          error: { code: 'PROVIDER_ERROR', message: error.message, retryable: true },
           responseTimeMs: 0,
           providerSlug: provider.getSlug(),
         };
       }
     }
-
     await this.updateModelStats(modelSlug, 0, false);
     return lastError || {
       success: false,
-      error: {
-        code: 'ALL_PROVIDERS_FAILED',
-        message: `All providers failed for ${modelSlug}`,
-        retryable: false,
-      },
+      error: { code: 'ALL_PROVIDERS_FAILED', message: `All providers failed for ${modelSlug}`, retryable: false },
       responseTimeMs: 0,
       providerSlug: 'none',
     };
   }
-
   private async updateModelStats(
     modelSlug: string,
     responseTimeMs: number,
