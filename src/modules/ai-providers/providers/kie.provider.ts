@@ -533,19 +533,22 @@ export class KieProvider extends BaseProvider {
       taskId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/); // UUID format = Runway
 
     if (isRunway) {
-      return this.checkRunwayTaskStatus(taskId);
+      return await this.checkRunwayTaskStatus(taskId);
     }
 
-    return this.checkJobsTaskStatus(taskId);
+    // Also handle ElevenLabs audio taskIds with prefix 'task_elevenlabs_'
+    if (taskId.startsWith('task_elevenlabs_')) {
+      return await this.checkElevenLabsTaskStatus(taskId);
+    }
+
+    return await this.checkJobsTaskStatus(taskId);
   }
 
-  // ── Jobs API status (Sora, Kling, Hailuo) ──
-  private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
+  private async checkElevenLabsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/jobs/recordInfo', {
         params: { taskId },
       });
-
       const data = response.data;
 
       if (data.code !== 200) {
@@ -557,7 +560,7 @@ export class KieProvider extends BaseProvider {
         return { status: 'pending' };
       }
 
-      this.logger.debug(`KIE jobs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
+      this.logger.debug(`ElevenLabs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
 
       const stateMap: Record<string, TaskStatusResult['status']> = {
         waiting: 'pending',
@@ -600,81 +603,94 @@ export class KieProvider extends BaseProvider {
         progress: task.progress || 0,
       };
     } catch (error) {
-      this.logger.error(`KIE checkJobsTaskStatus error: ${error.message}`);
-      return { status: 'failed', error: `Status check failed: ${error.message}` };
-    }
-  }
-
-  // ── Runway API status ──
-  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
-    try {
-      const response = await this.client.get('/api/v1/runway/record-detail', {
-        params: { taskId },
-      });
-
-      const data = response.data;
-
-      if (data.code !== 200) {
-        return { status: 'failed', error: data.msg || 'Runway status check failed' };
-      }
-
-      const task = data.data;
-      if (!task) {
-        return { status: 'pending' };
-      }
-
-      this.logger.debug(`Runway task ${taskId} state: ${task.state}`);
-
-      const stateMap: Record<string, TaskStatusResult['status']> = {
-        wait: 'pending',
-        queueing: 'pending',
-        generating: 'processing',
-        success: 'completed',
-        fail: 'failed',
-      };
-
-      const status = stateMap[task.state] || 'pending';
-
-      if (status === 'failed') {
-        return {
-          status: 'failed',
-          error: task.failMsg || 'Runway generation failed',
-        };
-      }
-
-      if (status === 'completed') {
-        const resultUrls: string[] = [];
-        if (task.videoInfo?.videoUrl) {
-          resultUrls.push(task.videoInfo.videoUrl);
-        }
-
-        return {
-          status: 'completed',
-          resultUrls,
-          progress: 100,
-        };
-      }
-
+      this.logger.error(`ElevenLabs check task status error: ${error.message}`);
       return {
-        status,
-        progress: 0,
+        status: 'failed',
+        error: `Status check failed: ${error.message}`,
       };
-    } catch (error) {
-      this.logger.error(`Runway checkTaskStatus error: ${error.message}`);
-      return { status: 'failed', error: `Runway status check failed: ${error.message}` };
     }
   }
 
   // ═══════════════════════════════════════════════════════
-  // AUDIO (stub)
+  // AUDIO GENERATION — extended to support ElevenLabs models
   // ═══════════════════════════════════════════════════════
   async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
-    return {
-      success: false,
-      error: { code: 'NOT_IMPLEMENTED', message: 'Audio via KIE not yet implemented', retryable: false },
-      responseTimeMs: 0,
-      providerSlug: this.slug,
-    };
+    const start = Date.now();
+    try {
+      const modelId = request.model;
+
+      // ElevenLabs Models
+      const elevenLabsModels = new Set([
+        'elevenlabs/audio-isolation',
+        'elevenlabs/sound-effect-v2',
+        'elevenlabs/speech-to-text',
+        'elevenlabs/text-to-dialogue-v3',
+        'elevenlabs/text-to-speech-multilingual-v2',
+        'elevenlabs/text-to-speech-turbo-2-5',
+      ]);
+
+      if (elevenLabsModels.has(modelId)) {
+        this.logger.debug(`KIE generateAudio: using ElevenLabs model=${modelId}`);
+
+        const input = request as any;
+
+        // Build request payload with required keys
+        const requestBody: any = {
+          model: modelId,
+          input: input.settings || {},
+        };
+
+        // Optional callback URL in settings
+        if (input.settings?.callBackUrl) {
+          requestBody.callBackUrl = input.settings.callBackUrl;
+          delete requestBody.input.callBackUrl;
+        }
+
+        // For speech-to-text model ensure audio_url in input
+        if (modelId === 'elevenlabs/speech-to-text' && !requestBody.input.audio_url) {
+          throw new Error('audio_url is required for speech-to-text model');
+        }
+
+        // For audio-isolation model ensure audio_url in input
+        if (modelId === 'elevenlabs/audio-isolation' && !requestBody.input.audio_url) {
+          throw new Error('audio_url is required for audio-isolation model');
+        }
+
+        this.logger.debug(`Sending request to KIE ElevenLabs audio model: ${JSON.stringify(requestBody).substring(0, 200)}`);
+
+        const response = await this.client.post('/api/v1/jobs/createTask', requestBody);
+
+        const data = response.data;
+        if (data.code !== 200) {
+          throw new Error(data.msg || 'KIE ElevenLabs audio task creation failed');
+        }
+
+        const taskId = data.data?.taskId;
+        if (!taskId) {
+          throw new Error('No taskId in KIE ElevenLabs audio response');
+        }
+
+        this.logger.debug(`KIE ElevenLabs audio task created: ${taskId}`);
+
+        return {
+          success: true,
+          data: { taskId, urls: [], metadata: { model: modelId } },
+          responseTimeMs: Date.now() - start,
+          providerSlug: this.slug,
+        };
+      }
+
+      // Default: return not implemented for other audio models
+      return {
+        success: false,
+        error: { code: 'NOT_IMPLEMENTED', message: `Audio generation for model ${modelId} not implemented`, retryable: false },
+        responseTimeMs: 0,
+        providerSlug: this.slug,
+      };
+    } catch (error) {
+      this.logger.error(`KIE generateAudio error: ${error.message}`);
+      return this.handleError(error, start);
+    }
   }
 
   // ═══════════════════════════════════════════════════════
@@ -738,5 +754,97 @@ export class KieProvider extends BaseProvider {
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
+  }
+
+  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
+      const data = response.data;
+      if (data.code !== 200) {
+        return { status: 'failed', error: data.msg || 'Failed to get runway task status' };
+      }
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+      this.logger.debug(`Runway task ${taskId} state: ${task.state}, progress: ${task.progress}`);
+      const stateMap: Record<string, TaskStatusResult['status']> = {
+        waiting: 'pending',
+        queued: 'pending',
+        running: 'processing',
+        succeeded: 'completed',
+        failed: 'failed',
+      };
+      const status = stateMap[task.state] || 'pending';
+      if (status === 'failed') {
+        return {
+          status: 'failed',
+          error: task.errorMessage || 'Runway generation failed',
+        };
+      }
+      if (status === 'completed') {
+        return {
+          status: 'completed',
+          resultUrls: task.resultUrls || [],
+          progress: 100,
+        };
+      }
+      return {
+        status,
+        progress: task.progress || 0,
+      };
+    } catch (error) {
+      this.logger.error(`Runway check task status error: ${error.message}`);
+      return {
+        status: 'failed',
+        error: `Status check failed: ${error.message}`,
+      };
+    }
+  }
+
+  private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/jobs/recordInfo', { params: { taskId } });
+      const data = response.data;
+      if (data.code !== 200) {
+        return { status: 'failed', error: data.msg || 'Failed to get jobs task status' };
+      }
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+      this.logger.debug(`Jobs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
+      const stateMap: Record<string, TaskStatusResult['status']> = {
+        waiting: 'pending',
+        queuing: 'pending',
+        generating: 'processing',
+        success: 'completed',
+        fail: 'failed',
+      };
+      const status = stateMap[task.state] || 'pending';
+      if (status === 'failed') {
+        return {
+          status: 'failed',
+          error: task.failMsg || task.failCode || 'Generation failed',
+        };
+      }
+      if (status === 'completed') {
+        return {
+          status: 'completed',
+          resultUrls: task.resultUrls || [],
+          progress: 100,
+        };
+      }
+      return {
+        status,
+        progress: task.progress || 0,
+      };
+    } catch (error) {
+      this.logger.error(`Jobs check task status error: ${error.message}`);
+      return {
+        status: 'failed',
+        error: `Status check failed: ${error.message}`,
+      };
+    }
   }
 }
