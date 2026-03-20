@@ -524,9 +524,7 @@ export class KieProvider extends BaseProvider {
   // ═══════════════════════════════════════════════════════
   // TASK STATUS CHECK — handles both Jobs and Runway APIs
   // ═══════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════
-  // TASK STATUS CHECK — handles Jobs, Runway, Suno, ElevenLabs
-  // ═══════════════════════════════════════════════════════
+
   async checkTaskStatus(taskId: string): Promise<TaskStatusResult> {
     // Runway tasks — UUID format
     const isRunway = taskId.includes('runway') ||
@@ -541,13 +539,16 @@ export class KieProvider extends BaseProvider {
       return await this.checkElevenLabsTaskStatus(taskId);
     }
 
-    // Сначала пробуем Suno endpoint, если он вернёт данные — используем их
-    // Suno taskId — обычный hex строка (32 символа), но Jobs тоже
-    // Поэтому пробуем Jobs API (он работает для всех KIE задач)
-    // Suno задачи тоже можно проверять через /api/v1/generate/record-info
+    // Сначала пробуем Jobs API
     const jobsResult = await this.checkJobsTaskStatus(taskId);
 
-    // Если Jobs API вернул completed но без URL — пробуем Suno endpoint
+    // Если Jobs вернул ошибку "recordInfo is null" — это Suno задача
+    if (jobsResult.status === 'failed' && jobsResult.error?.includes('recordInfo is null')) {
+      this.logger.debug(`Jobs API returned null for ${taskId}, trying Suno endpoint...`);
+      return await this.checkSunoTaskStatus(taskId);
+    }
+
+    // Если Jobs вернул completed но без URL — тоже пробуем Suno
     if (jobsResult.status === 'completed' && (!jobsResult.resultUrls || jobsResult.resultUrls.length === 0)) {
       this.logger.debug(`Jobs returned completed but no URLs for ${taskId}, trying Suno endpoint...`);
       const sunoResult = await this.checkSunoTaskStatus(taskId);
@@ -626,14 +627,12 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-    private async checkSunoTaskStatus(taskId: string): Promise<TaskStatusResult> {
+  private async checkSunoTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/generate/record-info', {
         params: { taskId },
       });
       const data = response.data;
-
-      this.logger.log(`Suno task ${taskId} raw response code=${data.code}, keys=${data.data ? Object.keys(data.data).join(',') : 'null'}`);
 
       if (data.code !== 200) {
         return { status: 'pending' };
@@ -644,9 +643,7 @@ export class KieProvider extends BaseProvider {
         return { status: 'pending' };
       }
 
-      this.logger.log(`Suno task ${taskId} FULL: ${JSON.stringify(task).substring(0, 1500)}`);
-
-      const state = task.status || task.state;
+      const state = task.status;
       this.logger.debug(`Suno task ${taskId} state: ${state}`);
 
       const stateMap: Record<string, TaskStatusResult['status']> = {
@@ -658,12 +655,6 @@ export class KieProvider extends BaseProvider {
         GENERATE_AUDIO_FAILED: 'failed',
         CALLBACK_EXCEPTION: 'failed',
         SENSITIVE_WORD_ERROR: 'failed',
-        // KIE standard states (fallback)
-        waiting: 'pending',
-        queuing: 'pending',
-        generating: 'processing',
-        success: 'completed',
-        fail: 'failed',
       };
 
       const status = stateMap[state] || 'pending';
@@ -671,63 +662,30 @@ export class KieProvider extends BaseProvider {
       if (status === 'failed') {
         return {
           status: 'failed',
-          error: task.errorMessage || task.failMsg || 'Audio generation failed',
+          error: task.errorMessage || 'Audio generation failed',
         };
       }
 
       if (status === 'completed') {
         let resultUrls: string[] = [];
 
-        // Suno возвращает data.data.data с массивом треков
-        if (Array.isArray(task.data)) {
-          resultUrls = task.data
-            .map((track: any) => track.audio_url || track.source_audio_url || track.url)
+        // Реальная структура: task.response.sunoData[].audioUrl
+        const sunoData = task.response?.sunoData;
+        if (Array.isArray(sunoData) && sunoData.length > 0) {
+          resultUrls = sunoData
+            .map((track: any) => track.audioUrl || track.sourceAudioUrl)
             .filter(Boolean);
-
-          this.logger.log(`Suno task ${taskId}: found ${resultUrls.length} tracks from task.data array`);
+          this.logger.log(`Suno task ${taskId}: found ${resultUrls.length} tracks`);
         }
 
-        // Fallback: resultUrls напрямую
-        if (resultUrls.length === 0 && Array.isArray(task.resultUrls) && task.resultUrls.length > 0) {
-          resultUrls = task.resultUrls;
+        // Fallback: task.data array
+        if (resultUrls.length === 0 && Array.isArray(task.data)) {
+          resultUrls = task.data
+            .map((track: any) => track.audio_url || track.audioUrl || track.url)
+            .filter(Boolean);
         }
 
-        // Fallback: resultJson
-        if (resultUrls.length === 0 && task.resultJson) {
-          try {
-            const parsed = typeof task.resultJson === 'string'
-              ? JSON.parse(task.resultJson)
-              : task.resultJson;
-
-            this.logger.log(`Suno task ${taskId} resultJson keys: ${Object.keys(parsed).join(',')}`);
-
-            if (Array.isArray(parsed.resultUrls) && parsed.resultUrls.length > 0) {
-              resultUrls = parsed.resultUrls;
-            } else if (Array.isArray(parsed.data)) {
-              resultUrls = parsed.data
-                .map((track: any) => track.audio_url || track.source_audio_url || track.url)
-                .filter(Boolean);
-            } else if (Array.isArray(parsed.urls) && parsed.urls.length > 0) {
-              resultUrls = parsed.urls;
-            } else if (parsed.url) {
-              resultUrls = [parsed.url];
-            }
-          } catch (e) {
-            this.logger.error(`Suno task ${taskId}: failed to parse resultJson`);
-          }
-        }
-
-        // Последний шанс — ищем URL-ы в полном ответе
-        if (resultUrls.length === 0) {
-          const fullJson = JSON.stringify(task);
-          const urlMatches = fullJson.match(/https?:\/\/[^\s"',}\]]+\.(mp3|wav|ogg|m4a|flac|mp4|aac)/gi);
-          if (urlMatches && urlMatches.length > 0) {
-            resultUrls = [...new Set(urlMatches)]; // dedupe
-            this.logger.log(`Suno task ${taskId}: extracted ${resultUrls.length} audio URLs via regex`);
-          }
-        }
-
-        this.logger.log(`Suno task ${taskId} completed. Final URLs (${resultUrls.length}): ${JSON.stringify(resultUrls).substring(0, 500)}`);
+        this.logger.log(`Suno task ${taskId} completed. URLs: ${JSON.stringify(resultUrls).substring(0, 300)}`);
 
         return {
           status: 'completed',
@@ -738,10 +696,10 @@ export class KieProvider extends BaseProvider {
 
       return {
         status,
-        progress: task.progress || 0,
+        progress: 0,
       };
     } catch (error) {
-      this.logger.warn(`Suno check task status error for ${taskId}: ${error.message}`);
+      this.logger.warn(`Suno check error for ${taskId}: ${error.message}`);
       return { status: 'pending' };
     }
   }
@@ -749,9 +707,7 @@ export class KieProvider extends BaseProvider {
   // ═══════════════════════════════════════════════════════
   // AUDIO GENERATION — extended to support ElevenLabs models
   // ═══════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════
-  // AUDIO GENERATION — supports Suno + ElevenLabs + ai-music-api mapping
-  // ═══════════════════════════════════════════════════════
+
   async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
