@@ -878,7 +878,7 @@ export class KieProvider extends BaseProvider {
           customMode: input.customMode || false,
           instrumental: input.instrumental || false,
           model: sunoModel,
-          callBackUrl: input.callBackUrl,
+          callBackUrl: input.callBackUrl || `https://${process.env.DOMAIN || 'localhost:3001'}/api/v1/webhooks/noop`,
           style: input.style,
           title: input.title,
           negativeTags: input.negativeTags,
