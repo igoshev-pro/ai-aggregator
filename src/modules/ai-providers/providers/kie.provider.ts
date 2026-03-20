@@ -783,9 +783,15 @@ export class KieProvider extends BaseProvider {
 
       // ── Маппинг ai-music-api → suno model name для KIE API ──
       const sunoModelMap: Record<string, string> = {
-        'ai-music-api/generate': 'suno-v4',
-        'ai-music-api/generate/v4': 'suno-v4',
-        'ai-music-api/generate/v4.5': 'suno-v4_5',
+        'ai-music-api/generate': 'V4',
+        'ai-music-api/generate/v4': 'V4',
+        'ai-music-api/generate/v4.5': 'V4_5',
+        'suno-v3': 'V3_5',
+        'suno-v4': 'V4',
+        'suno-v4_5': 'V4_5',
+        'suno-v4_5plus': 'V4_5PLUS',
+        'suno-v4_5all': 'V4_5ALL',
+        'suno-v5': 'V5',
       };
 
       if (elevenLabsModels.has(modelId)) {
@@ -878,7 +884,7 @@ export class KieProvider extends BaseProvider {
           customMode: input.customMode || false,
           instrumental: input.instrumental || false,
           model: sunoModel,
-          callBackUrl: input.callBackUrl || `https://${process.env.DOMAIN || 'localhost:3001'}/api/v1/webhooks/noop`,
+          callBackUrl: input.callBackUrl || 'https://spichki.tw1.ru/api/v1/webhooks/kie-callback',
           style: input.style,
           title: input.title,
           negativeTags: input.negativeTags,
