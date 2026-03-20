@@ -524,21 +524,39 @@ export class KieProvider extends BaseProvider {
   // ═══════════════════════════════════════════════════════
   // TASK STATUS CHECK — handles both Jobs and Runway APIs
   // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════
+  // TASK STATUS CHECK — handles Jobs, Runway, Suno, ElevenLabs
+  // ═══════════════════════════════════════════════════════
   async checkTaskStatus(taskId: string): Promise<TaskStatusResult> {
-    // Try to detect Runway tasks by prefix
+    // Runway tasks — UUID format
     const isRunway = taskId.includes('runway') ||
-      taskId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/); // UUID format = Runway
+      /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(taskId);
 
     if (isRunway) {
       return await this.checkRunwayTaskStatus(taskId);
     }
 
-    // Also handle ElevenLabs audio taskIds with prefix 'task_elevenlabs_'
+    // ElevenLabs tasks
     if (taskId.startsWith('task_elevenlabs_')) {
       return await this.checkElevenLabsTaskStatus(taskId);
     }
 
-    return await this.checkJobsTaskStatus(taskId);
+    // Сначала пробуем Suno endpoint, если он вернёт данные — используем их
+    // Suno taskId — обычный hex строка (32 символа), но Jobs тоже
+    // Поэтому пробуем Jobs API (он работает для всех KIE задач)
+    // Suno задачи тоже можно проверять через /api/v1/generate/record-info
+    const jobsResult = await this.checkJobsTaskStatus(taskId);
+
+    // Если Jobs API вернул completed но без URL — пробуем Suno endpoint
+    if (jobsResult.status === 'completed' && (!jobsResult.resultUrls || jobsResult.resultUrls.length === 0)) {
+      this.logger.debug(`Jobs returned completed but no URLs for ${taskId}, trying Suno endpoint...`);
+      const sunoResult = await this.checkSunoTaskStatus(taskId);
+      if (sunoResult.resultUrls && sunoResult.resultUrls.length > 0) {
+        return sunoResult;
+      }
+    }
+
+    return jobsResult;
   }
 
   private async checkElevenLabsTaskStatus(taskId: string): Promise<TaskStatusResult> {
@@ -608,166 +626,309 @@ export class KieProvider extends BaseProvider {
     }
   }
 
+    private async checkSunoTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/generate/record-info', {
+        params: { taskId },
+      });
+      const data = response.data;
+
+      this.logger.log(`Suno task ${taskId} raw response code=${data.code}, keys=${data.data ? Object.keys(data.data).join(',') : 'null'}`);
+
+      if (data.code !== 200) {
+        return { status: 'pending' };
+      }
+
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+
+      this.logger.log(`Suno task ${taskId} FULL: ${JSON.stringify(task).substring(0, 1500)}`);
+
+      const state = task.status || task.state;
+      this.logger.debug(`Suno task ${taskId} state: ${state}`);
+
+      const stateMap: Record<string, TaskStatusResult['status']> = {
+        PENDING: 'pending',
+        TEXT_SUCCESS: 'processing',
+        FIRST_SUCCESS: 'processing',
+        SUCCESS: 'completed',
+        CREATE_TASK_FAILED: 'failed',
+        GENERATE_AUDIO_FAILED: 'failed',
+        CALLBACK_EXCEPTION: 'failed',
+        SENSITIVE_WORD_ERROR: 'failed',
+        // KIE standard states (fallback)
+        waiting: 'pending',
+        queuing: 'pending',
+        generating: 'processing',
+        success: 'completed',
+        fail: 'failed',
+      };
+
+      const status = stateMap[state] || 'pending';
+
+      if (status === 'failed') {
+        return {
+          status: 'failed',
+          error: task.errorMessage || task.failMsg || 'Audio generation failed',
+        };
+      }
+
+      if (status === 'completed') {
+        let resultUrls: string[] = [];
+
+        // Suno возвращает data.data.data с массивом треков
+        if (Array.isArray(task.data)) {
+          resultUrls = task.data
+            .map((track: any) => track.audio_url || track.source_audio_url || track.url)
+            .filter(Boolean);
+
+          this.logger.log(`Suno task ${taskId}: found ${resultUrls.length} tracks from task.data array`);
+        }
+
+        // Fallback: resultUrls напрямую
+        if (resultUrls.length === 0 && Array.isArray(task.resultUrls) && task.resultUrls.length > 0) {
+          resultUrls = task.resultUrls;
+        }
+
+        // Fallback: resultJson
+        if (resultUrls.length === 0 && task.resultJson) {
+          try {
+            const parsed = typeof task.resultJson === 'string'
+              ? JSON.parse(task.resultJson)
+              : task.resultJson;
+
+            this.logger.log(`Suno task ${taskId} resultJson keys: ${Object.keys(parsed).join(',')}`);
+
+            if (Array.isArray(parsed.resultUrls) && parsed.resultUrls.length > 0) {
+              resultUrls = parsed.resultUrls;
+            } else if (Array.isArray(parsed.data)) {
+              resultUrls = parsed.data
+                .map((track: any) => track.audio_url || track.source_audio_url || track.url)
+                .filter(Boolean);
+            } else if (Array.isArray(parsed.urls) && parsed.urls.length > 0) {
+              resultUrls = parsed.urls;
+            } else if (parsed.url) {
+              resultUrls = [parsed.url];
+            }
+          } catch (e) {
+            this.logger.error(`Suno task ${taskId}: failed to parse resultJson`);
+          }
+        }
+
+        // Последний шанс — ищем URL-ы в полном ответе
+        if (resultUrls.length === 0) {
+          const fullJson = JSON.stringify(task);
+          const urlMatches = fullJson.match(/https?:\/\/[^\s"',}\]]+\.(mp3|wav|ogg|m4a|flac|mp4|aac)/gi);
+          if (urlMatches && urlMatches.length > 0) {
+            resultUrls = [...new Set(urlMatches)]; // dedupe
+            this.logger.log(`Suno task ${taskId}: extracted ${resultUrls.length} audio URLs via regex`);
+          }
+        }
+
+        this.logger.log(`Suno task ${taskId} completed. Final URLs (${resultUrls.length}): ${JSON.stringify(resultUrls).substring(0, 500)}`);
+
+        return {
+          status: 'completed',
+          resultUrls,
+          progress: 100,
+        };
+      }
+
+      return {
+        status,
+        progress: task.progress || 0,
+      };
+    } catch (error) {
+      this.logger.warn(`Suno check task status error for ${taskId}: ${error.message}`);
+      return { status: 'pending' };
+    }
+  }
+
   // ═══════════════════════════════════════════════════════
   // AUDIO GENERATION — extended to support ElevenLabs models
   // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════
+  // AUDIO GENERATION — supports Suno + ElevenLabs + ai-music-api mapping
+  // ═══════════════════════════════════════════════════════
   async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
-  const start = Date.now();
-  try {
-    const modelId = request.model;
+    const start = Date.now();
+    try {
+      const modelId = request.model;
 
-    const elevenLabsModels = new Set([
-      'elevenlabs/audio-isolation',
-      'elevenlabs/sound-effect-v2',
-      'elevenlabs/speech-to-text',
-      'elevenlabs/text-to-dialogue-v3',
-      'elevenlabs/text-to-speech-multilingual-v2',
-      'elevenlabs/text-to-speech-turbo-2-5',
-    ]);
+      this.logger.log(`KIE generateAudio: received modelId="${modelId}"`);
 
-    const sunoModels = new Set([
-      'suno-v3',
-      'suno-v4',
-      'suno-v4_5',
-      'suno-v4_5plus',
-      'suno-v4_5all',
-      'suno-v5',
-    ]);
+      const elevenLabsModels = new Set([
+        'elevenlabs/audio-isolation',
+        'elevenlabs/sound-effect-v2',
+        'elevenlabs/speech-to-text',
+        'elevenlabs/text-to-dialogue-v3',
+        'elevenlabs/text-to-speech-multilingual-v2',
+        'elevenlabs/text-to-speech-turbo-2-5',
+      ]);
 
-    if (elevenLabsModels.has(modelId)) {
-      this.logger.debug(`KIE generateAudio: using ElevenLabs model=${modelId}`);
+      const sunoModels = new Set([
+        'suno-v3',
+        'suno-v4',
+        'suno-v4_5',
+        'suno-v4_5plus',
+        'suno-v4_5all',
+        'suno-v5',
+        // KIE seed может подставлять эти modelId через providerMappings
+        'ai-music-api/generate',
+        'ai-music-api/generate/v4',
+        'ai-music-api/generate/v4.5',
+      ]);
 
-      const inputRaw = request as any;
-      const input: Record<string, any> = {};
-
-      switch (modelId) {
-        case 'elevenlabs/audio-isolation':
-        case 'elevenlabs/speech-to-text':
-          if (!inputRaw.audio_url) throw new Error('audio_url is required for ' + modelId);
-          input.audio_url = inputRaw.audio_url;
-          if (modelId === 'elevenlabs/speech-to-text') {
-            if (inputRaw.language_code) input.language_code = inputRaw.language_code;
-            if (typeof inputRaw.tag_audio_events === 'boolean') input.tag_audio_events = inputRaw.tag_audio_events;
-            if (typeof inputRaw.diarize === 'boolean') input.diarize = inputRaw.diarize;
-          }
-          break;
-
-        case 'elevenlabs/sound-effect-v2':
-          if (!inputRaw.text) throw new Error('text is required for sound-effect-v2');
-          input.text = inputRaw.text;
-          input.loop = inputRaw.loop ?? false;
-          input.duration_seconds = inputRaw.duration_seconds ?? 5;
-          input.prompt_influence = inputRaw.prompt_influence ?? 0.3;
-          input.output_format = inputRaw.output_format ?? 'mp3_44100_128';
-          break;
-
-        case 'elevenlabs/text-to-dialogue-v3':
-          if (!Array.isArray(inputRaw.dialogue)) throw new Error('dialogue array is required for text-to-dialogue-v3');
-          input.dialogue = inputRaw.dialogue;
-          input.stability = inputRaw.stability ?? 0.5;
-          break;
-
-        case 'elevenlabs/text-to-speech-multilingual-v2':
-        case 'elevenlabs/text-to-speech-turbo-2-5':
-          if (!inputRaw.text) throw new Error('text is required for text-to-speech models');
-          input.text = inputRaw.text;
-          input.voice = inputRaw.voice;
-          input.stability = inputRaw.stability ?? 0.5;
-          input.similarity_boost = inputRaw.similarity_boost ?? 0.75;
-          input.style = inputRaw.style ?? 0;
-          input.speed = inputRaw.speed ?? 1;
-          input.timestamps = inputRaw.timestamps ?? false;
-          input.previous_text = inputRaw.previous_text ?? '';
-          input.next_text = inputRaw.next_text ?? '';
-          input.language_code = inputRaw.language_code ?? '';
-          break;
-
-        default:
-          throw new Error(`Model ${modelId} not supported by ElevenLabs audio generation`);
-      }
-
-      const requestBody: any = {
-        model: modelId,
-        input,
+      // ── Маппинг ai-music-api → suno model name для KIE API ──
+      const sunoModelMap: Record<string, string> = {
+        'ai-music-api/generate': 'suno-v4',
+        'ai-music-api/generate/v4': 'suno-v4',
+        'ai-music-api/generate/v4.5': 'suno-v4_5',
       };
 
-      if (inputRaw.callBackUrl) requestBody.callBackUrl = inputRaw.callBackUrl;
+      if (elevenLabsModels.has(modelId)) {
+        this.logger.debug(`KIE generateAudio: using ElevenLabs model=${modelId}`);
 
-      this.logger.debug(`Sending request to KIE ElevenLabs audio model: ${JSON.stringify(requestBody).substring(0, 300)}`);
+        const inputRaw = request as any;
+        const input: Record<string, any> = {};
 
-      const response = await this.client.post('/api/v1/jobs/createTask', requestBody);
+        switch (modelId) {
+          case 'elevenlabs/audio-isolation':
+          case 'elevenlabs/speech-to-text':
+            if (!inputRaw.audio_url) throw new Error('audio_url is required for ' + modelId);
+            input.audio_url = inputRaw.audio_url;
+            if (modelId === 'elevenlabs/speech-to-text') {
+              if (inputRaw.language_code) input.language_code = inputRaw.language_code;
+              if (typeof inputRaw.tag_audio_events === 'boolean') input.tag_audio_events = inputRaw.tag_audio_events;
+              if (typeof inputRaw.diarize === 'boolean') input.diarize = inputRaw.diarize;
+            }
+            break;
 
-      const data = response.data;
-      if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs audio task creation failed');
+          case 'elevenlabs/sound-effect-v2':
+            if (!inputRaw.text) throw new Error('text is required for sound-effect-v2');
+            input.text = inputRaw.text;
+            input.loop = inputRaw.loop ?? false;
+            input.duration_seconds = inputRaw.duration_seconds ?? 5;
+            input.prompt_influence = inputRaw.prompt_influence ?? 0.3;
+            input.output_format = inputRaw.output_format ?? 'mp3_44100_128';
+            break;
 
-      const taskId = data.data?.taskId;
-      if (!taskId) throw new Error('No taskId in KIE ElevenLabs audio response');
+          case 'elevenlabs/text-to-dialogue-v3':
+            if (!Array.isArray(inputRaw.dialogue)) throw new Error('dialogue array is required for text-to-dialogue-v3');
+            input.dialogue = inputRaw.dialogue;
+            input.stability = inputRaw.stability ?? 0.5;
+            break;
 
-      this.logger.debug(`KIE ElevenLabs audio task created: ${taskId}`);
+          case 'elevenlabs/text-to-speech-multilingual-v2':
+          case 'elevenlabs/text-to-speech-turbo-2-5':
+            if (!inputRaw.text) throw new Error('text is required for text-to-speech models');
+            input.text = inputRaw.text;
+            input.voice = inputRaw.voice;
+            input.stability = inputRaw.stability ?? 0.5;
+            input.similarity_boost = inputRaw.similarity_boost ?? 0.75;
+            input.style = inputRaw.style ?? 0;
+            input.speed = inputRaw.speed ?? 1;
+            input.timestamps = inputRaw.timestamps ?? false;
+            input.previous_text = inputRaw.previous_text ?? '';
+            input.next_text = inputRaw.next_text ?? '';
+            input.language_code = inputRaw.language_code ?? '';
+            break;
+
+          default:
+            throw new Error(`Model ${modelId} not supported by ElevenLabs audio generation`);
+        }
+
+        const requestBody: any = {
+          model: modelId,
+          input,
+        };
+
+        if (inputRaw.callBackUrl) requestBody.callBackUrl = inputRaw.callBackUrl;
+
+        this.logger.debug(`Sending request to KIE ElevenLabs audio model: ${JSON.stringify(requestBody).substring(0, 300)}`);
+
+        const response = await this.client.post('/api/v1/jobs/createTask', requestBody);
+
+        const data = response.data;
+        if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs audio task creation failed');
+
+        const taskId = data.data?.taskId;
+        if (!taskId) throw new Error('No taskId in KIE ElevenLabs audio response');
+
+        this.logger.debug(`KIE ElevenLabs audio task created: ${taskId}`);
+
+        return {
+          success: true,
+          data: { taskId, urls: [], metadata: { model: modelId } },
+          responseTimeMs: Date.now() - start,
+          providerSlug: this.slug,
+        };
+
+      } else if (sunoModels.has(modelId)) {
+        // Определяем правильное имя модели для KIE Suno API
+        const sunoModel = sunoModelMap[modelId] || modelId;
+
+        this.logger.debug(`KIE generateAudio: using Suno model=${modelId} → mapped to ${sunoModel}`);
+
+        const input = request as any;
+        const body: any = {
+          prompt: input.prompt,
+          customMode: input.customMode || false,
+          instrumental: input.instrumental || false,
+          model: sunoModel,
+          callBackUrl: input.callBackUrl,
+          style: input.style,
+          title: input.title,
+          negativeTags: input.negativeTags,
+          vocalGender: input.vocalGender,
+          styleWeight: input.styleWeight,
+          weirdnessConstraint: input.weirdnessConstraint,
+          audioWeight: input.audioWeight,
+          personaId: input.personaId,
+          uploadUrl: input.uploadUrl,
+          duration: input.duration,
+        };
+
+        this.logger.debug(`Sending request to KIE Suno audio model: ${JSON.stringify(body).substring(0, 300)}`);
+
+        const response = await this.client.post('/api/v1/generate', body);
+
+        const data = response.data;
+        if (data.code !== 200) {
+          throw new Error(data.msg || 'KIE Suno audio task creation failed');
+        }
+
+        const taskId = data.data?.taskId;
+        if (!taskId) {
+          throw new Error('No taskId in KIE Suno audio response');
+        }
+
+        this.logger.log(`KIE Suno audio task created: ${taskId} (model: ${sunoModel})`);
+
+        return {
+          success: true,
+          data: { taskId, urls: [], metadata: { model: sunoModel, apiType: 'suno' } },
+          responseTimeMs: Date.now() - start,
+          providerSlug: this.slug,
+        };
+      }
+
+      // Не распознана модель
+      this.logger.error(`KIE generateAudio: unknown model "${modelId}". Known elevenlabs: [${[...elevenLabsModels].join(', ')}]. Known suno: [${[...sunoModels].join(', ')}]`);
 
       return {
-        success: true,
-        data: { taskId, urls: [], metadata: { model: modelId } },
-        responseTimeMs: Date.now() - start,
+        success: false,
+        error: { code: 'NOT_IMPLEMENTED', message: `Audio generation for model ${modelId} not implemented`, retryable: false },
+        responseTimeMs: 0,
         providerSlug: this.slug,
       };
-    } else if (sunoModels.has(modelId)) {
-      this.logger.debug(`KIE generateAudio: using Suno model=${modelId}`);
-
-      const input = request as any;
-      const body: any = {
-        prompt: input.prompt,
-        customMode: input.customMode || false,
-        instrumental: input.instrumental || false,
-        model: modelId,
-        callBackUrl: input.callBackUrl,
-        style: input.style,
-        title: input.title,
-        negativeTags: input.negativeTags,
-        vocalGender: input.vocalGender,
-        styleWeight: input.styleWeight,
-        weirdnessConstraint: input.weirdnessConstraint,
-        audioWeight: input.audioWeight,
-        personaId: input.personaId,
-        uploadUrl: input.uploadUrl,
-        duration: input.duration,
-      };
-
-      this.logger.debug(`Sending request to KIE Suno audio model: ${JSON.stringify(body).substring(0, 300)}`);
-
-      const response = await this.client.post('/api/v1/generate', body);
-
-      const data = response.data;
-      if (data.code !== 200) {
-        throw new Error(data.msg || 'KIE Suno audio task creation failed');
-      }
-
-      const taskId = data.data?.taskId;
-      if (!taskId) {
-        throw new Error('No taskId in KIE Suno audio response');
-      }
-
-      this.logger.debug(`KIE Suno audio task created: ${taskId}`);
-
-      return {
-        success: true,
-        data: { taskId, urls: [], metadata: { model: modelId } },
-        responseTimeMs: Date.now() - start,
-        providerSlug: this.slug,
-      };
+    } catch (error) {
+      this.logger.error(`KIE generateAudio error: ${error.message}`);
+      return this.handleError(error, start);
     }
-
-    return {
-      success: false,
-      error: { code: 'NOT_IMPLEMENTED', message: `Audio generation for model ${modelId} not implemented`, retryable: false },
-      responseTimeMs: 0,
-      providerSlug: this.slug,
-    };
-  } catch (error) {
-    this.logger.error(`KIE generateAudio error: ${error.message}`);
-    return this.handleError(error, start);
   }
-}
 
   async generateLyrics(prompt: string, callBackUrl: string): Promise<string> {
   try {
