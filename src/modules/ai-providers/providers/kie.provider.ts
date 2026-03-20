@@ -886,7 +886,7 @@ async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     };
   }
 
-  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
       const data = response.data;
@@ -897,7 +897,12 @@ async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
       if (!task) {
         return { status: 'pending' };
       }
-      this.logger.debug(`Runway task ${taskId} state: ${task.state}, progress: ${task.progress}`);
+
+      // ═══ ПОЛНЫЙ ЛОГ ═══
+      this.logger.debug(
+        `Runway task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
+      );
+
       const stateMap: Record<string, TaskStatusResult['status']> = {
         waiting: 'pending',
         queued: 'pending',
@@ -906,33 +911,36 @@ async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
         failed: 'failed',
       };
       const status = stateMap[task.state] || 'pending';
+      
       if (status === 'failed') {
-        return {
-          status: 'failed',
-          error: task.errorMessage || 'Runway generation failed',
-        };
+        return { status: 'failed', error: task.errorMessage || 'Runway generation failed' };
       }
+      
       if (status === 'completed') {
-        return {
-          status: 'completed',
-          resultUrls: task.resultUrls || [],
-          progress: 100,
-        };
+        let resultUrls: string[] = task.resultUrls || [];
+        
+        if (resultUrls.length === 0) {
+          // Пробуем альтернативные поля
+          if (task.output?.url) resultUrls = [task.output.url];
+          else if (task.url) resultUrls = [task.url];
+          else if (task.video_url) resultUrls = [task.video_url];
+
+          this.logger.warn(
+            `Runway task ${taskId} completed. Keys: ${Object.keys(task).join(', ')}. Found URLs: ${resultUrls.length}`,
+          );
+        }
+
+        return { status: 'completed', resultUrls, progress: 100 };
       }
-      return {
-        status,
-        progress: task.progress || 0,
-      };
+      
+      return { status, progress: task.progress || 0 };
     } catch (error) {
       this.logger.error(`Runway check task status error: ${error.message}`);
-      return {
-        status: 'failed',
-        error: `Status check failed: ${error.message}`,
-      };
+      return { status: 'failed', error: `Status check failed: ${error.message}` };
     }
   }
 
-  private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/jobs/recordInfo', { params: { taskId } });
       const data = response.data;
@@ -943,7 +951,14 @@ async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
       if (!task) {
         return { status: 'pending' };
       }
+
+      // ═══ ДОБАВЛЕН ПОЛНЫЙ ЛОГ ОТВЕТА ═══
+      this.logger.debug(
+        `Jobs task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
+      );
+
       this.logger.debug(`Jobs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
+      
       const stateMap: Record<string, TaskStatusResult['status']> = {
         waiting: 'pending',
         queuing: 'pending',
@@ -952,19 +967,106 @@ async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
         fail: 'failed',
       };
       const status = stateMap[task.state] || 'pending';
+      
       if (status === 'failed') {
         return {
           status: 'failed',
           error: task.failMsg || task.failCode || 'Generation failed',
         };
       }
+      
       if (status === 'completed') {
+        // ═══ РАСШИРЕННЫЙ ПОИСК URL-ов ═══
+        // KIE может возвращать результаты в разных полях
+        let resultUrls: string[] = [];
+
+        // 1. task.resultUrls — стандартное поле
+        if (task.resultUrls?.length > 0) {
+          resultUrls = task.resultUrls;
+        }
+        // 2. task.output — некоторые модели
+        else if (task.output?.urls?.length > 0) {
+          resultUrls = task.output.urls;
+        }
+        else if (typeof task.output === 'string' && task.output.startsWith('http')) {
+          resultUrls = [task.output];
+        }
+        else if (Array.isArray(task.output)) {
+          resultUrls = task.output.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
+        }
+        // 3. task.result — альтернативное поле
+        else if (task.result?.urls?.length > 0) {
+          resultUrls = task.result.urls;
+        }
+        else if (typeof task.result === 'string' && task.result.startsWith('http')) {
+          resultUrls = [task.result];
+        }
+        else if (Array.isArray(task.result)) {
+          resultUrls = task.result.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
+        }
+        // 4. task.images / task.videos / task.audio
+        else if (task.images?.length > 0) {
+          resultUrls = task.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
+        }
+        else if (task.videos?.length > 0) {
+          resultUrls = task.videos.map((v: any) => typeof v === 'string' ? v : v.url).filter(Boolean);
+        }
+        // 5. task.url — единичный результат
+        else if (task.url) {
+          resultUrls = [task.url];
+        }
+        // 6. task.image_url / task.video_url / task.audio_url
+        else if (task.image_url) {
+          resultUrls = [task.image_url];
+        }
+        else if (task.video_url) {
+          resultUrls = [task.video_url];
+        }
+        else if (task.audio_url) {
+          resultUrls = [task.audio_url];
+        }
+        // 7. task.data — вложенный объект
+        else if (task.data?.urls?.length > 0) {
+          resultUrls = task.data.urls;
+        }
+        else if (task.data?.url) {
+          resultUrls = [task.data.url];
+        }
+        // 8. task.resultJson — строка JSON
+        else if (task.resultJson) {
+          try {
+            const parsed = JSON.parse(task.resultJson);
+            if (parsed.resultUrls?.length > 0) {
+              resultUrls = parsed.resultUrls;
+            } else if (parsed.urls?.length > 0) {
+              resultUrls = parsed.urls;
+            } else if (parsed.url) {
+              resultUrls = [parsed.url];
+            } else if (parsed.images?.length > 0) {
+              resultUrls = parsed.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
+            }
+          } catch {
+            this.logger.error(`Failed to parse resultJson: ${task.resultJson?.substring(0, 200)}`);
+          }
+        }
+
+        this.logger.log(
+          `Jobs task ${taskId} completed. Found ${resultUrls.length} URLs: ${JSON.stringify(resultUrls).substring(0, 300)}`,
+        );
+
+        if (resultUrls.length === 0) {
+          this.logger.warn(
+            `Jobs task ${taskId} completed but NO URLs found! Full task keys: ${Object.keys(task).join(', ')}`,
+          );
+        }
+
         return {
           status: 'completed',
-          resultUrls: task.resultUrls || [],
+          resultUrls,
           progress: 100,
         };
       }
+      
       return {
         status,
         progress: task.progress || 0,
