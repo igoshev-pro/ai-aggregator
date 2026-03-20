@@ -168,29 +168,73 @@ export class AudioGenerationDto {
   @MaxLength(5000)
   prompt: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Music style: pop, rock, jazz...' })
   @IsString()
   @IsOptional()
   style?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Duration in seconds (Suno)' })
   @IsNumber()
   @IsOptional()
-  @Min(5)
+  @Min(1)
   @Max(300)
   duration?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Instrumental only, no vocals (Suno)' })
   @IsOptional()
+  @IsBoolean()
   instrumental?: boolean;
 
-  @ApiPropertyOptional({ description: 'Voice ID for ElevenLabs' })
+  @ApiPropertyOptional({ description: 'Custom mode for Suno' })
+  @IsOptional()
+  @IsBoolean()
+  customMode?: boolean;
+
+  @ApiPropertyOptional({ description: 'Voice ID for ElevenLabs TTS' })
   @IsString()
   @IsOptional()
   voiceId?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Language code: ru, en, etc.' })
   @IsString()
   @IsOptional()
   language?: string;
+
+  @ApiPropertyOptional({ description: 'Voice stability 0-1 (ElevenLabs)' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(1)
+  stability?: number;
+
+  @ApiPropertyOptional({ description: 'Voice similarity 0-1 (ElevenLabs)' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(1)
+  similarity?: number;
+
+  @ApiPropertyOptional({ description: 'Speech speed 0.5-2 (ElevenLabs)' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0.25)
+  @Max(4)
+  speed?: number;
+
+  @ApiPropertyOptional({ description: 'Loop audio (ElevenLabs SFX)' })
+  @IsOptional()
+  @IsBoolean()
+  loop?: boolean;
+
+  @ApiPropertyOptional({ description: 'Prompt influence 0-1 (ElevenLabs SFX)' })
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  @Max(1)
+  promptInfluence?: number;
+
+  @ApiPropertyOptional({ description: 'Audio URL for processing (isolation/STT)' })
+  @IsString()
+  @IsOptional()
+  audioUrl?: string;
 }
