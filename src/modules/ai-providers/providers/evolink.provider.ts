@@ -11,6 +11,35 @@ import {
   TaskStatusResult,
 } from './base-provider.abstract';
 
+/**
+ * Evolink AI Provider
+ *
+ * API форматы:
+ * - GPT, DeepSeek → POST /v1/chat/completions (OpenAI-compatible)
+ * - Claude → POST /v1/messages (Anthropic Messages API)
+ * - Images → POST /v1/images/generations (async, returns task id)
+ * - Video → POST /v1/videos/generations (async, returns task id)
+ * - Audio → POST /v1/audio/generations (async, returns task id)
+ * - Task polling → GET /v1/tasks/{task_id}
+ */
+
+// Claude модели используют Anthropic Messages API
+const CLAUDE_MODEL_PREFIXES = [
+  'claude-opus-4-6',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'claude-sonnet-4-5',
+  'claude-opus-4-1',
+  'claude-opus-4-5',
+  'claude-sonnet-4-',
+];
+
+// Kling image-to-video использует поле image_start вместо image_urls
+const KLING_I2V_MODELS = ['kling-v3-image-to-video'];
+
+// Kling motion control требует image_urls + video_urls
+const KLING_MOTION_MODELS = ['kling-v3-motion-control'];
+
 export class EvolinkProvider extends BaseProvider {
   private client: AxiosInstance;
 
@@ -20,13 +49,38 @@ export class EvolinkProvider extends BaseProvider {
       baseURL: config.baseUrl,
       timeout: config.timeout || 120000,
       headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
+        Authorization: `Bearer ${config.apiKey}`,
         'Content-Type': 'application/json',
       },
     });
   }
 
+  // ========================================
+  // TEXT GENERATION
+  // ========================================
+
   async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
+    if (this.isClaudeModel(request.model)) {
+      return this.generateTextClaude(request);
+    }
+    return this.generateTextOpenAI(request);
+  }
+
+  async *generateTextStream(
+    request: TextGenerationRequest,
+  ): AsyncGenerator<StreamChunk> {
+    if (this.isClaudeModel(request.model)) {
+      yield* this.generateTextStreamClaude(request);
+    } else {
+      yield* this.generateTextStreamOpenAI(request);
+    }
+  }
+
+  // --- OpenAI-compatible (GPT-5.4, DeepSeek) ---
+
+  private async generateTextOpenAI(
+    request: TextGenerationRequest,
+  ): Promise<GenerationResult> {
     const start = Date.now();
     try {
       const response = await this.client.post('/chat/completions', {
@@ -57,7 +111,7 @@ export class EvolinkProvider extends BaseProvider {
     }
   }
 
-  async *generateTextStream(
+  private async *generateTextStreamOpenAI(
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
     try {
@@ -114,34 +168,57 @@ export class EvolinkProvider extends BaseProvider {
     }
   }
 
-  async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
+  // --- Anthropic Messages API (Claude Sonnet 4.6, Claude Opus 4.6) ---
+
+  private async generateTextClaude(
+    request: TextGenerationRequest,
+  ): Promise<GenerationResult> {
     const start = Date.now();
     try {
-      const response = await this.client.post('/images/generate', {
+      const { system, messages } = this.convertToClaudeMessages(request.messages);
+
+      const body: any = {
         model: request.model,
-        prompt: request.prompt,
-        negative_prompt: request.negativePrompt,
-        width: request.width || 1024,
-        height: request.height || 1024,
-        steps: request.steps || 30,
-        n: request.numImages || 1,
-        seed: request.seed,
-      });
+        messages,
+        // max_tokens обязателен в Anthropic API
+        max_tokens: request.maxTokens || 8192,
+        stream: false,
+      };
 
-      const data = response.data;
-      let urls: string[] = [];
-      let taskId: string | undefined;
-
-      // Некоторые модели возвращают URL сразу, другие — taskId для polling
-      if (data.images) {
-        urls = data.images.map((img: any) => img.url);
-      } else if (data.task_id) {
-        taskId = data.task_id;
+      if (system) {
+        body.system = system;
       }
+
+      // Claude temperature max = 1.0, в отличие от OpenAI (max 2.0)
+      if (request.temperature !== undefined) {
+        body.temperature = Math.min(request.temperature, 1.0);
+      }
+
+      const response = await this.client.post('/messages', body);
+      const data = response.data;
+
+      // Claude возвращает content как массив блоков
+      const textContent =
+        data.content
+          ?.filter((block: any) => block.type === 'text')
+          ?.map((block: any) => block.text)
+          ?.join('') || '';
 
       return {
         success: true,
-        data: { urls, taskId, metadata: { model: request.model } },
+        data: {
+          content: textContent,
+          metadata: {
+            model: data.model,
+            stopReason: data.stop_reason,
+          },
+        },
+        usage: {
+          inputTokens: data.usage?.input_tokens,
+          outputTokens: data.usage?.output_tokens,
+          totalTokens:
+            (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
+        },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
       };
@@ -150,32 +227,184 @@ export class EvolinkProvider extends BaseProvider {
     }
   }
 
-  async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
+  private async *generateTextStreamClaude(
+    request: TextGenerationRequest,
+  ): AsyncGenerator<StreamChunk> {
+    try {
+      const { system, messages } = this.convertToClaudeMessages(request.messages);
+
+      const body: any = {
+        model: request.model,
+        messages,
+        max_tokens: request.maxTokens || 8192,
+        stream: true,
+      };
+
+      if (system) {
+        body.system = system;
+      }
+
+      if (request.temperature !== undefined) {
+        body.temperature = Math.min(request.temperature, 1.0);
+      }
+
+      const response = await this.client.post('/messages', body, {
+        responseType: 'stream',
+        timeout: 300000,
+      });
+
+      let buffer = '';
+      let inputTokens = 0;
+      let outputTokens = 0;
+
+      for await (const chunk of response.data) {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+          const rawData = trimmed.slice(6);
+
+          try {
+            const parsed = JSON.parse(rawData);
+
+            switch (parsed.type) {
+              case 'message_start':
+                // Получаем начальные токены
+                inputTokens = parsed.message?.usage?.input_tokens || 0;
+                break;
+
+              case 'content_block_delta':
+                // Основной поток текста
+                if (
+                  parsed.delta?.type === 'text_delta' &&
+                  parsed.delta?.text
+                ) {
+                  yield { content: parsed.delta.text, done: false };
+                }
+                break;
+
+              case 'message_delta':
+                // Финальная статистика
+                outputTokens = parsed.usage?.output_tokens || 0;
+                if (parsed.delta?.stop_reason) {
+                  yield {
+                    content: '',
+                    done: true,
+                    usage: { inputTokens, outputTokens },
+                  };
+                  return;
+                }
+                break;
+
+              case 'message_stop':
+                yield {
+                  content: '',
+                  done: true,
+                  usage: { inputTokens, outputTokens },
+                };
+                return;
+            }
+          } catch {}
+        }
+      }
+    } catch (error) {
+      yield { content: `Error: ${error.message}`, done: true };
+    }
+  }
+
+  /**
+   * Конвертирует OpenAI-style messages в формат Anthropic Messages API.
+   * - system messages выносятся в отдельный параметр
+   * - объединяются подряд идущие сообщения одной роли
+   */
+  private convertToClaudeMessages(
+    messages: { role: string; content: string }[],
+  ): {
+    system: string | null;
+    messages: { role: string; content: string }[];
+  } {
+    let system: string | null = null;
+    const claudeMessages: { role: string; content: string }[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'system') {
+        system = system ? `${system}\n\n${msg.content}` : msg.content;
+      } else {
+        claudeMessages.push({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content,
+        });
+      }
+    }
+
+    // Claude требует чередования user/assistant
+    // Объединяем подряд идущие сообщения одной роли
+    const merged: { role: string; content: string }[] = [];
+    for (const msg of claudeMessages) {
+      if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+        merged[merged.length - 1].content += '\n\n' + msg.content;
+      } else {
+        merged.push({ ...msg });
+      }
+    }
+
+    // Claude требует что первое сообщение было от user
+    if (merged.length > 0 && merged[0].role === 'assistant') {
+      merged.unshift({ role: 'user', content: '...' });
+    }
+
+    // Если messages пустые — добавляем заглушку
+    if (merged.length === 0) {
+      merged.push({ role: 'user', content: 'Hello' });
+    }
+
+    return { system, messages: merged };
+  }
+
+  // ========================================
+  // IMAGE GENERATION
+  // ========================================
+
+  async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
       const body: any = {
         model: request.model,
         prompt: request.prompt,
-        duration: request.duration || 5,
-        aspect_ratio: request.aspectRatio || '16:9',
+        n: request.numImages || 1,
       };
 
-      if (request.imageUrl) {
-        body.image_url = request.imageUrl;
-      }
-      if (request.negativePrompt) {
-        body.negative_prompt = request.negativePrompt;
+      // Evolink images API принимает 'size' вместо width/height
+      // Форматы: '1:1', '2:3', '3:2' или '1024x1024', '1024x1536', '1536x1024'
+      if (request.aspectRatio) {
+        body.size = request.aspectRatio;
+      } else if (request.width && request.height) {
+        body.size = `${request.width}x${request.height}`;
       }
 
-      const response = await this.client.post('/video/generate', body);
+      if (request.quality) {
+        body.quality = request.quality; // 'low' | 'medium' | 'high' | 'auto'
+      }
+
+      // image_urls для img2img / редактирования
+      if (request.inputUrls && request.inputUrls.length > 0) {
+        body.image_urls = request.inputUrls;
+      }
+
+      const response = await this.client.post('/images/generations', body);
       const data = response.data;
 
+      // Evolink images API всегда возвращает async task
       return {
         success: true,
         data: {
-          taskId: data.task_id || data.id,
-          urls: data.video_url ? [data.video_url] : [],
-          metadata: { model: request.model },
+          taskId: data.id,
+          urls: [],
+          metadata: { model: request.model, status: data.status },
         },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
@@ -184,25 +413,138 @@ export class EvolinkProvider extends BaseProvider {
       return this.handleError(error, start);
     }
   }
+
+  // ========================================
+  // VIDEO GENERATION
+  // ========================================
+
+  async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
+    const start = Date.now();
+    try {
+      let body: any;
+
+      if (KLING_I2V_MODELS.includes(request.model)) {
+        body = this.buildKlingI2VBody(request);
+      } else if (KLING_MOTION_MODELS.includes(request.model)) {
+        body = this.buildKlingMotionBody(request);
+      } else {
+        body = this.buildVideoBody(request);
+      }
+
+      const response = await this.client.post('/videos/generations', body);
+      const data = response.data;
+
+      return {
+        success: true,
+        data: {
+          taskId: data.id,
+          urls: [],
+          metadata: { model: request.model, status: data.status },
+        },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    } catch (error) {
+      return this.handleError(error, start);
+    }
+  }
+
+  /**
+   * Общий билдер тела запроса для видео:
+   * Veo 3.1 Fast, Veo 3.1 Pro, Sora 2 Pro, Kling T2V
+   */
+  private buildVideoBody(request: VideoGenerationRequest): any {
+    const body: any = {
+      model: request.model,
+      prompt: request.prompt,
+    };
+
+    if (request.aspectRatio) body.aspect_ratio = request.aspectRatio;
+    if (request.duration) body.duration = request.duration;
+    if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
+    if (request.seed) body.seed = request.seed;
+
+    // resolution маппится в quality у Evolink ('720p', '1080p')
+    if (request.resolution) body.quality = request.resolution;
+
+    // image_urls для img-to-video (Sora 2 Pro поддерживает 1 изображение)
+    if (request.imageUrl) {
+      body.image_urls = [request.imageUrl];
+    }
+
+    return body;
+  }
+
+  /**
+   * Kling V3 Image-to-Video:
+   * использует поле image_start (обязательное) + опциональное image_end
+   */
+  private buildKlingI2VBody(request: VideoGenerationRequest): any {
+    const body: any = {
+      model: request.model,
+      // image_start обязателен для kling-v3-image-to-video
+      image_start: request.imageUrl || '',
+    };
+
+    if (request.prompt) body.prompt = request.prompt;
+    if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
+    if (request.duration) body.duration = request.duration;
+    if (request.resolution) body.quality = request.resolution;
+    if (request.aspectRatio) body.aspect_ratio = request.aspectRatio;
+
+    return body;
+  }
+
+  /**
+   * Kling V3 Motion Control:
+   * требует image_urls (reference image) + video_urls (motion reference)
+   */
+  private buildKlingMotionBody(request: VideoGenerationRequest): any {
+    const body: any = {
+      model: request.model,
+      // image_urls — reference image для внешности персонажа
+      image_urls: request.imageUrl ? [request.imageUrl] : [],
+      // video_urls передаются через metadata.videoUrls
+      video_urls: (request as any).videoUrls || [],
+      model_params: {
+        character_orientation: 'video',
+      },
+    };
+
+    if (request.prompt) body.prompt = request.prompt;
+    if (request.resolution) body.quality = request.resolution;
+
+    return body;
+  }
+
+  // ========================================
+  // AUDIO GENERATION
+  // ========================================
 
   async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
-      const response = await this.client.post('/audio/generate', {
+      const body: any = {
         model: request.model,
         prompt: request.prompt,
-        style: request.style,
-        duration: request.duration,
-        instrumental: request.instrumental,
-      });
+      };
 
+      if (request.style) body.style = request.style;
+      if (request.duration) body.duration = request.duration;
+      if (request.instrumental !== undefined) body.instrumental = request.instrumental;
+      if (request.voiceId) body.voice_id = request.voiceId;
+      if (request.text) body.text = request.text;
+      if (request.language) body.language = request.language;
+
+      const response = await this.client.post('/audio/generations', body);
       const data = response.data;
+
       return {
         success: true,
         data: {
-          taskId: data.task_id || data.id,
-          urls: data.audio_url ? [data.audio_url] : [],
-          metadata: { model: request.model },
+          taskId: data.id || data.task_id,
+          urls: [],
+          metadata: { model: request.model, status: data.status },
         },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
@@ -211,57 +553,89 @@ export class EvolinkProvider extends BaseProvider {
       return this.handleError(error, start);
     }
   }
+
+  // ========================================
+  // TASK STATUS POLLING
+  // ========================================
 
   async checkTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get(`/tasks/${taskId}`);
       const data = response.data;
 
+      // Evolink task response:
+      // {
+      //   id: "task-unified-...",
+      //   status: "pending" | "processing" | "completed" | "failed",
+      //   progress: 0-100,
+      //   results: ["https://..."],   <-- массив URL результатов
+      //   error: { code, message, type } | null,
+      //   task_info: { estimated_time, can_cancel }
+      // }
+
+      const resultUrls = Array.isArray(data.results) ? data.results : [];
+      const eta = data.task_info?.estimated_time;
+      const errorMessage = data.error?.message;
+
       return {
         status: this.mapStatus(data.status),
         progress: data.progress,
-        resultUrls: data.result?.urls || data.output?.urls,
-        error: data.error?.message,
-        eta: data.eta,
+        resultUrls,
+        error: errorMessage,
+        eta,
       };
-    } catch {
+    } catch (error) {
       return { status: 'failed', error: 'Failed to check task status' };
     }
   }
 
+  // ========================================
+  // HEALTH CHECK
+  // ========================================
+
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await this.client.get('/models', { timeout: 5000 });
+      // GET /v1/credits — легкий эндпоинт для проверки
+      const response = await this.client.get('/credits', { timeout: 5000 });
       return response.status === 200;
     } catch {
       return false;
     }
   }
 
+  // ========================================
+  // HELPERS
+  // ========================================
+
+  private isClaudeModel(model: string): boolean {
+    return CLAUDE_MODEL_PREFIXES.some((prefix) => model.startsWith(prefix));
+  }
+
   private mapStatus(status: string): TaskStatusResult['status'] {
     const map: Record<string, TaskStatusResult['status']> = {
-      'queued': 'pending',
-      'pending': 'pending',
-      'running': 'processing',
-      'processing': 'processing',
-      'completed': 'completed',
-      'succeeded': 'completed',
-      'failed': 'failed',
-      'error': 'failed',
+      queued: 'pending',
+      pending: 'pending',
+      running: 'processing',
+      processing: 'processing',
+      completed: 'completed',
+      succeeded: 'completed',
+      failed: 'failed',
+      error: 'failed',
     };
     return map[status] || 'pending';
   }
 
   private handleError(error: any, start: number): GenerationResult {
     const status = error?.response?.status;
-    const message = error?.response?.data?.error?.message || error.message;
+    const message =
+      error?.response?.data?.error?.message || error.message || 'Unknown error';
 
     return {
       success: false,
       error: {
         code: `HTTP_${status || 'UNKNOWN'}`,
         message,
-        retryable: status === 429 || status >= 500,
+        retryable: status === 429 || (status >= 500 && status < 600),
       },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,

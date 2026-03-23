@@ -135,13 +135,6 @@ export class ProviderRegistryService implements OnModuleInit {
 
       if (!providerDoc) continue;
 
-      // if (
-      //   providerDoc.healthStatus?.isHealthy === false &&
-      //   providerDoc.healthStatus?.consecutiveErrors > 1000
-      // ) {
-      //   continue;
-      // }
-
       const provider = this.providers.get(mapping.providerSlug);
       if (provider) {
         result.push({ provider, modelId: mapping.modelId });
@@ -151,7 +144,6 @@ export class ProviderRegistryService implements OnModuleInit {
     return result;
   }
 
-  // Каждые 5 минут вместо каждой минуты
   @Cron('0 */5 * * * *')
   async healthCheckAll() {
     for (const [slug, provider] of this.providers) {
@@ -191,10 +183,10 @@ export class ProviderRegistryService implements OnModuleInit {
           );
 
           const errors = doc?.healthStatus?.consecutiveErrors ?? 1;
-
-          // Логируем только первый раз и каждые 10 проверок чтобы не спамить
           if (errors === 1 || errors % 10 === 0) {
-            this.logger.warn(`⚠️ Provider ${slug} health check failed (${errors} times)`);
+            this.logger.warn(
+              `⚠️ Provider ${slug} health check failed (${errors} times)`,
+            );
           }
         }
       } catch (error: any) {
@@ -227,9 +219,10 @@ export class ProviderRegistryService implements OnModuleInit {
   }
 
   private async seedDefaultModels() {
-    // Всегда синхронизируем модели при старте
     const existingCount = await this.modelModel.countDocuments();
-    this.logger.log(`🌱 Syncing ${existingCount > 0 ? 'existing' : 'new'} AI models...`);
+    this.logger.log(
+      `🌱 Syncing ${existingCount > 0 ? 'existing' : 'new'} AI models...`,
+    );
 
     const defaultModels = [
       // ==============================
@@ -248,7 +241,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 1,
         capabilities: ['streaming', 'function_calling'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'openai/gpt-oss-120b', priority: 1, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'openai/gpt-oss-120b',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 131072, maxOutputTokens: 16384 },
@@ -266,7 +264,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 2,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'anthropic/claude-haiku-4-5-20250620', priority: 1, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'anthropic/claude-haiku-4-5-20250620',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192 },
@@ -284,7 +287,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 3,
         capabilities: ['streaming', 'reasoning'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'deepseek/deepseek-v3.2', priority: 1, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'deepseek/deepseek-v3.2',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 164000, maxOutputTokens: 8192 },
@@ -302,7 +310,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 4,
         capabilities: ['streaming', 'reasoning', 'function_calling'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'x-ai/grok-4.1-fast', priority: 1, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'x-ai/grok-4.1-fast',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 2000000, maxOutputTokens: 4096 },
@@ -321,7 +334,12 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['streaming', 'reasoning', 'vision'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'x-ai/grok-4', priority: 1, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'x-ai/grok-4',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: {
@@ -343,7 +361,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 6,
         capabilities: ['streaming', 'web_search', 'citations'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'perplexity/sonar', priority: 1, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'perplexity/sonar',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 127000, maxOutputTokens: 4096 },
@@ -352,8 +375,9 @@ export class ProviderRegistryService implements OnModuleInit {
         slug: 'gpt-5.4',
         name: 'GPT-5.4',
         displayName: 'GPT-5.4',
-        description: 'Новейшая модель OpenAI',
+        description: 'Новейшая флагманская модель OpenAI',
         type: 'text',
+        // 14$ per 1M tokens (in+out одинаковая цена по доке Evolink)
         costPerMillionInputTokens: 14.0,
         costPerMillionOutputTokens: 14.0,
         tokensPerDollar: 1000,
@@ -362,7 +386,13 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['streaming', 'vision', 'function_calling'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'gpt-5.4', priority: 1, isActive: true },
+          {
+            // Evolink model ID из документации
+            providerSlug: 'evolink',
+            modelId: 'gpt-5.4',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: {
@@ -377,6 +407,7 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Claude Opus 4.6',
         description: 'Самая мощная модель Anthropic',
         type: 'text',
+        // 25.382$ per 1M tokens
         costPerMillionInputTokens: 25.382,
         costPerMillionOutputTokens: 25.382,
         tokensPerDollar: 1000,
@@ -385,7 +416,13 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'claude-opus-4-6', priority: 1, isActive: true },
+          {
+            // Evolink model ID из документации Anthropic Messages API
+            providerSlug: 'evolink',
+            modelId: 'claude-opus-4-6',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: {
@@ -398,8 +435,9 @@ export class ProviderRegistryService implements OnModuleInit {
         slug: 'claude-sonnet-4.6',
         name: 'Claude Sonnet 4.6',
         displayName: 'Claude Sonnet 4.6',
-        description: 'Балансированная модель Anthropic',
+        description: 'Балансированная модель Anthropic нового поколения',
         type: 'text',
+        // 15.3$ per 1M tokens
         costPerMillionInputTokens: 15.3,
         costPerMillionOutputTokens: 15.3,
         tokensPerDollar: 1000,
@@ -408,7 +446,13 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'claude-sonnet-4-6', priority: 1, isActive: true },
+          {
+            // Evolink model ID из документации Anthropic Messages API
+            providerSlug: 'evolink',
+            modelId: 'claude-sonnet-4-6',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: {
@@ -416,6 +460,34 @@ export class ProviderRegistryService implements OnModuleInit {
           maxOutputTokens: 8192,
           includedInPlans: ['pro', 'unlimited'],
         },
+      },
+      {
+        // DeepSeek V4 через Evolink
+        // По документации Evolink DeepSeek API: model = 'deepseek-chat'
+        // Добавляем как только появится — пока isActive: false до релиза
+        slug: 'deepseek-v4',
+        name: 'DeepSeek V4',
+        displayName: 'DeepSeek V4',
+        description: 'Новейшая модель DeepSeek (появится в ближайшее время)',
+        type: 'text',
+        costPerMillionInputTokens: 0.26,
+        costPerMillionOutputTokens: 1.0,
+        tokensPerDollar: 1000,
+        minTokenCost: 1,
+        sortOrder: 10,
+        capabilities: ['streaming', 'reasoning', 'function_calling'],
+        providerMappings: [
+          {
+            // Evolink DeepSeek API: model IDs = 'deepseek-chat' | 'deepseek-reasoner'
+            providerSlug: 'evolink',
+            modelId: 'deepseek-chat',
+            priority: 1,
+            // false — включим когда выйдет официально
+            isActive: false,
+          },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 164000, maxOutputTokens: 8192 },
       },
       {
         slug: 'gemini-3.1-pro',
@@ -427,10 +499,15 @@ export class ProviderRegistryService implements OnModuleInit {
         costPerMillionOutputTokens: 4.0,
         tokensPerDollar: 1000,
         minTokenCost: 3,
-        sortOrder: 10,
+        sortOrder: 11,
         capabilities: ['streaming', 'vision'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'gemini-3.1-pro', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'gemini-3.1-pro',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 1000000, maxOutputTokens: 8192 },
@@ -445,10 +522,15 @@ export class ProviderRegistryService implements OnModuleInit {
         costPerMillionOutputTokens: 1.05,
         tokensPerDollar: 1000,
         minTokenCost: 1,
-        sortOrder: 11,
+        sortOrder: 12,
         capabilities: ['streaming', 'vision'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'gemini-3-flash', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'gemini-3-flash',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 1000000, maxOutputTokens: 8192 },
@@ -463,11 +545,21 @@ export class ProviderRegistryService implements OnModuleInit {
         costPerMillionOutputTokens: 10.0,
         tokensPerDollar: 1000,
         minTokenCost: 3,
-        sortOrder: 12,
+        sortOrder: 13,
         capabilities: ['streaming', 'vision', 'function_calling'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'openai/gpt-4o', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'gpt-4o', priority: 2, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'openai/gpt-4o',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'gpt-4o',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -482,11 +574,21 @@ export class ProviderRegistryService implements OnModuleInit {
         costPerMillionOutputTokens: 0.6,
         tokensPerDollar: 1000,
         minTokenCost: 1,
-        sortOrder: 13,
+        sortOrder: 14,
         capabilities: ['streaming', 'vision', 'function_calling'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'openai/gpt-4o-mini', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'gpt-4o-mini', priority: 2, isActive: true },
+          {
+            providerSlug: 'openrouter',
+            modelId: 'openai/gpt-4o-mini',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'gpt-4o-mini',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -507,7 +609,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 1,
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
-          { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5-image', priority: 1, isActive: true },
+          {
+            providerSlug: 'openrouter-image',
+            modelId: 'openai/gpt-5-image',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
@@ -516,18 +623,25 @@ export class ProviderRegistryService implements OnModuleInit {
         slug: 'gpt-image-1.5-lite',
         name: 'GPT Image 1.5 Lite',
         displayName: 'GPT Image 1.5 Lite',
-        description: 'Облегчённая версия генератора OpenAI',
+        description: 'Облегчённая версия генератора изображений OpenAI',
         type: 'image',
+        // 0.0125$ per generation из задания
         fixedCostPerGeneration: 0.0125,
         tokensPerDollar: 200,
         minTokenCost: 2,
         sortOrder: 2,
-        capabilities: [],
+        capabilities: ['text_to_image', 'image_editing'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'gpt-image-1.5-lite', priority: 1, isActive: true },
+          {
+            // Evolink image API: model = 'gpt-image-1.5' (Lite версия)
+            providerSlug: 'evolink',
+            modelId: 'gpt-image-1.5',
+            priority: 1,
+            isActive: true,
+          },
         ],
-        defaultParams: { width: 1024, height: 1024 },
-        limits: { maxResolution: '1792x1024' },
+        defaultParams: { aspectRatio: '1:1' },
+        limits: { maxResolution: '1536x1024' },
       },
       {
         slug: 'midjourney',
@@ -541,8 +655,18 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 3,
         capabilities: ['variations', 'upscale'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'mj_txt2img', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'midjourney', priority: 2, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'mj_txt2img',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'midjourney',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
@@ -559,12 +683,17 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 4,
         capabilities: ['image_to_image', 'variations'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'mj_img2img', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'mj_img2img',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
       },
-      {
+            {
         slug: 'seedream-5-lite',
         name: 'Seedream 5.0 Lite',
         displayName: 'Seedream 5.0 Lite',
@@ -576,8 +705,18 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 5,
         capabilities: [],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'seedream/5-lite-text-to-image', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'seedream', priority: 2, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'seedream/5-lite-text-to-image',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'seedream',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
@@ -594,8 +733,18 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 6,
         capabilities: [],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'google/imagen4-fast', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'imagen-3', priority: 2, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'google/imagen4-fast',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'imagen-3',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
@@ -612,7 +761,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 7,
         capabilities: ['text_to_image', 'image_to_image'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'flux-2/flex-text-to-image', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'flux-2/flex-text-to-image',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024, steps: 28 },
         limits: { maxResolution: '2048x2048' },
@@ -629,7 +783,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 8,
         capabilities: ['image_to_image'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'flux-2/flex-image-to-image', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'flux-2/flex-image-to-image',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024, steps: 28 },
         limits: { maxResolution: '2048x2048' },
@@ -646,8 +805,18 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 9,
         capabilities: [],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'nano-banana-2', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'nano-banana', priority: 2, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'nano-banana-2',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'nano-banana',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
@@ -664,7 +833,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 10,
         capabilities: ['high_quality'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'nano-banana-pro', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'nano-banana-pro',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
@@ -685,7 +859,13 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 1,
         capabilities: ['text_to_video'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'veo3.1-fast', priority: 1, isActive: true },
+          {
+            // Исправленный model ID для Evolink
+            providerSlug: 'evolink',
+            modelId: 'veo-3.1-fast-generate-preview',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 8 },
@@ -703,7 +883,13 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['text_to_video', 'high_quality'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'veo3.1-pro', priority: 1, isActive: true },
+          {
+            // Исправленный model ID для Evolink
+            providerSlug: 'evolink',
+            modelId: 'veo-3.1-generate-preview',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: {
@@ -717,6 +903,7 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'OpenAI Sora 2 Pro',
         description: 'Флагманский генератор видео от OpenAI',
         type: 'video',
+        // 0.9583$ per generation из задания
         fixedCostPerGeneration: 0.9583,
         tokensPerDollar: 30,
         minTokenCost: 50,
@@ -724,7 +911,13 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'sora-2-pro', priority: 1, isActive: true },
+          {
+            // Исправленный model ID из документации Evolink
+            providerSlug: 'evolink',
+            modelId: 'sora-2-pro-preview',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: {
@@ -744,7 +937,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 4,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'sora-2-text-to-video', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'sora-2-text-to-video',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
@@ -761,7 +959,12 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 5,
         capabilities: ['image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'sora-2-image-to-video', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'sora-2-image-to-video',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
@@ -770,7 +973,7 @@ export class ProviderRegistryService implements OnModuleInit {
         slug: 'kling-3.0',
         name: 'Kling 3.0',
         displayName: 'Kling 3.0',
-        description: 'Генератор видео Kling',
+        description: 'Генератор видео Kling (Text-to-Video)',
         type: 'video',
         fixedCostPerGeneration: 0.075,
         tokensPerDollar: 60,
@@ -778,8 +981,19 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 6,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'kling-v3-text-to-video', priority: 2, isActive: false },
+          {
+            providerSlug: 'kie',
+            modelId: 'kling-3.0/video',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            // Включили Evolink маппинг для Kling T2V
+            providerSlug: 'evolink',
+            modelId: 'kling-v3-text-to-video',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
@@ -796,11 +1010,45 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 7,
         capabilities: ['image_to_video', 'motion_control'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'kling-v3-image-to-video', priority: 2, isActive: false },
+          {
+            providerSlug: 'kie',
+            modelId: 'kling-3.0/video',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            // Включили Evolink маппинг для Kling I2V
+            providerSlug: 'evolink',
+            modelId: 'kling-v3-image-to-video',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
+      },
+      {
+        slug: 'kling-3.0-motion',
+        name: 'Kling 3.0 Motion Control',
+        displayName: 'Kling 3.0 Motion Control',
+        description: 'Kling с контролем движения (image + motion reference video)',
+        type: 'video',
+        fixedCostPerGeneration: 0.12,
+        tokensPerDollar: 50,
+        minTokenCost: 15,
+        sortOrder: 8,
+        capabilities: ['motion_control', 'image_to_video'],
+        providerMappings: [
+          {
+            // Новая модель Motion Control
+            providerSlug: 'evolink',
+            modelId: 'kling-v3-motion-control',
+            priority: 1,
+            isActive: true,
+          },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 30 },
       },
       {
         slug: 'runway',
@@ -811,11 +1059,21 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.10,
         tokensPerDollar: 50,
         minTokenCost: 15,
-        sortOrder: 8,
+        sortOrder: 9,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'runway', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'runway-gen3', priority: 2, isActive: false },
+          {
+            providerSlug: 'kie',
+            modelId: 'runway',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'runway-gen3',
+            priority: 2,
+            isActive: false,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 10 },
@@ -829,11 +1087,21 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.08,
         tokensPerDollar: 60,
         minTokenCost: 10,
-        sortOrder: 9,
+        sortOrder: 10,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'hailuo/02-text-to-video-standard', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'hailuo', priority: 2, isActive: false },
+          {
+            providerSlug: 'kie',
+            modelId: 'hailuo/02-text-to-video-standard',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'hailuo',
+            priority: 2,
+            isActive: false,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 6 },
@@ -847,10 +1115,15 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.12,
         tokensPerDollar: 50,
         minTokenCost: 15,
-        sortOrder: 10,
+        sortOrder: 11,
         capabilities: ['text_to_video', 'image_to_video', 'high_quality'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'hailuo/2-3-image-to-video-pro', priority: 1, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'hailuo/2-3-image-to-video-pro',
+            priority: 1,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 5 },
         limits: { maxDuration: 8 },
@@ -871,8 +1144,18 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 1,
         capabilities: ['text_to_music', 'lyrics', 'instrumental'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'ai-music-api/generate', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'suno-v4', priority: 2, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'ai-music-api/generate',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'suno-v4',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 30 },
         limits: { maxDuration: 240 },
@@ -889,8 +1172,18 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 2,
         capabilities: ['text_to_speech', 'voice_cloning', 'multilingual'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'elevenlabs/text-to-speech-turbo-2-5', priority: 1, isActive: true },
-          { providerSlug: 'evolink', modelId: 'elevenlabs', priority: 2, isActive: true },
+          {
+            providerSlug: 'kie',
+            modelId: 'elevenlabs/text-to-speech-turbo-2-5',
+            priority: 1,
+            isActive: true,
+          },
+          {
+            providerSlug: 'evolink',
+            modelId: 'elevenlabs',
+            priority: 2,
+            isActive: true,
+          },
         ],
         defaultParams: { duration: 30 },
         limits: { maxDuration: 600 },

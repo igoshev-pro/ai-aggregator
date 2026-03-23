@@ -109,7 +109,7 @@ export class VideoGenerationDto {
   @IsNumber()
   @IsOptional()
   @Min(3)
-  @Max(15)
+  @Max(20)
   duration?: number;
 
   @ApiPropertyOptional({ enum: ['16:9', '9:16', '1:1', '4:3', '3:4', 'portrait', 'landscape'] })
