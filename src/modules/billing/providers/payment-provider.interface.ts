@@ -1,6 +1,7 @@
 export interface CreatePaymentDto {
-  amount: number; // в рублях
-  tokens: number; // сколько токенов начислить
+  amount: number;       // сумма в основной валюте (рубли или доллары)
+  currency: 'RUB' | 'USD';  // валюта платежа
+  tokens: number;       // сколько токенов начислить
   userId: string;
   description: string;
   returnUrl?: string;
@@ -9,7 +10,7 @@ export interface CreatePaymentDto {
 export interface PaymentResult {
   success: boolean;
   paymentId: string;
-  paymentUrl?: string; // URL для redirect
+  paymentUrl?: string;
   error?: string;
 }
 

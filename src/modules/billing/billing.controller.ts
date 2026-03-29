@@ -4,15 +4,11 @@ import {
   Post,
   Body,
   Query,
-  Param,
   UseGuards,
-  Req,
   HttpCode,
   Headers,
-  RawBodyRequest,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { Request } from 'express';
 import { BillingService } from './billing.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -25,14 +21,20 @@ export class BillingController {
 
   @Get('packages')
   @ApiOperation({ summary: 'Get available token packages' })
-  getPackages() {
-    return { success: true, data: this.billingService.getTokenPackages() };
+  getPackages(@Query('currency') currency?: 'RUB' | 'USD') {
+    return {
+      success: true,
+      data: this.billingService.getTokenPackages(currency || 'RUB'),
+    };
   }
 
   @Get('plans')
   @ApiOperation({ summary: 'Get subscription plans' })
-  getPlans() {
-    return { success: true, data: this.billingService.getSubscriptionPlans() };
+  getPlans(@Query('currency') currency?: 'RUB' | 'USD') {
+    return {
+      success: true,
+      data: this.billingService.getSubscriptionPlans(currency || 'RUB'),
+    };
   }
 
   @Get('balance')
@@ -51,9 +53,11 @@ export class BillingController {
   @HttpCode(200)
   async payTokens(
     @CurrentUser('sub') userId: string,
-    @Body() body: {
+    @Body()
+    body: {
       packageId: string;
       provider: 'yookassa' | 'cryptomus' | 'stars';
+      currency?: 'RUB' | 'USD';
       returnUrl?: string;
     },
   ) {
@@ -61,6 +65,7 @@ export class BillingController {
       userId,
       body.packageId,
       body.provider,
+      body.currency || 'RUB',
       body.returnUrl,
     );
     return { success: true, data: result };
@@ -73,9 +78,11 @@ export class BillingController {
   @HttpCode(200)
   async paySubscription(
     @CurrentUser('sub') userId: string,
-    @Body() body: {
+    @Body()
+    body: {
       plan: SubscriptionPlan;
       provider: 'yookassa' | 'cryptomus' | 'stars';
+      currency?: 'RUB' | 'USD';
       returnUrl?: string;
     },
   ) {
@@ -83,6 +90,7 @@ export class BillingController {
       userId,
       body.plan,
       body.provider,
+      body.currency || 'RUB',
       body.returnUrl,
     );
     return { success: true, data: result };
@@ -125,10 +133,7 @@ export class BillingController {
   @Post('webhook/yookassa')
   @ApiOperation({ summary: 'YooKassa payment webhook' })
   @HttpCode(200)
-  async yookassaWebhook(
-    @Body() body: any,
-    @Headers() headers: any,
-  ) {
+  async yookassaWebhook(@Body() body: any, @Headers() headers: any) {
     const result = await this.billingService.handlePaymentWebhook(
       'yookassa',
       body,
@@ -140,10 +145,7 @@ export class BillingController {
   @Post('webhook/cryptomus')
   @ApiOperation({ summary: 'Cryptomus payment webhook' })
   @HttpCode(200)
-  async cryptomusWebhook(
-    @Body() body: any,
-    @Headers() headers: any,
-  ) {
+  async cryptomusWebhook(@Body() body: any, @Headers() headers: any) {
     const result = await this.billingService.handlePaymentWebhook(
       'cryptomus',
       body,

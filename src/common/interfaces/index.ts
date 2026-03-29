@@ -65,6 +65,12 @@ export enum PaymentStatus {
 export enum SubscriptionPlan {
   FREE = 'free',
   BASIC = 'basic',
+  PLUS = 'plus',
+  MAX = 'max',
+  ULTIMATE = 'ultimate',
+  // Deprecated — оставляем для обратной совместимости с существующими записями в БД
+  /** @deprecated Use PLUS instead */
   PRO = 'pro',
+  /** @deprecated Use MAX or ULTIMATE instead */
   UNLIMITED = 'unlimited',
 }
