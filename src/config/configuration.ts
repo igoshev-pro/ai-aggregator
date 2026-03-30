@@ -30,11 +30,11 @@ export default () => ({
     },
     evolink: {
       apiKey: process.env.EVOLINK_API_KEY || '',
-      baseUrl: process.env.EVOLINK_BASE_URL || '',
+      baseUrl: process.env.EVOLINK_BASE_URL || 'https://api.evolink.ai/v1',  // ← ИЗМЕНЕНО
     },
     kie: {
       apiKey: process.env.KIE_API_KEY || '',
-      baseUrl: process.env.KIE_BASE_URL || '',
+      baseUrl: process.env.KIE_BASE_URL || 'https://api.kie.ai',  // ← ИЗМЕНЕНО
     },
     replicate: {
       apiKey: process.env.REPLICATE_API_KEY || '',

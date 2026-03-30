@@ -148,11 +148,56 @@ export class OpenRouterProvider extends BaseProvider {
             }
           } catch (error) {
             const status = error?.response?.status;
-            const errorData = error?.response?.data;
+
+            // ─── БЕЗОПАСНОЕ ИЗВЛЕЧЕНИЕ ОШИБКИ ───
+            let errorMessage = error.message;
+            try {
+              // Если ответ — обычный JSON
+              if (error?.response?.data && typeof error.response.data === 'object' && !error.response.data.readable) {
+                const errData = error.response.data;
+                errorMessage = errData?.error?.message || errData?.message || error.message;
+              }
+              // Если ответ — строка
+              else if (typeof error?.response?.data === 'string') {
+                errorMessage = error.response.data.substring(0, 500);
+              }
+              // Если ответ — стрим (ReadableStream), пробуем прочитать
+              else if (error?.response?.data?.on) {
+                // Это стрим — не пытаемся сериализовать
+                errorMessage = `HTTP ${status}: ${error.message}`;
+
+                // Попробуем прочитать стрим для деталей ошибки
+                try {
+                  const chunks: Buffer[] = [];
+                  for await (const chunk of error.response.data) {
+                    chunks.push(Buffer.from(chunk));
+                    if (chunks.length > 10) break; // Ограничиваем
+                  }
+                  const body = Buffer.concat(chunks).toString('utf8').substring(0, 1000);
+
+                  // Пробуем распарсить JSON
+                  try {
+                    const parsed = JSON.parse(body);
+                    errorMessage = parsed?.error?.message || parsed?.error?.metadata?.raw?.substring(0, 200) || errorMessage;
+                  } catch {
+                    // Может быть HTML
+                    const match = body.match(/<p>(.*?)<\/p>/);
+                    if (match) {
+                      errorMessage = match[1];
+                    }
+                  }
+                } catch {
+                  // Стрим уже закрыт или другая ошибка
+                }
+              }
+            } catch {
+              errorMessage = `HTTP ${status}: ${error.message}`;
+            }
+
             this.logger.error(
-              `OpenRouter stream error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+              `OpenRouter stream error: status=${status}, message=${errorMessage}`,
             );
-            yield { content: '', done: true, error: `OpenRouter error: ${status || 'NETWORK'} - ${error.message}` };
+            yield { content: '', done: true, error: `OpenRouter: ${status || 'NETWORK'} - ${errorMessage}` };
           }
         }
       }
