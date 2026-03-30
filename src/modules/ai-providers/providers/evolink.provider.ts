@@ -88,7 +88,7 @@ export class EvolinkProvider extends BaseProvider {
       const response = await this.client.post('/chat/completions', {
         model: request.model,
         messages: request.messages,
-        max_tokens: request.maxTokens || 4096,
+        max_completion_tokens: request.maxTokens || 4096, 
         temperature: request.temperature ?? 0.7,
         stream: false,
       });
@@ -122,7 +122,7 @@ export class EvolinkProvider extends BaseProvider {
         {
           model: request.model,
           messages: request.messages,
-          max_tokens: request.maxTokens || 4096,
+          max_completion_tokens: request.maxTokens || 4096,
           temperature: request.temperature ?? 0.7,
           stream: true,
         },
