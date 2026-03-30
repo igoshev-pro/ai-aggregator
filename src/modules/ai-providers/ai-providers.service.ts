@@ -83,59 +83,99 @@ async *generateTextStream(
           this.logger.warn(
             `Stream chunk error from ${provider.getSlug()}: ${streamError}`,
           );
-          break; // Пробуем следующий провайдер
+          break;
         }
 
         if (chunk.content && !chunk.content.startsWith('Error:')) {
           hasContent = true;
         }
 
-        // Если content начинается с "Error:" и это единственный chunk — это ошибка провайдера
         if (chunk.done && !hasContent && chunk.content?.startsWith('Error:')) {
           streamError = chunk.content;
           this.logger.warn(
             `Stream error from ${provider.getSlug()}: ${streamError}`,
           );
-          break; // Пробуем следующий провайдер
+          break;
         }
 
         yield chunk;
 
         if (chunk.done) {
-          // Успешно завершили стрим
           return;
         }
       }
 
-      // Если вышли из цикла без return — была ошибка
       if (streamError) {
         lastError = streamError;
         this.logger.warn(
           `Provider ${provider.getSlug()} failed for ${modelSlug}, trying next...`,
         );
-        continue; // Пробуем следующий провайдер
+        continue;
       }
 
-      // Стрим закончился без done — тоже считаем успехом
       return;
 
     } catch (error) {
-  // ─── SAFE ERROR MESSAGE (no circular JSON) ───
-  let errorMsg: string;
-  try {
-    errorMsg = error?.message || String(error);
-  } catch {
-    errorMsg = 'Unknown provider error';
+      // ═══ SAFE ERROR EXTRACTION — no circular JSON ═══
+      let errorMsg: string;
+      try {
+        // Пробуем получить сообщение из response body
+        if (error?.response?.status) {
+          const status = error.response.status;
+          let body = '';
+          
+          try {
+            // Если data — стрим, читаем его
+            if (error.response.data && typeof error.response.data.pipe === 'function') {
+              const chunks: Buffer[] = [];
+              for await (const chunk of error.response.data) {
+                chunks.push(Buffer.from(chunk));
+                if (chunks.length > 5) break;
+              }
+              body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+            } 
+            // Если data — строка
+            else if (typeof error.response.data === 'string') {
+              body = error.response.data.substring(0, 500);
+            }
+            // Если data — объект с error.message
+            else if (error.response.data?.error?.message) {
+              body = error.response.data.error.message;
+            }
+          } catch {
+            body = '';
+          }
+
+          // Пробуем распарсить JSON из body
+          if (body) {
+            try {
+              const parsed = JSON.parse(body);
+              errorMsg = parsed?.error?.message 
+                || parsed?.error?.metadata?.raw?.substring(0, 200) 
+                || parsed?.message 
+                || parsed?.msg 
+                || body;
+            } catch {
+              // Может быть HTML — ищем <p> тег
+              const match = body.match(/<p>(.*?)<\/p>/);
+              errorMsg = match ? `${status}: ${match[1]}` : `${status}: ${body.substring(0, 200)}`;
+            }
+          } else {
+            errorMsg = `HTTP ${status}: ${error.message}`;
+          }
+        } else {
+          errorMsg = error?.message || 'Unknown error';
+        }
+      } catch {
+        errorMsg = 'Unknown provider error';
+      }
+
+      this.logger.error(`${provider.getSlug()} generateTextStream error: ${errorMsg}`);
+      lastError = errorMsg;
+      continue;
+    }
   }
 
-  this.logger.error(`${provider.getSlug()} generateTextStream error: ${errorMsg}`);
-
-  lastError = errorMsg;
-  continue;
-}
-  }
-
-  // Все провайдеры провалились
   this.logger.error(`All providers failed for ${modelSlug}: ${lastError}`);
   yield {
     content: '',
