@@ -120,10 +120,19 @@ async *generateTextStream(
       return;
 
     } catch (error) {
-      this.logger.error(`${provider.getSlug()} generateTextStream error: ${error.message}`);
-      lastError = error.message;
-      continue; // Пробуем следующий провайдер
-    }
+  // ─── SAFE ERROR MESSAGE (no circular JSON) ───
+  let errorMsg: string;
+  try {
+    errorMsg = error?.message || String(error);
+  } catch {
+    errorMsg = 'Unknown provider error';
+  }
+
+  this.logger.error(`${provider.getSlug()} generateTextStream error: ${errorMsg}`);
+
+  lastError = errorMsg;
+  continue;
+}
   }
 
   // Все провайдеры провалились
