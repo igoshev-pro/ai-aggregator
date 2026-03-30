@@ -45,7 +45,7 @@ export class ChatService {
     private billingService: BillingService,
     @Inject(forwardRef(() => ProviderRegistryService))
     private providerRegistry: ProviderRegistryService,
-  ) {}
+  ) { }
 
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -100,16 +100,16 @@ export class ChatService {
       modelSlug: dto.modelSlug,
       contentLength: dto.content?.length,
     });
-  
+
     // Проверка существования модели
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
     if (!model) {
       this.logger.error(`❌ Model not found: ${dto.modelSlug}`);
       throw new NotFoundException(`Model ${dto.modelSlug} not found`);
     }
-  
+
     this.logger.log(`✅ Model found: ${model.displayName || model.name}`);
-    
+
     const user = await this.usersService.findById(userId);
     const totalBalance = user.tokenBalance + user.bonusTokens;
 
@@ -237,11 +237,11 @@ export class ChatService {
       const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
       if (!model) {
         console.log('ERROR: Model not found:', dto.modelSlug);
-        
+
         // Показать доступные модели
-        const available = await this.modelModel.find({}, {slug: 1}).limit(10);
+        const available = await this.modelModel.find({}, { slug: 1 }).limit(10);
         console.log('Available models in DB:', available.map(m => m.slug));
-        
+
         yield { type: 'error', data: { message: `Model ${dto.modelSlug} not found` } };
         return;
       }
@@ -259,12 +259,12 @@ export class ChatService {
       const totalBalance = user.tokenBalance + user.bonusTokens;
       const requiredTokens = model.minTokenCost || 1;
       console.log(`   Balance: ${totalBalance}, Required: ${requiredTokens}`);
-      
+
       if (totalBalance < requiredTokens) {
         console.log('ERROR: Insufficient balance');
-        yield { 
-          type: 'error', 
-          data: { message: `Недостаточно спичек. Нужно ${requiredTokens}, у вас ${totalBalance}` } 
+        yield {
+          type: 'error',
+          data: { message: `Недостаточно спичек. Нужно ${requiredTokens}, у вас ${totalBalance}` }
         };
         return;
       }
@@ -339,32 +339,63 @@ export class ChatService {
 
         console.log('19. Stream created, starting iteration...');
         let chunkCount = 0;
-        
+
         for await (const chunk of stream) {
           chunkCount++;
           if (chunkCount === 1) {
-            console.log('20. First chunk received');
+            console.log('20. First chunk received, done:', chunk.done, 'hasError:', !!(chunk as any).error, 'contentLen:', chunk.content?.length);
           }
-          
-          if (chunk.done) {
-            console.log('21. Stream completed, total chunks:', chunkCount);
-            if (chunk.usage) lastUsage = chunk.usage;
-            success = true;
+
+          // Проверяем ошибку в чанке (новый формат)
+          const chunkError = (chunk as any).error;
+          if (chunkError) {
+            console.error('Stream error in chunk:', chunkError);
+            yield {
+              type: 'error',
+              data: { message: chunkError },
+            };
+            success = false;
             break;
           }
 
+          // Обрабатываем content ПЕРЕД проверкой done
           if (chunk.content) {
+            // Проверяем legacy формат ошибки (content начинается с "Error:")
+            if (chunk.content.startsWith('Error:') && chunk.done) {
+              console.error('Stream returned legacy error:', chunk.content);
+              yield {
+                type: 'error',
+                data: { message: chunk.content },
+              };
+              success = false;
+              break;
+            }
+
             fullContent += chunk.content;
             yield {
               type: 'text_delta',
               data: { content: chunk.content },
             };
           }
+
+          if (chunk.done) {
+            console.log('21. Stream completed, total chunks:', chunkCount, 'contentLen:', fullContent.length);
+            if (chunk.usage) lastUsage = chunk.usage;
+            success = fullContent.length > 0;
+            if (!success) {
+              console.error('Stream ended with empty content — likely a provider error');
+              yield {
+                type: 'error',
+                data: { message: 'Model returned empty response. Please try again.' },
+              };
+            }
+            break;
+          }
         }
-        
+
         console.log('22. Stream iteration finished, success:', success);
         console.log('    Content length:', fullContent.length);
-        
+
       } catch (error) {
         console.error('ERROR in stream:', error);
         yield {
@@ -377,7 +408,7 @@ export class ChatService {
       // 9. Сохранение результата
       if (success && fullContent) {
         console.log('23. Saving successful response...');
-        
+
         // Списываем токены
         const { costInTokens: billedTokens } = await this.billingService.chargeForGeneration(
           userId,
@@ -406,7 +437,7 @@ export class ChatService {
         await conversation.save();
 
         await this.usersService.incrementDailyGenerations(userId);
-        
+
         console.log('24. Response saved successfully');
       } else if (!success) {
         console.log('25. Cleaning up failed message');
@@ -421,10 +452,10 @@ export class ChatService {
           tokensCost: success ? costInTokens : 0,
         },
       };
-      
+
       console.log('26. Stream completed');
       console.log('=== END STREAM MESSAGE ===');
-      
+
     } catch (error) {
       console.error('FATAL ERROR in streamMessage:', error);
       yield {

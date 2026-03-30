@@ -10,6 +10,7 @@ import {
   StreamChunk,
   TaskStatusResult,
 } from './base-provider.abstract';
+import { Logger } from '@nestjs/common';
 
 /**
  * Evolink AI Provider
@@ -42,6 +43,7 @@ const KLING_MOTION_MODELS = ['kling-v3-motion-control'];
 
 export class EvolinkProvider extends BaseProvider {
   private client: AxiosInstance;
+  private readonly logger = new Logger(EvolinkProvider.name);  // ← ДОБАВИТЬ
 
   constructor(config: ProviderConfig) {
     super('evolink', config);
@@ -160,11 +162,16 @@ export class EvolinkProvider extends BaseProvider {
               };
               return;
             }
-          } catch {}
+          } catch { }
         }
       }
     } catch (error) {
-      yield { content: `Error: ${error.message}`, done: true };
+      const status = error?.response?.status;
+      const errorData = error?.response?.data;
+      this.logger.error(
+        `Evolink OpenAI stream error: status=${status}, data=${JSON.stringify(errorData)?.substring(0, 500)}, message=${error.message}`,
+      );
+      yield { content: '', done: true, error: `Evolink error: ${status || 'NETWORK'} - ${error.message}` };
     }
   }
 
@@ -308,12 +315,17 @@ export class EvolinkProvider extends BaseProvider {
                 };
                 return;
             }
-          } catch {}
+          } catch { }
         }
       }
     } catch (error) {
-      yield { content: `Error: ${error.message}`, done: true };
-    }
+  const status = error?.response?.status;
+  const errorData = error?.response?.data;
+  this.logger.error(
+    `Evolink Claude stream error: status=${status}, data=${JSON.stringify(errorData)?.substring(0, 500)}, message=${error.message}`,
+  );
+  yield { content: '', done: true, error: `Evolink Claude error: ${status || 'NETWORK'} - ${error.message}` };
+}
   }
 
   /**

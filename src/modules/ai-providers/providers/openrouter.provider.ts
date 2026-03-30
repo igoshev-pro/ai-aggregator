@@ -146,8 +146,13 @@ export class OpenRouterProvider extends BaseProvider {
               };
               return;
             }
-          } catch {
-            // Skip malformed JSON
+          } catch (error) {
+            const status = error?.response?.status;
+            const errorData = error?.response?.data;
+            this.logger.error(
+              `OpenRouter stream error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+            );
+            yield { content: '', done: true, error: `OpenRouter error: ${status || 'NETWORK'} - ${error.message}` };
           }
         }
       }

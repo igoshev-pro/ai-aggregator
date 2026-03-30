@@ -84,6 +84,7 @@ export interface StreamChunk {
     inputTokens?: number;
     outputTokens?: number;
   };
+  error?: string;
 }
 
 export interface TaskStatusResult {

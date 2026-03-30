@@ -52,7 +52,7 @@ export class AiProvidersService {
     return this.executeWithFallback(modelSlug, 'generateText', request);
   }
 
-  async *generateTextStream(
+async *generateTextStream(
   modelSlug: string,
   request: Omit<TextGenerationRequest, 'model'>,
 ): AsyncGenerator<StreamChunk> {
@@ -62,7 +62,7 @@ export class AiProvidersService {
     throw new BadRequestException(`No providers available for ${modelSlug}`);
   }
 
-  let lastError: GenerationResult | null = null;
+  let lastError: string | null = null;
 
   for (const { provider, modelId } of providers) {
     try {
@@ -73,28 +73,66 @@ export class AiProvidersService {
         model: modelId,
       });
 
+      let hasContent = false;
+      let streamError: string | null = null;
+
       for await (const chunk of stream) {
+        // Проверяем наличие ошибки в чанке
+        if ((chunk as any).error) {
+          streamError = (chunk as any).error;
+          this.logger.warn(
+            `Stream chunk error from ${provider.getSlug()}: ${streamError}`,
+          );
+          break; // Пробуем следующий провайдер
+        }
+
+        if (chunk.content && !chunk.content.startsWith('Error:')) {
+          hasContent = true;
+        }
+
+        // Если content начинается с "Error:" и это единственный chunk — это ошибка провайдера
+        if (chunk.done && !hasContent && chunk.content?.startsWith('Error:')) {
+          streamError = chunk.content;
+          this.logger.warn(
+            `Stream error from ${provider.getSlug()}: ${streamError}`,
+          );
+          break; // Пробуем следующий провайдер
+        }
+
         yield chunk;
+
+        if (chunk.done) {
+          // Успешно завершили стрим
+          return;
+        }
       }
 
+      // Если вышли из цикла без return — была ошибка
+      if (streamError) {
+        lastError = streamError;
+        this.logger.warn(
+          `Provider ${provider.getSlug()} failed for ${modelSlug}, trying next...`,
+        );
+        continue; // Пробуем следующий провайдер
+      }
+
+      // Стрим закончился без done — тоже считаем успехом
       return;
+
     } catch (error) {
       this.logger.error(`${provider.getSlug()} generateTextStream error: ${error.message}`);
-
-      lastError = {
-        success: false,
-        error: {
-          code: 'PROVIDER_ERROR',
-          message: error.message,
-          retryable: true,
-        },
-        responseTimeMs: 0,
-        providerSlug: provider.getSlug(),
-      };
+      lastError = error.message;
+      continue; // Пробуем следующий провайдер
     }
   }
 
-  throw new BadRequestException(lastError?.error?.message ?? 'All providers failed to stream text');
+  // Все провайдеры провалились
+  this.logger.error(`All providers failed for ${modelSlug}: ${lastError}`);
+  yield {
+    content: '',
+    done: true,
+    error: lastError || 'All providers failed',
+  } as any;
 }
 
   async generateImage(
