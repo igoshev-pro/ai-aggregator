@@ -162,17 +162,76 @@ export class EvolinkProvider extends BaseProvider {
               };
               return;
             }
-          } catch { }
+          } catch (error) {
+  const status = error?.response?.status;
+  let errorMessage = error.message;
+
+  try {
+    if (error?.response?.data) {
+      if (typeof error.response.data === 'string') {
+        errorMessage = error.response.data.substring(0, 500);
+      } else if (typeof error.response.data.pipe === 'function') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of error.response.data) {
+          chunks.push(Buffer.from(chunk));
+          if (chunks.length > 5) break;
+        }
+        const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+        try {
+          const parsed = JSON.parse(body);
+          errorMessage = parsed?.error?.message || parsed?.message || body;
+        } catch {
+          errorMessage = body || error.message;
+        }
+      } else if (error.response.data?.error?.message) {
+        errorMessage = error.response.data.error.message;
+      }
+    }
+  } catch {
+    errorMessage = `HTTP ${status}: ${error.message}`;
+  }
+
+  this.logger.error(`Evolink OpenAI stream error: status=${status}, message=${errorMessage}`);
+  yield { content: '', done: true, error: `Evolink: ${status || 'NETWORK'} - ${errorMessage}` };
+}
         }
       }
     } catch (error) {
-      const status = error?.response?.status;
-      const errorData = error?.response?.data;
-      this.logger.error(
-        `Evolink OpenAI stream error: status=${status}, data=${JSON.stringify(errorData)?.substring(0, 500)}, message=${error.message}`,
-      );
-      yield { content: '', done: true, error: `Evolink error: ${status || 'NETWORK'} - ${error.message}` };
+  const status = error?.response?.status;
+  let errorMessage = error.message;
+
+  // Безопасное извлечение ошибки — response.data может быть стримом
+  try {
+    if (error?.response?.data) {
+      if (typeof error.response.data === 'string') {
+        errorMessage = error.response.data.substring(0, 500);
+      } else if (typeof error.response.data.pipe === 'function') {
+        // Это стрим — читаем его
+        const chunks: Buffer[] = [];
+        for await (const chunk of error.response.data) {
+          chunks.push(Buffer.from(chunk));
+          if (chunks.length > 5) break;
+        }
+        const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+        try {
+          const parsed = JSON.parse(body);
+          errorMessage = parsed?.error?.message || parsed?.message || body;
+        } catch {
+          errorMessage = body || error.message;
+        }
+      } else if (error.response.data?.error?.message) {
+        errorMessage = error.response.data.error.message;
+      }
     }
+  } catch {
+    errorMessage = `HTTP ${status}: ${error.message}`;
+  }
+
+  this.logger.error(
+    `Evolink OpenAI stream error: status=${status}, message=${errorMessage}`,
+  );
+  yield { content: '', done: true, error: `Evolink: ${status || 'NETWORK'} - ${errorMessage}` };
+}
   }
 
   // --- Anthropic Messages API (Claude Sonnet 4.6, Claude Opus 4.6) ---
@@ -320,11 +379,37 @@ export class EvolinkProvider extends BaseProvider {
       }
     } catch (error) {
   const status = error?.response?.status;
-  const errorData = error?.response?.data;
+  let errorMessage = error.message;
+
+  try {
+    if (error?.response?.data) {
+      if (typeof error.response.data === 'string') {
+        errorMessage = error.response.data.substring(0, 500);
+      } else if (typeof error.response.data.pipe === 'function') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of error.response.data) {
+          chunks.push(Buffer.from(chunk));
+          if (chunks.length > 5) break;
+        }
+        const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+        try {
+          const parsed = JSON.parse(body);
+          errorMessage = parsed?.error?.message || parsed?.message || body;
+        } catch {
+          errorMessage = body || error.message;
+        }
+      } else if (error.response.data?.error?.message) {
+        errorMessage = error.response.data.error.message;
+      }
+    }
+  } catch {
+    errorMessage = `HTTP ${status}: ${error.message}`;
+  }
+
   this.logger.error(
-    `Evolink Claude stream error: status=${status}, data=${JSON.stringify(errorData)?.substring(0, 500)}, message=${error.message}`,
+    `Evolink Claude stream error: status=${status}, message=${errorMessage}`,
   );
-  yield { content: '', done: true, error: `Evolink Claude error: ${status || 'NETWORK'} - ${error.message}` };
+  yield { content: '', done: true, error: `Evolink Claude: ${status || 'NETWORK'} - ${errorMessage}` };
 }
   }
 
