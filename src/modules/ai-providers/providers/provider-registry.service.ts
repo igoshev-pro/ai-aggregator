@@ -266,7 +266,7 @@ export class ProviderRegistryService implements OnModuleInit {
         providerMappings: [
           {
             providerSlug: 'openrouter',
-            modelId: 'anthropic/claude-haiku-4-5-20250620',
+            modelId: 'anthropic/claude-haiku-4.5',
             priority: 1,
             isActive: true,
           },
