@@ -63,9 +63,8 @@ export class OpenRouterProvider extends BaseProvider {
       };
     } catch (error) {
       const status = error?.response?.status;
-      const errorData = error?.response?.data;
       this.logger.error(
-        `OpenRouter generateText error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+        `OpenRouter generateText error: status=${status}, message=${error.message}`,
       );
       return this.handleError(error, start);
     }
@@ -75,7 +74,9 @@ export class OpenRouterProvider extends BaseProvider {
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
     try {
-      this.logger.debug(`OpenRouter stream request: model=${request.model}, messages=${request.messages?.length}`);
+      this.logger.debug(
+        `OpenRouter stream request: model=${request.model}, messages=${request.messages?.length}`,
+      );
 
       const response = await this.client.post(
         '/chat/completions',
@@ -116,15 +117,15 @@ export class OpenRouterProvider extends BaseProvider {
           try {
             const parsed = JSON.parse(data);
 
-            // Ошибка внутри SSE потока
             if (parsed.error) {
               this.logger.error(
-                `OpenRouter SSE error: ${JSON.stringify(parsed.error)}`,
+                `OpenRouter SSE error: ${parsed.error?.message || 'unknown'}`,
               );
               yield {
-                content: `Error: ${parsed.error.message || JSON.stringify(parsed.error)}`,
+                content: '',
                 done: true,
-              };
+                error: parsed.error?.message || 'OpenRouter SSE error',
+              } as any;
               return;
             }
 
@@ -146,57 +147,82 @@ export class OpenRouterProvider extends BaseProvider {
               };
               return;
             }
-} catch (error) {
-  const status = error?.response?.status;
-  let errorMessage = error.message;
-
-  try {
-    if (error?.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorMessage = error.response.data.substring(0, 500);
-      } else if (typeof error.response.data.pipe === 'function') {
-        const chunks: Buffer[] = [];
-        for await (const chunk of error.response.data) {
-          chunks.push(Buffer.from(chunk));
-          if (chunks.length > 5) break;
-        }
-        const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
-        try {
-          const parsed = JSON.parse(body);
-          errorMessage = parsed?.error?.message || parsed?.error?.metadata?.raw?.substring(0, 200) || parsed?.message || body;
-        } catch {
-          const match = body.match(/<p>(.*?)<\/p>/);
-          errorMessage = match ? match[1] : (body || error.message);
-        }
-      } else if (error.response.data?.error?.message) {
-        errorMessage = error.response.data.error.message;
-      }
-    }
-  } catch {
-    errorMessage = `HTTP ${status}: ${error.message}`;
-  }
-
-  this.logger.error(`OpenRouter stream error: status=${status}, message=${errorMessage}`);
-  yield { content: '', done: true, error: `OpenRouter: ${status || 'NETWORK'} - ${errorMessage}` };
-}
+          } catch {
+            // Skip malformed JSON lines
+          }
         }
       }
 
-      // Поток закончился без [DONE]
-      this.logger.warn(`OpenRouter stream ended without [DONE] for model ${request.model}`);
+      this.logger.warn(
+        `OpenRouter stream ended without [DONE] for model ${request.model}`,
+      );
       yield { content: '', done: true };
 
     } catch (error) {
+      // ═══ SAFE ERROR — no JSON.stringify on response objects ═══
       const status = error?.response?.status;
-      const errorData = error?.response?.data;
+      let errorMessage = error?.message || 'Unknown error';
+
+      try {
+        if (error?.response?.data) {
+          if (
+            typeof error.response.data?.pipe === 'function' ||
+            typeof error.response.data?.[Symbol.asyncIterator] === 'function'
+          ) {
+            // Response data is a stream — read it safely
+            const chunks: Buffer[] = [];
+            try {
+              for await (const chunk of error.response.data) {
+                chunks.push(Buffer.from(chunk));
+                if (chunks.length > 5) break;
+              }
+              const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+              try {
+                const parsed = JSON.parse(body);
+                errorMessage =
+                  parsed?.error?.message ||
+                  parsed?.error?.metadata?.raw?.substring(0, 200) ||
+                  parsed?.message ||
+                  body;
+              } catch {
+                const match = body.match(/<p>(.*?)<\/p>/);
+                if (match) {
+                  errorMessage = match[1];
+                } else if (body.length > 0) {
+                  errorMessage = body.substring(0, 200);
+                }
+              }
+            } catch {
+              // Stream already closed
+            }
+          } else if (typeof error.response.data === 'string') {
+            errorMessage = error.response.data.substring(0, 500);
+          } else if (typeof error.response.data === 'object') {
+            errorMessage =
+              error.response.data?.error?.message ||
+              error.response.data?.message ||
+              error.response.data?.msg ||
+              `HTTP ${status}`;
+          }
+        }
+      } catch {
+        errorMessage = `HTTP ${status || 'UNKNOWN'}: ${error?.message || 'Unknown'}`;
+      }
+
       this.logger.error(
-        `OpenRouter stream error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+        `OpenRouter stream error: status=${status}, message=${errorMessage}`,
       );
-      yield { content: `Error: ${error.message}`, done: true };
+      yield {
+        content: '',
+        done: true,
+        error: `OpenRouter: ${status || 'NETWORK'} - ${errorMessage}`,
+      } as any;
     }
   }
 
-  async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
+  async generateImage(
+    request: ImageGenerationRequest,
+  ): Promise<GenerationResult> {
     const start = Date.now();
     try {
       const response = await this.client.post('/images/generations', {
@@ -216,16 +242,16 @@ export class OpenRouterProvider extends BaseProvider {
         providerSlug: this.slug,
       };
     } catch (error) {
-      const status = error?.response?.status;
-      const errorData = error?.response?.data;
       this.logger.error(
-        `OpenRouter generateImage error: status=${status}, data=${JSON.stringify(errorData)}, message=${error.message}`,
+        `OpenRouter generateImage error: status=${error?.response?.status}, message=${error.message}`,
       );
       return this.handleError(error, start);
     }
   }
 
-  async generateVideo(_request: VideoGenerationRequest): Promise<GenerationResult> {
+  async generateVideo(
+    _request: VideoGenerationRequest,
+  ): Promise<GenerationResult> {
     return {
       success: false,
       error: {
@@ -238,7 +264,9 @@ export class OpenRouterProvider extends BaseProvider {
     };
   }
 
-  async generateAudio(_request: AudioGenerationRequest): Promise<GenerationResult> {
+  async generateAudio(
+    _request: AudioGenerationRequest,
+  ): Promise<GenerationResult> {
     return {
       success: false,
       error: {
@@ -273,7 +301,8 @@ export class OpenRouterProvider extends BaseProvider {
       error: {
         code: `HTTP_${status || 'UNKNOWN'}`,
         message,
-        retryable: status === 429 || status === 502 || status === 503 || status >= 500,
+        retryable:
+          status === 429 || status === 502 || status === 503 || status >= 500,
       },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
