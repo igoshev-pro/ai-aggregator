@@ -1,4 +1,3 @@
-// src/modules/billing/providers/stars.provider.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -23,11 +22,11 @@ export class StarsProvider implements PaymentProviderInterface {
       const response = await axios.post(
         `https://api.telegram.org/bot${this.botToken}/createInvoiceLink`,
         {
-          title: 'Пополнение баланса',
-          description: `${dto.tokens} токенов для AI генерации`,
+          title: 'SPICHKI AI — Пополнение',
+          description: `${dto.tokens} спичек для генерации в SPICHKI AI`,
           payload: JSON.stringify({ userId: dto.userId, tokens: dto.tokens }),
           currency: 'XTR',
-          prices: [{ label: `${dto.tokens} токенов`, amount: dto.amount }],
+          prices: [{ label: `${dto.tokens} спичек`, amount: dto.amount }],
         },
       );
 
