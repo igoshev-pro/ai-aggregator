@@ -22,6 +22,7 @@ import {
   AudioGenerationDto,
 } from './dto/image-generation.dto';
 
+
 @Injectable()
 export class GenerationService {
   private readonly logger = new Logger(GenerationService.name);
@@ -36,6 +37,7 @@ export class GenerationService {
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
   ) {}
+
 
   async generateImage(userId: string, dto: ImageGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
@@ -122,6 +124,7 @@ export class GenerationService {
     };
   }
 
+
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
@@ -197,6 +200,7 @@ export class GenerationService {
     };
   }
 
+
   async generateAudio(userId: string, dto: AudioGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
@@ -216,6 +220,13 @@ export class GenerationService {
         instrumental: dto.instrumental,
         voiceId: dto.voiceId,
         language: dto.language,
+        stability: dto.stability,
+        similarity: dto.similarity,
+        speed: dto.speed,
+        loop: dto.loop,
+        promptInfluence: dto.promptInfluence,
+        audioUrl: dto.audioUrl,
+        dialogue: dto.dialogue,
       },
       tokensCost: costInTokens,
     });
@@ -223,21 +234,31 @@ export class GenerationService {
 
     await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
 
-    const isElevenLabsModel = dto.modelSlug.startsWith('elevenlabs/');
+    const p = generation.params as any;
 
-  const requestPayload: any = {
-    style: dto.style,
-    duration: generation.params.duration,
-    instrumental: generation.params.instrumental,
-    voiceId: generation.params.voiceId,
-    language: generation.params.language,
-  };
-
-  if (isElevenLabsModel) {
-    requestPayload.text = dto.prompt;    // используем поле 'text' для ElevenLabs
-  } else {
-    requestPayload.prompt = dto.prompt;  // для остальных моделей оставляем 'prompt'
-  }
+    // Build request payload — provider will receive all needed fields
+    const requestPayload: any = {
+      prompt: dto.prompt,
+      text: dto.prompt, // ElevenLabs TTS models use 'text' field
+      style: p.style,
+      duration: p.duration,
+      instrumental: p.instrumental,
+      voiceId: p.voiceId,
+      voice: p.voiceId, // KIE ElevenLabs uses 'voice'
+      language: p.language,
+      language_code: p.language, // KIE ElevenLabs uses 'language_code'
+      stability: p.stability,
+      similarity_boost: p.similarity, // KIE ElevenLabs uses 'similarity_boost'
+      similarity: p.similarity,
+      speed: p.speed,
+      loop: p.loop,
+      prompt_influence: p.promptInfluence, // KIE ElevenLabs uses 'prompt_influence'
+      promptInfluence: p.promptInfluence,
+      audio_url: p.audioUrl, // KIE ElevenLabs uses 'audio_url'
+      audioUrl: p.audioUrl,
+      dialogue: p.dialogue, // KIE ElevenLabs dialogue uses 'dialogue' array
+      customMode: dto.customMode,
+    };
 
     await this.generationQueue.add(
       'process-generation',
@@ -246,14 +267,7 @@ export class GenerationService {
         userId,
         type: GenerationType.AUDIO,
         modelSlug: dto.modelSlug,
-        request: {
-          prompt: dto.prompt,
-          style: dto.style,
-          duration: generation.params.duration,
-          instrumental: generation.params.instrumental,
-          voiceId: generation.params.voiceId,
-          language: generation.params.language,
-        },
+        request: requestPayload,
       },
       {
         priority: 2,
@@ -270,6 +284,7 @@ export class GenerationService {
     };
   }
 
+
   async getGenerationStatus(userId: string, generationId: string) {
     const generation = await this.generationModel.findById(generationId);
     if (!generation) throw new NotFoundException('Generation not found');
@@ -282,7 +297,7 @@ export class GenerationService {
       type: generation.type,
       modelSlug: generation.modelSlug,
       status: generation.status,
-            progress: generation.progress,
+      progress: generation.progress,
       eta: generation.eta,
       resultUrls: generation.resultUrls,
       resultContent: generation.resultContent,
@@ -295,6 +310,7 @@ export class GenerationService {
       responseTimeMs: generation.responseTimeMs,
     };
   }
+
 
   async getUserGenerations(
     userId: string,
@@ -334,6 +350,7 @@ export class GenerationService {
     };
   }
 
+
   async updateGeneration(
     generationId: string,
     updates: Partial<Generation>,
@@ -344,6 +361,7 @@ export class GenerationService {
       { new: true },
     );
   }
+
 
   async refundGeneration(generationId: string) {
     const generation = await this.generationModel.findById(generationId);
@@ -365,6 +383,7 @@ export class GenerationService {
     await generation.save();
   }
 
+
   async toggleFavorite(userId: string, generationId: string) {
     const generation = await this.generationModel.findById(generationId);
     if (!generation) throw new NotFoundException('Generation not found');
@@ -376,6 +395,7 @@ export class GenerationService {
     await generation.save();
     return { isFavorite: generation.isFavorite };
   }
+
 
   async getFavorites(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -401,6 +421,7 @@ export class GenerationService {
     };
   }
 
+
   private async validateBalance(userId: string, cost: number) {
     const user = await this.usersService.findById(userId);
     const totalBalance = user.tokenBalance + user.bonusTokens;
@@ -411,4 +432,3 @@ export class GenerationService {
     }
   }
 }
-     

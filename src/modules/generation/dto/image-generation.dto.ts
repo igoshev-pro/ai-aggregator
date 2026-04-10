@@ -1,3 +1,6 @@
+// src/modules/generation/dto/image-generation.dto.ts
+// ПОЛНЫЙ ФАЙЛ — копировать целиком
+
 import {
   IsString,
   IsOptional,
@@ -7,8 +10,11 @@ import {
   Min,
   Max,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+
 
 export class ImageGenerationDto {
   @ApiProperty()
@@ -79,6 +85,7 @@ export class ImageGenerationDto {
   @IsString()
   style?: string;
 }
+
 
 export class VideoGenerationDto {
   @ApiProperty({ example: 'sora-2-txt2vid' })
@@ -157,6 +164,18 @@ export class VideoGenerationDto {
   @IsOptional()
   style?: string;
 }
+
+
+export class DialogueLineDto {
+  @ApiProperty({ description: 'Text of the dialogue line' })
+  @IsString()
+  text: string;
+
+  @ApiProperty({ description: 'Voice name for this line' })
+  @IsString()
+  voice: string;
+}
+
 
 export class AudioGenerationDto {
   @ApiProperty({ example: 'suno-v4' })
@@ -237,4 +256,14 @@ export class AudioGenerationDto {
   @IsString()
   @IsOptional()
   audioUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Dialogue lines array for text-to-dialogue (each with text + voice)',
+    type: [DialogueLineDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => DialogueLineDto)
+  dialogue?: DialogueLineDto[];
 }
