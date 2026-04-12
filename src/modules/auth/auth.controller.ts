@@ -1,7 +1,7 @@
 import { Controller, Post, Body, Get, UseGuards, HttpCode } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { TelegramAuthDto } from './dto/telegram-auth.dto';
+import { TelegramAuthDto, TelegramWidgetAuthDto } from './dto/telegram-auth.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 
@@ -15,6 +15,14 @@ export class AuthController {
   @HttpCode(200)
   async telegramAuth(@Body() dto: TelegramAuthDto) {
     const result = await this.authService.authenticateWithTelegram(dto);
+    return { success: true, data: result };
+  }
+
+  @Post('telegram-widget')
+  @ApiOperation({ summary: 'Authenticate with Telegram Login Widget' })
+  @HttpCode(200)
+  async telegramWidgetAuth(@Body() dto: TelegramWidgetAuthDto) {
+    const result = await this.authService.authenticateWithTelegramWidget(dto);
     return { success: true, data: result };
   }
 

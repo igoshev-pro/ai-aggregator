@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/modules/users/users.service';
 import { TelegramUser, JwtPayload, AuthProvider } from '@/common/interfaces';
-import { TelegramAuthDto, AuthResponseDto } from './dto/telegram-auth.dto';
+import { TelegramAuthDto, TelegramWidgetAuthDto, AuthResponseDto } from './dto/telegram-auth.dto';
 import { UserDocument } from '@/modules/users/schemas/user.schema';
 import * as crypto from 'crypto';
 
@@ -20,8 +20,10 @@ export class AuthService {
     this.isDev = this.configService.get('NODE_ENV') !== 'production';
   }
 
+  // ─── Mini App Auth (initData) ─────────────────────────────────
+
   async authenticateWithTelegram(dto: TelegramAuthDto): Promise<AuthResponseDto> {
-    // ─── DEV Mode Bypass ─────────────────────────────────────────
+    // DEV Mode Bypass
     if (this.isDev) {
       if (dto.initData.includes('test') || dto.initData.includes('dev')) {
         this.logger.log('🔧 DEV mode: bypassing Telegram validation');
@@ -29,7 +31,7 @@ export class AuthService {
       }
     }
 
-    // ─── Production Auth ─────────────────────────────────────────
+    // Production Auth
     const telegramUser = this.validateAndParseInitData(dto.initData);
 
     if (!telegramUser) {
@@ -46,6 +48,112 @@ export class AuthService {
     }
 
     return this.buildAuthResponse(user);
+  }
+
+  // ─── Telegram Login Widget Auth ───────────────────────────────
+
+  async authenticateWithTelegramWidget(dto: TelegramWidgetAuthDto): Promise<AuthResponseDto> {
+    // DEV Mode Bypass
+    if (this.isDev && dto.hash === 'dev_bypass') {
+      this.logger.log('🔧 DEV mode: bypassing Widget validation');
+      const telegramUser: TelegramUser = {
+        id: dto.id,
+        first_name: dto.first_name,
+        last_name: dto.last_name,
+        username: dto.username,
+        photo_url: dto.photo_url,
+      };
+      const user = await this.usersService.findOrCreateByTelegram(telegramUser, dto.referralCode);
+      return this.buildAuthResponse(user);
+    }
+
+    // Validate widget data
+    const isValid = this.validateWidgetData(dto);
+
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid Telegram Login Widget data');
+    }
+
+    // Check auth_date freshness (24 hours)
+    const now = Math.floor(Date.now() / 1000);
+    const maxAge = this.isDev ? 86400 * 30 : 86400; // 30 days in dev, 24h in prod
+    if (now - dto.auth_date > maxAge) {
+      throw new UnauthorizedException('Telegram login data has expired');
+    }
+
+    // Convert to TelegramUser format
+    const telegramUser: TelegramUser = {
+      id: dto.id,
+      first_name: dto.first_name,
+      last_name: dto.last_name,
+      username: dto.username,
+      photo_url: dto.photo_url,
+    };
+
+    const user = await this.usersService.findOrCreateByTelegram(
+      telegramUser,
+      dto.referralCode,
+    );
+
+    if (user.isBanned) {
+      throw new UnauthorizedException('Account is banned: ' + (user.banReason || 'No reason'));
+    }
+
+    this.logger.log(`✅ Telegram Widget auth successful for user ${dto.id} (@${dto.username || 'no-username'})`);
+
+    return this.buildAuthResponse(user);
+  }
+
+  // ─── Widget Data Validation ───────────────────────────────────
+
+  private validateWidgetData(dto: TelegramWidgetAuthDto): boolean {
+    try {
+      const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
+
+      if (!botToken) {
+        this.logger.error('TELEGRAM_BOT_TOKEN is not configured');
+        return false;
+      }
+
+      // Build data_check_string from all fields except hash and referralCode
+      const checkData: Record<string, string> = {};
+
+      if (dto.id !== undefined) checkData['id'] = String(dto.id);
+      if (dto.first_name !== undefined) checkData['first_name'] = dto.first_name;
+      if (dto.last_name !== undefined) checkData['last_name'] = dto.last_name;
+      if (dto.username !== undefined) checkData['username'] = dto.username;
+      if (dto.photo_url !== undefined) checkData['photo_url'] = dto.photo_url;
+      if (dto.auth_date !== undefined) checkData['auth_date'] = String(dto.auth_date);
+
+      const dataCheckString = Object.keys(checkData)
+        .sort()
+        .map((key) => `${key}=${checkData[key]}`)
+        .join('\n');
+
+      // Login Widget uses SHA256(BOT_TOKEN) as secret (NOT HMAC!)
+      const secretKey = crypto
+        .createHash('sha256')
+        .update(botToken)
+        .digest();
+
+      const calculatedHash = crypto
+        .createHmac('sha256', secretKey)
+        .update(dataCheckString)
+        .digest('hex');
+
+      if (calculatedHash !== dto.hash) {
+        if (this.isDev) {
+          this.logger.warn(`❌ Widget hash mismatch: expected ${calculatedHash}, got ${dto.hash}`);
+          this.logger.warn(`   data_check_string: ${JSON.stringify(dataCheckString)}`);
+        }
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      this.logger.error('Error validating widget data:', error);
+      return false;
+    }
   }
 
   // ─── Build unified auth response ─────────────────────────────
@@ -157,7 +265,7 @@ export class AuthService {
     }
   }
 
-  // ─── Telegram Validation ─────────────────────────────────────
+  // ─── Mini App Telegram Validation ────────────────────────────
 
   private validateAndParseInitData(initData: string): TelegramUser | null {
     try {
