@@ -964,28 +964,37 @@ export class KieProvider extends BaseProvider {
             input.output_format = r.output_format ?? 'mp3_44100_128';
             break;
 
+          // case 'elevenlabs/text-to-dialogue-v3':
+          //   // ═══ ИСПРАВЛЕНО: API принимает ТОЛЬКО stability и language_code ═══
+          //   // Диалог описывается в промпте текстом, а не массивом реплик.
+          //   // Модель сама генерирует голоса и озвучивает диалог.
+          //   input.stability = stabilityValue;
+          //   input.language_code = langValue || 'auto';
+
+          //   // Если пришёл массив dialogue — конвертируем в текстовый промпт
+          //   // и передаём как часть prompt (KIE использует prompt из task context)
+          //   if (Array.isArray(r.dialogue) && r.dialogue.length > 0) {
+          //     // Формируем текстовый скрипт диалога из реплик
+          //     const dialogueScript = r.dialogue
+          //       .map((line: any) => {
+          //         const speaker = line.voice || 'Speaker';
+          //         const text = line.text || '';
+          //         return `${speaker}: ${text}`;
+          //       })
+          //       .join('\n');
+          //     input.text = dialogueScript;
+          //   } else if (textValue) {
+          //     input.text = textValue;
+          //   }
+          //   break;
           case 'elevenlabs/text-to-dialogue-v3':
-            // ═══ ИСПРАВЛЕНО: API принимает ТОЛЬКО stability и language_code ═══
-            // Диалог описывается в промпте текстом, а не массивом реплик.
-            // Модель сама генерирует голоса и озвучивает диалог.
+            // ═══ API принимает ТОЛЬКО stability и language_code ═══
+            // Документация не показывает поле text/dialogue в input.
+            // Текст диалога передаём как text — если API его отклоняет, убираем.
             input.stability = stabilityValue;
             input.language_code = langValue || 'auto';
-
-            // Если пришёл массив dialogue — конвертируем в текстовый промпт
-            // и передаём как часть prompt (KIE использует prompt из task context)
-            if (Array.isArray(r.dialogue) && r.dialogue.length > 0) {
-              // Формируем текстовый скрипт диалога из реплик
-              const dialogueScript = r.dialogue
-                .map((line: any) => {
-                  const speaker = line.voice || 'Speaker';
-                  const text = line.text || '';
-                  return `${speaker}: ${text}`;
-                })
-                .join('\n');
-              input.text = dialogueScript;
-            } else if (textValue) {
-              input.text = textValue;
-            }
+            // НЕ передаём text — строго по документации
+            // Текст сохраняем только в prompt для отображения пользователю
             break;
 
           case 'elevenlabs/text-to-speech-multilingual-v2':
