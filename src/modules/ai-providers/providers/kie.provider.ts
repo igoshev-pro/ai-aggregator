@@ -1089,6 +1089,13 @@ export class KieProvider extends BaseProvider {
       };
     } catch (error: any) {
       this.logger.error(`KIE generateAudio error: ${error.message}`);
+      // Подробный лог ответа API
+      if (error?.response) {
+        this.logger.error(
+          `KIE API response: status=${error.response.status}, ` +
+          `data=${JSON.stringify(error.response.data)?.substring(0, 500)}`
+        );
+      }
       return this.handleError(error, start);
     }
   }
@@ -1350,7 +1357,16 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
 
   private handleError(error: any, start: number): GenerationResult {
     const status = error?.response?.status;
-    const message = error?.response?.data?.msg || error.message;
+    const responseData = error?.response?.data;
+    const message = responseData?.msg || responseData?.message || error.message;
+
+    // ═══ ПОДРОБНЫЙ ЛОГ ОШИБКИ ═══
+    this.logger.error(
+      `KIE API Error Details: status=${status}, ` +
+      `message="${message}", ` +
+      `fullResponse=${JSON.stringify(responseData)?.substring(0, 500)}`
+    );
+
     return {
       success: false,
       error: {
