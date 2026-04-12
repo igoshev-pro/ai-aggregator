@@ -1025,8 +1025,30 @@ export class KieProvider extends BaseProvider {
 
         this.logger.debug(`Sending request to KIE ElevenLabs: ${JSON.stringify(requestBody).substring(0, 500)}`);
 
-        const response = await this.client.post('/api/v1/jobs/createTask', requestBody);
+        let response: any;
+        try {
+          response = await this.client.post('/api/v1/jobs/createTask', requestBody);
+        } catch (axiosError: any) {
+          this.logger.error(
+            `KIE ElevenLabs AXIOS ERROR: ` +
+            `message="${axiosError.message}", ` +
+            `code="${axiosError.code}", ` +
+            `status=${axiosError?.response?.status}, ` +
+            `statusText="${axiosError?.response?.statusText}", ` +
+            `responseData=${JSON.stringify(axiosError?.response?.data)?.substring(0, 800)}, ` +
+            `isAxiosError=${axiosError.isAxiosError}, ` +
+            `config.url="${axiosError?.config?.url}", ` +
+            `config.baseURL="${axiosError?.config?.baseURL}"`
+          );
+          throw axiosError;
+        }
+
         const data = response.data;
+
+        this.logger.debug(
+          `KIE ElevenLabs FULL RESPONSE: code=${data.code}, msg="${data.msg}", ` +
+          `fullData=${JSON.stringify(data).substring(0, 800)}`
+        );
 
         if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs task creation failed');
 
