@@ -286,9 +286,13 @@ export class KieProvider extends BaseProvider {
       });
 
       const data = response.data;
-      if (data.code !== 200) {
-        throw new Error(data.msg || 'KIE task creation failed');
-      }
+
+        this.logger.debug(
+          `KIE ElevenLabs FULL RESPONSE: code=${data.code}, msg="${data.msg}", ` +
+          `data=${JSON.stringify(data).substring(0, 800)}`
+        );
+
+        if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs task creation failed');
 
       const taskId = data.data?.taskId;
       if (!taskId) {
