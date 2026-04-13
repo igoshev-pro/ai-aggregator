@@ -109,7 +109,7 @@ export class GenerationConsumer {
       this.logger.log(
         `✅ Generation ${generationId} completed in ${result.responseTimeMs}ms, saved to S3: ${storageUrls.length} files`,
       );
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`❌ Generation ${generationId} failed: ${error.message}`);
 
       await this.generationService.updateGeneration(generationId, {
@@ -154,7 +154,7 @@ export class GenerationConsumer {
       const storageKeys = results.map((r) => r.key).filter(Boolean);
 
       return { storageUrls, storageKeys };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`S3 save failed: ${error.message}`);
       return { storageUrls: [], storageKeys: [] };
     }
@@ -168,8 +168,10 @@ export class GenerationConsumer {
     type: GenerationType,
   ) {
     const maxAttempts = 120;
+    const maxConsecutiveFailures = 3;
     const pollInterval = 5000;
     let attempts = 0;
+    let consecutiveFailures = 0;
 
     await this.generationService.updateGeneration(generationId, {
       taskId,
@@ -234,15 +236,37 @@ export class GenerationConsumer {
         }
 
         if (taskResult.status === 'failed') {
-          throw new Error(taskResult.error || 'Task failed at provider');
+          consecutiveFailures++;
+          const errorMsg = taskResult.error || 'Task failed at provider';
+          this.logger.warn(
+            `Poll ${generationId}: provider returned fail (${consecutiveFailures}/${maxConsecutiveFailures}): ${errorMsg}`,
+          );
+
+          if (consecutiveFailures >= maxConsecutiveFailures) {
+            throw new Error(`Provider task failed: ${errorMsg}`);
+          }
+          continue;
         }
-      } catch (error) {
-        if (error.message.includes('Task failed')) throw error;
-        this.logger.warn(`Poll error for ${generationId}: ${error.message}`);
+
+        // Task is still processing — reset consecutive failure counter
+        consecutiveFailures = 0;
+      } catch (error: any) {
+        if (error.message.startsWith('Provider task failed:')) {
+          throw error;
+        }
+
+        consecutiveFailures++;
+        this.logger.warn(
+          `Poll error for ${generationId} (${consecutiveFailures}/${maxConsecutiveFailures}): ${error.message}`,
+        );
+
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          throw new Error(`Generation failed after ${consecutiveFailures} consecutive errors: ${error.message}`);
+        }
       }
     }
 
-    throw new Error(`Generation timeout: task ${taskId} did not complete`);
+    throw new Error(`Generation timeout: task ${taskId} did not complete after ${maxAttempts} attempts`);
   }
 
   @OnQueueFailed()
