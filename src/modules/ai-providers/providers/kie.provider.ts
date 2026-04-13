@@ -287,12 +287,12 @@ export class KieProvider extends BaseProvider {
 
       const data = response.data;
 
-        this.logger.debug(
-          `KIE ElevenLabs FULL RESPONSE: code=${data.code}, msg="${data.msg}", ` +
-          `data=${JSON.stringify(data).substring(0, 800)}`
-        );
+      this.logger.debug(
+        `KIE ElevenLabs FULL RESPONSE: code=${data.code}, msg="${data.msg}", ` +
+        `data=${JSON.stringify(data).substring(0, 800)}`
+      );
 
-        if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs task creation failed');
+      if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs task creation failed');
 
       const taskId = data.data?.taskId;
       if (!taskId) {
@@ -891,7 +891,7 @@ export class KieProvider extends BaseProvider {
   //   }
   // }
 
-    async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
+  async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
       const modelId = request.model;
@@ -991,15 +991,61 @@ export class KieProvider extends BaseProvider {
           //     input.text = textValue;
           //   }
           //   break;
-          case 'elevenlabs/text-to-dialogue-v3':
-            // ═══ API принимает ТОЛЬКО stability и language_code ═══
-            // Документация не показывает поле text/dialogue в input.
-            // Текст диалога передаём как text — если API его отклоняет, убираем.
+          case 'elevenlabs/text-to-dialogue-v3': {
             input.stability = stabilityValue;
-            input.language_code = langValue || 'auto';
-            // НЕ передаём text — строго по документации
-            // Текст сохраняем только в prompt для отображения пользователю
+            if (langValue) input.language_code = langValue;
+
+            // Собираем массив dialogue из разных источников
+            let dialogueArray: Array<{ text: string; voice: string }> = [];
+
+            // 1. Если пришёл готовый массив dialogue
+            if (Array.isArray(r.dialogue) && r.dialogue.length > 0) {
+              dialogueArray = r.dialogue.map((line: any) => ({
+                text: String(line.text || ''),
+                voice: String(line.voice || 'Adam'),
+              }));
+            }
+            // 2. Парсим из prompt в формате "Voice: текст"
+            else {
+              const promptText = r.text || r.prompt || request.prompt || '';
+              const lines = promptText.split('\n').filter((l: string) => l.trim());
+
+              for (const line of lines) {
+                const colonIdx = line.indexOf(':');
+                if (colonIdx > 0) {
+                  const voice = line.substring(0, colonIdx).trim();
+                  const text = line.substring(colonIdx + 1).trim();
+                  if (text) {
+                    dialogueArray.push({ text, voice: voice || 'Adam' });
+                  }
+                } else if (line.trim()) {
+                  // Строка без "Голос:" — используем дефолтный голос
+                  dialogueArray.push({ text: line.trim(), voice: 'Adam' });
+                }
+              }
+            }
+
+            if (dialogueArray.length === 0) {
+              throw new Error(
+                'Для модели text-to-dialogue-v3 нужен диалог. Формат: "Имя: текст" на каждой строке.',
+              );
+            }
+
+            // Проверяем лимит 5000 символов
+            const totalChars = dialogueArray.reduce((sum, d) => sum + d.text.length, 0);
+            if (totalChars > 5000) {
+              throw new Error(
+                `Суммарная длина текста диалога ${totalChars} символов, максимум 5000.`,
+              );
+            }
+
+            input.dialogue = dialogueArray;
+
+            this.logger.debug(
+              `ElevenLabs dialogue: ${dialogueArray.length} lines, ${totalChars} chars`,
+            );
             break;
+          }
 
           case 'elevenlabs/text-to-speech-multilingual-v2':
           case 'elevenlabs/text-to-speech-turbo-2-5':
@@ -1127,226 +1173,226 @@ export class KieProvider extends BaseProvider {
   }
 
   async generateLyrics(prompt: string, callBackUrl: string): Promise<string> {
-  try {
-    const response = await this.client.post('/api/v1/lyrics', {
-      prompt,
-      callBackUrl,
-    });
-    const data = response.data;
-    if (data.code !== 200) {
-      throw new Error(data.msg || 'Lyrics generation failed');
+    try {
+      const response = await this.client.post('/api/v1/lyrics', {
+        prompt,
+        callBackUrl,
+      });
+      const data = response.data;
+      if (data.code !== 200) {
+        throw new Error(data.msg || 'Lyrics generation failed');
+      }
+      return data.data.taskId;
+    } catch (error) {
+      this.logger.error(`KIE generateLyrics error: ${error.message}`);
+      throw error;
     }
-    return data.data.taskId;
-  } catch (error) {
-    this.logger.error(`KIE generateLyrics error: ${error.message}`);
-    throw error;
   }
-}
 
-async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
-  try {
-    const response = await this.client.get('/api/v1/lyrics/record-info', { params: { taskId } });
-    const data = response.data;
-    if (data.code !== 200) {
-      return { status: 'failed', error: data.msg || 'Failed to get lyrics task status' };
-    }
-    const task = data.data;
-    if (!task) {
-      return { status: 'pending' };
-    }
-    const statusMap: Record<string, TaskStatusResult['status']> = {
-      PENDING: 'pending',
-      SUCCESS: 'completed',
-      CREATE_TASK_FAILED: 'failed',
-      GENERATE_LYRICS_FAILED: 'failed',
-      CALLBACK_EXCEPTION: 'failed',
-      SENSITIVE_WORD_ERROR: 'failed',
-    };
-    const status = statusMap[task.status] || 'pending';
-    if (status === 'failed') {
-      return { status: 'failed', error: task.errorMessage || 'Lyrics generation failed' };
-    }
-    if (status === 'completed') {
-      return {
-        status: 'completed',
-        resultUrls: [], // optionally lyrics data can be fetched separately
-        progress: 100,
+  async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/lyrics/record-info', { params: { taskId } });
+      const data = response.data;
+      if (data.code !== 200) {
+        return { status: 'failed', error: data.msg || 'Failed to get lyrics task status' };
+      }
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+      const statusMap: Record<string, TaskStatusResult['status']> = {
+        PENDING: 'pending',
+        SUCCESS: 'completed',
+        CREATE_TASK_FAILED: 'failed',
+        GENERATE_LYRICS_FAILED: 'failed',
+        CALLBACK_EXCEPTION: 'failed',
+        SENSITIVE_WORD_ERROR: 'failed',
       };
+      const status = statusMap[task.status] || 'pending';
+      if (status === 'failed') {
+        return { status: 'failed', error: task.errorMessage || 'Lyrics generation failed' };
+      }
+      if (status === 'completed') {
+        return {
+          status: 'completed',
+          resultUrls: [], // optionally lyrics data can be fetched separately
+          progress: 100,
+        };
+      }
+      return { status, progress: task.progress || 0 };
+    } catch (error) {
+      this.logger.error(`KIE getLyricsTaskStatus error: ${error.message}`);
+      return { status: 'failed', error: error.message };
     }
-    return { status, progress: task.progress || 0 };
-  } catch (error) {
-    this.logger.error(`KIE getLyricsTaskStatus error: ${error.message}`);
-    return { status: 'failed', error: error.message };
   }
-}
 
   // ═══════════════════════════════════════════════════════
-// TEXT GENERATION — KIE Gemini models
-// ═══════════════════════════════════════════════════════
+  // TEXT GENERATION — KIE Gemini models
+  // ═══════════════════════════════════════════════════════
 
-// Модели, для которых KIE использует отдельный baseURL path
-private static readonly KIE_TEXT_MODELS: Record<string, string> = {
-  'gemini-3.1-pro': '/gemini-3.1-pro/v1/chat/completions',
-  'gemini-3-flash': '/gemini-3-flash/v1/chat/completions',
-};
+  // Модели, для которых KIE использует отдельный baseURL path
+  private static readonly KIE_TEXT_MODELS: Record<string, string> = {
+    'gemini-3.1-pro': '/gemini-3.1-pro/v1/chat/completions',
+    'gemini-3-flash': '/gemini-3-flash/v1/chat/completions',
+  };
 
-async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
-  const start = Date.now();
-  const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
+  async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
+    const start = Date.now();
+    const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
 
-  if (!endpoint) {
-    return {
-      success: false,
-      error: { code: 'NOT_IMPLEMENTED', message: `Text model ${request.model} not supported by KIE`, retryable: false },
-      responseTimeMs: 0,
-      providerSlug: this.slug,
-    };
-  }
+    if (!endpoint) {
+      return {
+        success: false,
+        error: { code: 'NOT_IMPLEMENTED', message: `Text model ${request.model} not supported by KIE`, retryable: false },
+        responseTimeMs: 0,
+        providerSlug: this.slug,
+      };
+    }
 
-  try {
-    this.logger.debug(`KIE generateText: model=${request.model}, endpoint=${endpoint}`);
+    try {
+      this.logger.debug(`KIE generateText: model=${request.model}, endpoint=${endpoint}`);
 
-    const response = await this.client.post(endpoint, {
-      messages: request.messages,
-      max_tokens: request.maxTokens || 4096,
-      temperature: request.temperature ?? 0.7,
-      stream: false,
-    });
-
-    const data = response.data;
-    return {
-      success: true,
-      data: {
-        content: data.choices?.[0]?.message?.content || '',
-        metadata: { model: data.model },
-      },
-      usage: {
-        inputTokens: data.usage?.prompt_tokens,
-        outputTokens: data.usage?.completion_tokens,
-        totalTokens: data.usage?.total_tokens,
-      },
-      responseTimeMs: Date.now() - start,
-      providerSlug: this.slug,
-    };
-  } catch (error) {
-    this.logger.error(`KIE generateText error: ${error?.response?.status} - ${error.message}`);
-    return this.handleError(error, start);
-  }
-}
-
-async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
-  const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
-
-  if (!endpoint) {
-    yield { content: '', done: true, error: `Text model ${request.model} not supported by KIE` };
-    return;
-  }
-
-  try {
-    this.logger.debug(`KIE generateTextStream: model=${request.model}, endpoint=${endpoint}`);
-
-    const response = await this.client.post(
-      endpoint,
-      {
+      const response = await this.client.post(endpoint, {
         messages: request.messages,
         max_tokens: request.maxTokens || 4096,
         temperature: request.temperature ?? 0.7,
-        stream: true,
-      },
-      {
-        responseType: 'stream',
-        timeout: 180000,
-      },
-    );
+        stream: false,
+      });
 
-    let buffer = '';
-    const stream = response.data;
-
-    for await (const chunk of stream) {
-      buffer += chunk.toString();
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') {
-          yield { content: '', done: true };
-          return;
-        }
-
-        try {
-          const parsed = JSON.parse(data);
-
-          if (parsed.error) {
-            this.logger.error(`KIE SSE error: ${JSON.stringify(parsed.error)}`);
-            yield { content: '', done: true, error: parsed.error.message || JSON.stringify(parsed.error) };
-            return;
-          }
-
-          const content = parsed.choices?.[0]?.delta?.content || '';
-          const finishReason = parsed.choices?.[0]?.finish_reason;
-
-          if (content) {
-            yield { content, done: false };
-          }
-
-          if (finishReason === 'stop') {
-            yield {
-              content: '',
-              done: true,
-              usage: {
-                inputTokens: parsed.usage?.prompt_tokens,
-                outputTokens: parsed.usage?.completion_tokens,
-              },
-            };
-            return;
-          }
-        } catch {
-          // Skip malformed JSON
-        }
-      }
+      const data = response.data;
+      return {
+        success: true,
+        data: {
+          content: data.choices?.[0]?.message?.content || '',
+          metadata: { model: data.model },
+        },
+        usage: {
+          inputTokens: data.usage?.prompt_tokens,
+          outputTokens: data.usage?.completion_tokens,
+          totalTokens: data.usage?.total_tokens,
+        },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    } catch (error) {
+      this.logger.error(`KIE generateText error: ${error?.response?.status} - ${error.message}`);
+      return this.handleError(error, start);
     }
+  }
 
-    // Стрим закончился без [DONE]
-    this.logger.warn(`KIE stream ended without [DONE] for model ${request.model}`);
-    yield { content: '', done: true };
+  async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
+    const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
 
-  } catch (error) {
-    const status = error?.response?.status;
-    let errorMessage = error.message;
+    if (!endpoint) {
+      yield { content: '', done: true, error: `Text model ${request.model} not supported by KIE` };
+      return;
+    }
 
     try {
-      if (error?.response?.data) {
-        if (typeof error.response.data === 'string') {
-          errorMessage = error.response.data.substring(0, 500);
-        } else if (typeof error.response.data.pipe === 'function') {
-          const chunks: Buffer[] = [];
-          for await (const chunk of error.response.data) {
-            chunks.push(Buffer.from(chunk));
-            if (chunks.length > 5) break;
+      this.logger.debug(`KIE generateTextStream: model=${request.model}, endpoint=${endpoint}`);
+
+      const response = await this.client.post(
+        endpoint,
+        {
+          messages: request.messages,
+          max_tokens: request.maxTokens || 4096,
+          temperature: request.temperature ?? 0.7,
+          stream: true,
+        },
+        {
+          responseType: 'stream',
+          timeout: 180000,
+        },
+      );
+
+      let buffer = '';
+      const stream = response.data;
+
+      for await (const chunk of stream) {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+          const data = trimmed.slice(6);
+          if (data === '[DONE]') {
+            yield { content: '', done: true };
+            return;
           }
-          const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+
           try {
-            const parsed = JSON.parse(body);
-            errorMessage = parsed?.error?.message || parsed?.msg || body;
+            const parsed = JSON.parse(data);
+
+            if (parsed.error) {
+              this.logger.error(`KIE SSE error: ${JSON.stringify(parsed.error)}`);
+              yield { content: '', done: true, error: parsed.error.message || JSON.stringify(parsed.error) };
+              return;
+            }
+
+            const content = parsed.choices?.[0]?.delta?.content || '';
+            const finishReason = parsed.choices?.[0]?.finish_reason;
+
+            if (content) {
+              yield { content, done: false };
+            }
+
+            if (finishReason === 'stop') {
+              yield {
+                content: '',
+                done: true,
+                usage: {
+                  inputTokens: parsed.usage?.prompt_tokens,
+                  outputTokens: parsed.usage?.completion_tokens,
+                },
+              };
+              return;
+            }
           } catch {
-            errorMessage = body || error.message;
+            // Skip malformed JSON
           }
-        } else if (error.response.data?.error?.message) {
-          errorMessage = error.response.data.error.message;
         }
       }
-    } catch {
-      errorMessage = `HTTP ${status}: ${error.message}`;
-    }
 
-    this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
-    yield { content: '', done: true, error: `KIE: ${status || 'NETWORK'} - ${errorMessage}` };
+      // Стрим закончился без [DONE]
+      this.logger.warn(`KIE stream ended without [DONE] for model ${request.model}`);
+      yield { content: '', done: true };
+
+    } catch (error) {
+      const status = error?.response?.status;
+      let errorMessage = error.message;
+
+      try {
+        if (error?.response?.data) {
+          if (typeof error.response.data === 'string') {
+            errorMessage = error.response.data.substring(0, 500);
+          } else if (typeof error.response.data.pipe === 'function') {
+            const chunks: Buffer[] = [];
+            for await (const chunk of error.response.data) {
+              chunks.push(Buffer.from(chunk));
+              if (chunks.length > 5) break;
+            }
+            const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+            try {
+              const parsed = JSON.parse(body);
+              errorMessage = parsed?.error?.message || parsed?.msg || body;
+            } catch {
+              errorMessage = body || error.message;
+            }
+          } else if (error.response.data?.error?.message) {
+            errorMessage = error.response.data.error.message;
+          }
+        }
+      } catch {
+        errorMessage = `HTTP ${status}: ${error.message}`;
+      }
+
+      this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
+      yield { content: '', done: true, error: `KIE: ${status || 'NETWORK'} - ${errorMessage}` };
+    }
   }
-}
 
 
   // ═══════════════════════════════════════════════════════
@@ -1405,7 +1451,7 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
     };
   }
 
-    private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
+  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
       const data = response.data;
@@ -1430,14 +1476,14 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
         failed: 'failed',
       };
       const status = stateMap[task.state] || 'pending';
-      
+
       if (status === 'failed') {
         return { status: 'failed', error: task.errorMessage || 'Runway generation failed' };
       }
-      
+
       if (status === 'completed') {
         let resultUrls: string[] = task.resultUrls || [];
-        
+
         if (resultUrls.length === 0) {
           // Пробуем альтернативные поля
           if (task.output?.url) resultUrls = [task.output.url];
@@ -1451,7 +1497,7 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
 
         return { status: 'completed', resultUrls, progress: 100 };
       }
-      
+
       return { status, progress: task.progress || 0 };
     } catch (error) {
       this.logger.error(`Runway check task status error: ${error.message}`);
@@ -1459,7 +1505,7 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
     }
   }
 
-    private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
+  private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/jobs/recordInfo', { params: { taskId } });
       const data = response.data;
@@ -1477,7 +1523,7 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
       );
 
       this.logger.debug(`Jobs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
-      
+
       const stateMap: Record<string, TaskStatusResult['status']> = {
         waiting: 'pending',
         queuing: 'pending',
@@ -1486,14 +1532,14 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
         fail: 'failed',
       };
       const status = stateMap[task.state] || 'pending';
-      
+
       if (status === 'failed') {
         return {
           status: 'failed',
           error: task.failMsg || task.failCode || 'Generation failed',
         };
       }
-      
+
       if (status === 'completed') {
         // ═══ РАСШИРЕННЫЙ ПОИСК URL-ов ═══
         // KIE может возвращать результаты в разных полях
@@ -1585,7 +1631,7 @@ async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<Stream
           progress: 100,
         };
       }
-      
+
       return {
         status,
         progress: task.progress || 0,
