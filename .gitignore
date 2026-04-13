@@ -191,7 +191,7 @@ container_data/
 # =====================================================
 # Uploads and generated files
 uploads/
-upload/
+# upload/
 public/uploads/
 public/images/generated/
 tmp/

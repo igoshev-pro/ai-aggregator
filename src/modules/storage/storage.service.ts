@@ -38,7 +38,7 @@ export class StorageService {
     try {
       await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
       this.logger.log(`S3 bucket "${this.bucket}" is ready`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`S3 bucket check failed: ${error.message}`);
     }
   }
@@ -80,7 +80,7 @@ export class StorageService {
       this.logger.debug(`Saved → ${s3Url}`);
 
       return { s3Url, key, size: buffer.length };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`downloadAndSave failed: ${error.message}`);
       // Отдаём оригинальный URL если не смогли сохранить
       return { s3Url: url, key: '', size: 0 };
@@ -120,7 +120,7 @@ export class StorageService {
         new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
       );
       this.logger.debug(`Deleted: ${key}`);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Delete failed: ${error.message}`);
     }
   }
@@ -143,5 +143,25 @@ export class StorageService {
       'audio/ogg': 'ogg',
     };
     return map[contentType] || 'bin';
+  }
+
+  async uploadBuffer(
+    buffer: Buffer,
+    key: string,
+    contentType: string,
+  ): Promise<string> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        ACL: 'public-read',
+      }),
+    );
+
+    const url = this.getPublicUrl(key);
+    this.logger.debug(`Uploaded buffer → ${url} (${buffer.length} bytes)`);
+    return url;
   }
 }

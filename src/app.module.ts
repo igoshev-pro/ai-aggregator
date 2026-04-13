@@ -19,6 +19,7 @@ import { SupportModule } from './modules/support/support.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './modules/health/health.module'
 import { ModelsModule } from './modules/models/models.module';
+import { UploadModule } from './modules/upload/upload.module';
 
 @Module({
   imports: [
@@ -84,7 +85,8 @@ import { ModelsModule } from './modules/models/models.module';
     ReferralModule,
     SupportModule,
     AnalyticsModule,
-    HealthModule
+    HealthModule,
+    UploadModule
   ],
 })
 export class AppModule {}
