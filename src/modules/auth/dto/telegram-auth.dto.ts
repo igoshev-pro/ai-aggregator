@@ -4,7 +4,7 @@ import { ApiProperty } from '@nestjs/swagger';
 export class TelegramAuthDto {
   @ApiProperty({ description: 'Telegram WebApp initData string' })
   @IsString()
-  initData: string | undefined;
+  initData!: string;
 
   @ApiProperty({ required: false, description: 'Referral code' })
   @IsString()
@@ -15,11 +15,11 @@ export class TelegramAuthDto {
 export class TelegramWidgetAuthDto {
   @ApiProperty({ description: 'Telegram user ID' })
   @IsNumber()
-  id: number | undefined;
+  id!: number;
 
   @ApiProperty({ description: 'First name' })
   @IsString()
-  first_name: string | undefined;
+  first_name!: string;
 
   @ApiProperty({ required: false, description: 'Last name' })
   @IsString()
@@ -38,11 +38,11 @@ export class TelegramWidgetAuthDto {
 
   @ApiProperty({ description: 'Auth date (unix timestamp)' })
   @IsNumber()
-  auth_date: number | undefined;
+  auth_date!: number;
 
   @ApiProperty({ description: 'Verification hash' })
   @IsString()
-  hash: string | undefined;
+  hash!: string;
 
   @ApiProperty({ required: false, description: 'Referral code' })
   @IsString()
@@ -51,8 +51,8 @@ export class TelegramWidgetAuthDto {
 }
 
 export class AuthResponseDto {
-  token: string | undefined;
-  user: {
+  token!: string;
+  user!: {
     id: string;
     telegramId: number | null;
     authProvider: string;
@@ -72,5 +72,5 @@ export class AuthResponseDto {
     };
     referralCode: string;
     createdAt: string | null;
-  } | undefined;
+  };
 }
