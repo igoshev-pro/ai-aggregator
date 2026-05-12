@@ -10,6 +10,7 @@ import { YookassaProvider } from './providers/yookassa.provider';
 import { CryptomusProvider } from './providers/cryptomus.provider';
 import { StarsProvider } from './providers/stars.provider';
 import { UsersModule } from '../users/users.module';
+import { FreedomPayProvider } from './providers/freedompay/freedompay.provider';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { UsersModule } from '../users/users.module';
     YookassaProvider,
     CryptomusProvider,
     StarsProvider,
+    FreedomPayProvider,
   ],
   exports: [BillingService],
 })

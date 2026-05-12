@@ -51,6 +51,14 @@ export default () => ({
       merchantId: process.env.CRYPTOMUS_MERCHANT_ID || '',
       apiKey: process.env.CRYPTOMUS_API_KEY || '',
     },
+    freedompay: {
+      merchantId: parseInt(process.env.FREEDOMPAY_MERCHANT_ID || '0', 10),
+      secretKey: process.env.FREEDOMPAY_SECRET_KEY || '',
+      baseUrl: process.env.FREEDOMPAY_BASE_URL || 'https://api.freedompay.kz',
+      testingMode: process.env.FREEDOMPAY_TESTING_MODE === '1' ? 1 : 0,
+      currency: process.env.FREEDOMPAY_CURRENCY || 'KZT',
+      rubToKzt: parseFloat(process.env.FREEDOMPAY_RUB_TO_KZT || '5.7'),
+    },
   },
 
   s3: {

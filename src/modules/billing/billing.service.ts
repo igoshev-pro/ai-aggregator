@@ -25,9 +25,10 @@ import {
   PaymentStatus,
   SubscriptionPlan,
 } from '@/common/interfaces';
+import { FreedomPayProvider } from './providers/freedompay/freedompay.provider';
 
 // ─── Курс конвертации ────────────────────────────────────────────
-const RUB_TO_USD_RATE = 90; // 90₽ = $1
+const RUB_TO_USD_RATE = 75; // 90₽ = $1
 
 // ─── Пакеты токенов ──────────────────────────────────────────────
 const TOKEN_PACKAGES = [
@@ -277,7 +278,56 @@ export class BillingService {
     private yookassaProvider: YookassaProvider,
     private cryptomusProvider: CryptomusProvider,
     private starsProvider: StarsProvider,
-  ) {}
+    private freedompayProvider: FreedomPayProvider,
+  ) { }
+
+  /**
+ * Обработка webhook от FreedomPay.
+ * Отличается от других тем что:
+ *  - тело приходит form-encoded
+ *  - в ответ ОБЯЗАТЕЛЬНО XML с pg_sig
+ */
+  async handleFreedomPayWebhook(body: any): Promise<string> {
+    // Идемпотентность: ищем транзакцию ещё до verifyWebhook (для повторных webhook'ов)
+    const fpResult = await this.freedompayProvider.verifyWebhook(body, {});
+
+    if (fpResult.metadata?.reason === 'invalid_signature') {
+      return this.freedompayProvider.buildWebhookResponseXml(
+        'error',
+        'Invalid signature',
+      );
+    }
+
+    // Ищем транзакцию (любого статуса — для идемпотентности)
+    const transaction = await this.transactionModel.findOne({
+      externalPaymentId: fpResult.paymentId,
+      paymentProvider: 'freedompay',
+    });
+
+    if (!transaction) {
+      this.logger.warn(`[FP] transaction not found: ${fpResult.paymentId}`);
+      return this.freedompayProvider.buildWebhookResponseXml(
+        'error',
+        'Order not found',
+      );
+    }
+
+    // Если уже обработано — отвечаем ok без повторных действий
+    if (transaction.paymentStatus !== PaymentStatus.PENDING) {
+      this.logger.log(
+        `[FP] duplicate webhook: tx=${transaction._id} status=${transaction.paymentStatus}`,
+      );
+      return this.freedompayProvider.buildWebhookResponseXml(
+        'ok',
+        'Already processed',
+      );
+    }
+
+    // Делегируем в общий handler
+    await this.handlePaymentWebhook('freedompay', body, {});
+
+    return this.freedompayProvider.buildWebhookResponseXml('ok', 'Order paid');
+  }
 
   // ─── Конвертация валюты ─────────────────────────────────────────
 
@@ -395,21 +445,21 @@ export class BillingService {
     const [hourlyCount, dailyCount] = await Promise.all([
       freeModel.hourlyLimit !== null
         ? this.transactionModel.countDocuments({
-            userId: new Types.ObjectId(userId),
-            type: TransactionType.GENERATION,
-            modelSlug,
-            createdAt: { $gte: hourAgo },
-            'metadata.freeAccess': true,
-          })
+          userId: new Types.ObjectId(userId),
+          type: TransactionType.GENERATION,
+          modelSlug,
+          createdAt: { $gte: hourAgo },
+          'metadata.freeAccess': true,
+        })
         : Promise.resolve(0),
       freeModel.dailyLimit !== null
         ? this.transactionModel.countDocuments({
-            userId: new Types.ObjectId(userId),
-            type: TransactionType.GENERATION,
-            modelSlug,
-            createdAt: { $gte: dayStart },
-            'metadata.freeAccess': true,
-          })
+          userId: new Types.ObjectId(userId),
+          type: TransactionType.GENERATION,
+          modelSlug,
+          createdAt: { $gte: dayStart },
+          'metadata.freeAccess': true,
+        })
         : Promise.resolve(0),
     ]);
 
@@ -441,7 +491,7 @@ export class BillingService {
   async createTokenPayment(
     userId: string,
     packageId: string,
-    provider: 'yookassa' | 'cryptomus' | 'stars',
+    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay',
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
   ) {
@@ -495,7 +545,7 @@ export class BillingService {
   // ─── Webhook обработка ──────────────────────────────────────────
 
   async handlePaymentWebhook(
-    provider: 'yookassa' | 'cryptomus' | 'stars',
+    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay',
     body: any,
     headers: any,
   ) {
@@ -617,7 +667,7 @@ export class BillingService {
         metadata: { freeAccess: true, inputTokens, outputTokens },
       });
 
-            return {
+      return {
         costInTokens: 0,
         costInDollars: 0,
         freeAccess: true,
@@ -737,7 +787,7 @@ export class BillingService {
   async createSubscription(
     userId: string,
     plan: SubscriptionPlan,
-    provider: 'yookassa' | 'cryptomus' | 'stars',
+    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay',
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
   ) {
@@ -1183,6 +1233,7 @@ export class BillingService {
         return this.cryptomusProvider;
       case 'stars':
         return this.starsProvider;
+      case 'freedompay': return this.freedompayProvider;
       default:
         throw new BadRequestException(
           `Unknown payment provider: ${provider}`,

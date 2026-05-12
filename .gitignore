@@ -304,3 +304,4 @@ newrelic_agent.log
 /dist
 /dist/modules
 /dist/modules/admin
+.env

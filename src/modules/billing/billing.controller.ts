@@ -7,17 +7,20 @@ import {
   UseGuards,
   HttpCode,
   Headers,
+  Header,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { TransactionType, SubscriptionPlan } from '@/common/interfaces';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('Billing')
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billingService: BillingService) {}
+  constructor(private readonly billingService: BillingService) { }
 
   @Get('packages')
   @ApiOperation({ summary: 'Get available token packages' })
@@ -56,7 +59,7 @@ export class BillingController {
     @Body()
     body: {
       packageId: string;
-      provider: 'yookassa' | 'cryptomus' | 'stars';
+      provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay'; // 👈
       currency?: 'RUB' | 'USD';
       returnUrl?: string;
     },
@@ -81,7 +84,7 @@ export class BillingController {
     @Body()
     body: {
       plan: SubscriptionPlan;
-      provider: 'yookassa' | 'cryptomus' | 'stars';
+      provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay'; // 👈
       currency?: 'RUB' | 'USD';
       returnUrl?: string;
     },
@@ -152,5 +155,14 @@ export class BillingController {
       headers,
     );
     return result;
+  }
+
+  @Post('webhook/freedompay')
+  @ApiOperation({ summary: 'FreedomPay payment webhook (XML in/out)' })
+  @HttpCode(200)
+  @Header('Content-Type', 'application/xml; charset=utf-8')
+  @UseInterceptors(AnyFilesInterceptor())
+  async freedompayWebhook(@Body() body: any): Promise<string> {
+    return this.billingService.handleFreedomPayWebhook(body);
   }
 }

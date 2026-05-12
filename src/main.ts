@@ -7,6 +7,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import helmet from 'helmet';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -19,6 +20,9 @@ async function bootstrap() {
 
   // Security
   app.use(helmet());
+
+  app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
+  app.use(bodyParser.json({ limit: '5mb' }));
 
   // CORS
   const corsOrigins = configService.get<string>('CORS_ORIGINS', '').split(',');
