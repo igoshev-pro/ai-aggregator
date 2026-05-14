@@ -10,19 +10,6 @@ import {
   WebhookResult,
 } from './payment-provider.interface';
 
-/**
- * Heleket — крипто-платёжный провайдер (USDT/BTC/TRX/...).
- * Документация: https://heleket.com (раздел Платежи)
- *
- * Особенности:
- *  - Запросы подписываются: sign = md5(base64(JSON.stringify(body)) + apiKey)
- *  - Webhook содержит поле sign в теле — проверяется тем же алгоритмом
- *    БЕЗ поля sign в payload. Внимание: возможна разница в экранировании
- *    слэшей (PHP экранирует `/` → `\/`, JS — нет). Поэтому при проверке
- *    мы пробуем обе версии хэша.
- *  - В webhook'е status: paid|paid_over → completed, fail|cancel|wrong_amount|system_fail → failed
- *  - Webhook IP (whitelist): 31.133.220.8
- */
 @Injectable()
 export class HeleketProvider implements PaymentProviderInterface {
   private readonly logger = new Logger(HeleketProvider.name);
@@ -33,13 +20,19 @@ export class HeleketProvider implements PaymentProviderInterface {
   private readonly publicReturnUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.merchantId = this.configService.get<string>('HELEKET_MERCHANT_ID') || '';
-    this.apiKey = this.configService.get<string>('HELEKET_API_KEY') || '';
+    // Поддерживаем оба варианта имени ENV
+    this.merchantId =
+      this.configService.get<string>('HELEKET_MERCHANT_ID') ||
+      this.configService.get<string>('HELEKET_MERCHANT_UUID') ||
+      '';
+    this.apiKey =
+      this.configService.get<string>('HELEKET_API_KEY') ||
+      this.configService.get<string>('HELEKET_PAYMENT_API_KEY') ||
+      '';
     this.baseUrl =
       this.configService.get<string>('HELEKET_BASE_URL') ||
       'https://api.heleket.com';
 
-    // Базовые URL для callback/return — берём из общих ENV
     const apiPublicUrl =
       this.configService.get<string>('API_PUBLIC_URL') ||
       'https://spichki-ai.net';
@@ -49,6 +42,17 @@ export class HeleketProvider implements PaymentProviderInterface {
     this.publicReturnUrl =
       this.configService.get<string>('HELEKET_RETURN_URL') ||
       `${apiPublicUrl}/topup/success`;
+
+    // 🔍 Диагностика на старте — поможет понять, что переменные точно подгрузились
+    if (!this.merchantId || !this.apiKey) {
+      this.logger.error(
+        `[Heleket] CONFIG MISSING — merchantId="${this.merchantId ? 'ok' : 'EMPTY'}", apiKey="${this.apiKey ? 'ok' : 'EMPTY'}"`,
+      );
+    } else {
+      this.logger.log(
+        `[Heleket] config ok — merchantId=${this.merchantId.slice(0, 8)}..., apiKey=${this.apiKey.slice(0, 4)}...`,
+      );
+    }
   }
 
   // ───────────────────────────────────────────────────────────────
@@ -56,13 +60,8 @@ export class HeleketProvider implements PaymentProviderInterface {
   // ───────────────────────────────────────────────────────────────
   async createPayment(dto: CreatePaymentDto): Promise<PaymentResult> {
     try {
-      // Heleket принимает amount как строку с точкой ("10.28")
       const amount = dto.amount.toFixed(2);
-
-      // Heleket поддерживает USD/USDT/BTC/RUB и т.д.
-      // Для RUB провайдер сконвертирует в крипту автоматически.
-      const currency = dto.currency; // 'RUB' | 'USD'
-
+      const currency = dto.currency;
       const orderId = `order_${Date.now()}_${dto.userId}`;
 
       const body: Record<string, any> = {
@@ -72,8 +71,7 @@ export class HeleketProvider implements PaymentProviderInterface {
         url_callback: this.webhookUrl,
         url_return: dto.returnUrl || this.publicReturnUrl,
         url_success: dto.returnUrl || this.publicReturnUrl,
-        lifetime: 3600, // 1 час
-        // additional_data ОБЯЗАТЕЛЬНО строка (не объект)!
+        lifetime: 3600,
         additional_data: JSON.stringify({
           userId: dto.userId,
           tokens: dto.tokens,
@@ -81,11 +79,20 @@ export class HeleketProvider implements PaymentProviderInterface {
         }),
       };
 
-      const sign = this.createSign(body);
+      // ⚠️ ВАЖНО: подпись считается от той же строки, которая уйдёт в body.
+      // Используем PHP-совместимую сериализацию.
+      const bodyJson = this.phpJsonEncode(body);
+      const sign = this.md5(
+        Buffer.from(bodyJson).toString('base64') + this.apiKey,
+      );
 
+      this.logger.debug(`[Heleket] payload: ${bodyJson}`);
+      this.logger.debug(`[Heleket] sign: ${sign}`);
+
+      // 🔑 Отправляем именно ту же строку, что подписали — через `data: bodyJson`
       const response = await axios.post(
         `${this.baseUrl}/v1/payment`,
-        body,
+        bodyJson,
         {
           headers: {
             merchant: this.merchantId,
@@ -108,8 +115,8 @@ export class HeleketProvider implements PaymentProviderInterface {
 
       return {
         success: true,
-        paymentId: data.result.uuid, // uuid счёта
-        paymentUrl: data.result.url, // https://pay.heleket.com/pay/...
+        paymentId: data.result.uuid,
+        paymentUrl: data.result.url,
       };
     } catch (error: any) {
       const respData = error?.response?.data;
@@ -118,6 +125,9 @@ export class HeleketProvider implements PaymentProviderInterface {
         (respData?.errors && JSON.stringify(respData.errors)) ||
         error.message;
       this.logger.error(`Heleket create payment exception: ${msg}`);
+      if (respData) {
+        this.logger.error(`[Heleket] response body: ${JSON.stringify(respData)}`);
+      }
       return { success: false, paymentId: '', error: msg };
     }
   }
@@ -144,7 +154,6 @@ export class HeleketProvider implements PaymentProviderInterface {
         return { success: false, paymentId: '', status: 'failed' };
       }
 
-      // Маппинг статусов Heleket → внутренние
       const heleketStatus: string = body.status || body.payment_status || '';
       let status: 'completed' | 'failed' | 'pending' = 'pending';
 
@@ -156,7 +165,6 @@ export class HeleketProvider implements PaymentProviderInterface {
         status = 'failed';
       }
 
-      // additional_data приходит строкой
       let additionalData: Record<string, any> = {};
       if (body.additional_data) {
         try {
@@ -190,16 +198,19 @@ export class HeleketProvider implements PaymentProviderInterface {
   }
 
   // ───────────────────────────────────────────────────────────────
-  // Запрос статуса платежа (fallback / админ-проверка)
+  // Запрос статуса платежа
   // ───────────────────────────────────────────────────────────────
   async getPaymentStatus(paymentId: string): Promise<WebhookResult> {
     try {
       const body = { uuid: paymentId };
-      const sign = this.createSign(body);
+      const bodyJson = this.phpJsonEncode(body);
+      const sign = this.md5(
+        Buffer.from(bodyJson).toString('base64') + this.apiKey,
+      );
 
       const response = await axios.post(
         `${this.baseUrl}/v1/payment/info`,
-        body,
+        bodyJson,
         {
           headers: {
             merchant: this.merchantId,
@@ -240,39 +251,43 @@ export class HeleketProvider implements PaymentProviderInterface {
   }
 
   // ───────────────────────────────────────────────────────────────
-  // Внутреннее: подпись
+  // Внутреннее
   // ───────────────────────────────────────────────────────────────
 
   /**
-   * Генерация подписи исходящего запроса.
-   * sign = md5( base64( JSON.stringify(body) ) + apiKey )
+   * PHP-совместимая сериализация JSON.
+   * PHP json_encode() по умолчанию:
+   *  - экранирует `/` → `\/`
+   *  - экранирует не-ASCII → `\uXXXX`
+   *
+   * Heleket — PHP-сервер, проверяет подпись от такого формата.
    */
-  private createSign(data: Record<string, any>): string {
-    const json = JSON.stringify(data);
-    return this.md5(Buffer.from(json).toString('base64') + this.apiKey);
+  private phpJsonEncode(data: any): string {
+    return JSON.stringify(data)
+      .replace(/\//g, '\\/')
+      .replace(/[\u0080-\uffff]/g, (ch) =>
+        '\\u' + ('0000' + ch.charCodeAt(0).toString(16)).slice(-4),
+      );
   }
 
   /**
    * Проверка подписи входящего webhook'а.
-   * Пробуем 2 варианта сериализации — с экранированием слэшей (PHP-style)
-   * и без (JS-style). Подпись Heleket генерирует на PHP, поэтому слэши
-   * в txid и других полях могут быть как `/` так и `\/`.
+   * Пробуем все варианты сериализации — PHP-style и JS-style.
    */
   private verifySign(data: Record<string, any>, receivedSign: string): boolean {
-    const jsonPlain = JSON.stringify(data);
-    const jsonEscaped = jsonPlain.replace(/\//g, '\\/');
+    const candidates = [
+      this.phpJsonEncode(data),       // PHP-style (основной)
+      JSON.stringify(data),           // JS-style (fallback)
+    ];
 
-    const hashPlain = this.md5(
-      Buffer.from(jsonPlain).toString('base64') + this.apiKey,
-    );
-    const hashEscaped = this.md5(
-      Buffer.from(jsonEscaped).toString('base64') + this.apiKey,
-    );
+    for (const json of candidates) {
+      const hash = this.md5(
+        Buffer.from(json).toString('base64') + this.apiKey,
+      );
+      if (this.safeEqual(hash, receivedSign)) return true;
+    }
 
-    return (
-      this.safeEqual(hashPlain, receivedSign) ||
-      this.safeEqual(hashEscaped, receivedSign)
-    );
+    return false;
   }
 
   private md5(input: string): string {
