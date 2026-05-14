@@ -59,6 +59,13 @@ export default () => ({
       currency: process.env.FREEDOMPAY_CURRENCY || 'KZT',
       rubToKzt: parseFloat(process.env.FREEDOMPAY_RUB_TO_KZT || '5.7'),
     },
+    heleket: {
+    merchantId: process.env.HELEKET_MERCHANT_ID || '',
+    apiKey: process.env.HELEKET_API_KEY || '',
+    baseUrl: process.env.HELEKET_BASE_URL || 'https://api.heleket.com',
+    webhookUrl: process.env.HELEKET_WEBHOOK_URL || '',
+    returnUrl: process.env.HELEKET_RETURN_URL || '',
+  },
   },
 
   s3: {

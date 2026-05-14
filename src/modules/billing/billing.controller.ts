@@ -9,6 +9,7 @@ import {
   Headers,
   Header,
   UseInterceptors,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
@@ -16,11 +17,20 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { TransactionType, SubscriptionPlan } from '@/common/interfaces';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
+
+type PaymentProviderName =
+  | 'yookassa'
+  | 'cryptomus'
+  | 'stars'
+  | 'freedompay'
+  | 'tochka'
+  | 'heleket';
 
 @ApiTags('Billing')
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billingService: BillingService) { }
+  constructor(private readonly billingService: BillingService) {}
 
   @Get('packages')
   @ApiOperation({ summary: 'Get available token packages' })
@@ -59,7 +69,7 @@ export class BillingController {
     @Body()
     body: {
       packageId: string;
-      provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay'; // 👈
+      provider: PaymentProviderName;
       currency?: 'RUB' | 'USD';
       returnUrl?: string;
     },
@@ -84,7 +94,7 @@ export class BillingController {
     @Body()
     body: {
       plan: SubscriptionPlan;
-      provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay'; // 👈
+      provider: PaymentProviderName;
       currency?: 'RUB' | 'USD';
       returnUrl?: string;
     },
@@ -165,4 +175,39 @@ export class BillingController {
   async freedompayWebhook(@Body() body: any): Promise<string> {
     return this.billingService.handleFreedomPayWebhook(body);
   }
+
+  /**
+   * Точка шлёт webhook как text/plain с JWT в теле.
+   * В main.ts настроен bodyParser.text() для этого пути,
+   * поэтому здесь body будет строкой.
+   *
+   * Возвращаем 200 OK почти всегда (чтобы Точка не ретраила бесконечно).
+   * Если подпись невалидна — handleTochkaWebhook бросит UnauthorizedException → 401.
+   */
+  @Post('webhook/tochka')
+  @ApiOperation({ summary: 'Tochka Bank payment webhook (JWT text/plain)' })
+  @HttpCode(200)
+  async tochkaWebhook(@Req() req: Request): Promise<{ ok: boolean }> {
+    // body может прийти как string (text/plain) либо как Buffer — нормализуем
+    const raw =
+      typeof req.body === 'string'
+        ? req.body
+        : Buffer.isBuffer(req.body)
+          ? req.body.toString('utf8')
+          : String(req.body || '');
+
+    return this.billingService.handleTochkaWebhook(raw);
+  }
+
+  @Post('webhook/heleket')
+@ApiOperation({ summary: 'Heleket payment webhook' })
+@HttpCode(200)
+async heleketWebhook(@Body() body: any, @Headers() headers: any) {
+  const result = await this.billingService.handlePaymentWebhook(
+    'heleket',
+    body,
+    headers,
+  );
+  return result;
+}
 }

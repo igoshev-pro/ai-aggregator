@@ -22,6 +22,14 @@ async function bootstrap() {
   app.use(helmet());
 
   app.use(bodyParser.urlencoded({ extended: true, limit: '5mb' }));
+
+  // Точка шлёт вебхук как text/plain с JWT в теле.
+  // Парсим только для маршрута /billing/webhook/tochka.
+  app.use(
+    '/api/v1/billing/webhook/tochka',
+    bodyParser.text({ type: '*/*', limit: '1mb' }),
+  );
+
   app.use(bodyParser.json({ limit: '5mb' }));
 
   // CORS

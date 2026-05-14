@@ -11,6 +11,10 @@ import { CryptomusProvider } from './providers/cryptomus.provider';
 import { StarsProvider } from './providers/stars.provider';
 import { UsersModule } from '../users/users.module';
 import { FreedomPayProvider } from './providers/freedompay/freedompay.provider';
+import { TochkaProvider } from './providers/tochka/tochka.provider';
+import { TochkaClient } from './providers/tochka/tochka.client';
+import { TochkaWebhookVerifier } from './providers/tochka/tochka-webhook.verifier';
+import { HeleketProvider } from './providers/heleket.provider'; // 👈 NEW
 
 @Module({
   imports: [
@@ -18,7 +22,7 @@ import { FreedomPayProvider } from './providers/freedompay/freedompay.provider';
       { name: Transaction.name, schema: TransactionSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: PromoCode.name, schema: PromoCodeSchema },
-      { name: AIModel.name, schema: AIModelSchema }, // ДОБАВЛЕНО
+      { name: AIModel.name, schema: AIModelSchema },
     ]),
     forwardRef(() => UsersModule),
   ],
@@ -29,6 +33,12 @@ import { FreedomPayProvider } from './providers/freedompay/freedompay.provider';
     CryptomusProvider,
     StarsProvider,
     FreedomPayProvider,
+    // Tochka
+    TochkaClient,
+    TochkaWebhookVerifier,
+    TochkaProvider,
+    // Heleket 👇
+    HeleketProvider,
   ],
   exports: [BillingService],
 })

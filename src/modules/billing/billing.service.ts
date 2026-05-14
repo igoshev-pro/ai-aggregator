@@ -26,6 +26,9 @@ import {
   SubscriptionPlan,
 } from '@/common/interfaces';
 import { FreedomPayProvider } from './providers/freedompay/freedompay.provider';
+import { TochkaProvider } from './providers/tochka/tochka.provider';
+import { TochkaAcquiringWebhookPayload } from './providers/tochka/tochka.types';
+import { HeleketProvider } from './providers/heleket.provider';
 
 // ─── Курс конвертации ────────────────────────────────────────────
 const RUB_TO_USD_RATE = 75; // 90₽ = $1
@@ -279,6 +282,8 @@ export class BillingService {
     private cryptomusProvider: CryptomusProvider,
     private starsProvider: StarsProvider,
     private freedompayProvider: FreedomPayProvider,
+    private tochkaProvider: TochkaProvider,
+    private heleketProvider: HeleketProvider,
   ) { }
 
   /**
@@ -327,6 +332,67 @@ export class BillingService {
     await this.handlePaymentWebhook('freedompay', body, {});
 
     return this.freedompayProvider.buildWebhookResponseXml('ok', 'Order paid');
+  }
+
+  /**
+ * Обработка webhook от Точки.
+ *
+ * Особенности:
+ *  - тело приходит как text/plain — JWT-строка
+ *  - подпись проверяется RS256 публичным ключом Точки
+ *  - в ответ ожидается HTTP 200 (тело не важно)
+ *  - идемпотентно: повторный webhook вернёт 200 без двойного начисления
+ */
+  async handleTochkaWebhook(rawJwt: string): Promise<{ ok: boolean }> {
+    // 1. Верифицируем подпись JWT (выбросит UnauthorizedException, если невалидна)
+    const verifier = this.tochkaProvider.getVerifier();
+    let payload: TochkaAcquiringWebhookPayload;
+    try {
+      payload = verifier.verify(rawJwt);
+    } catch (err: any) {
+      this.logger.warn(`[Tochka] webhook rejected: ${err.message}`);
+      // Бросаем дальше — контроллер вернёт 401
+      throw err;
+    }
+
+    this.logger.log(
+      `[Tochka] webhook: op=${payload.operationId} status=${payload.status} type=${payload.webhookType}`,
+    );
+
+    // 2. Игнорируем не-эквайринговые события (если Точка вдруг пришлёт что-то ещё)
+    if (payload.webhookType !== 'acquiringInternetPayment') {
+      this.logger.log(
+        `[Tochka] ignoring webhook type: ${payload.webhookType}`,
+      );
+      return { ok: true };
+    }
+
+    // 3. Идемпотентность: ищем транзакцию ЛЮБОГО статуса
+    const transaction = await this.transactionModel.findOne({
+      externalPaymentId: payload.operationId,
+      paymentProvider: 'tochka',
+    });
+
+    if (!transaction) {
+      this.logger.warn(
+        `[Tochka] transaction not found: op=${payload.operationId}`,
+      );
+      // Возвращаем 200, чтобы Точка не ретраила.
+      // Если транзакция реально потеряна — разберёмся вручную через getPaymentStatus.
+      return { ok: true };
+    }
+
+    if (transaction.paymentStatus !== PaymentStatus.PENDING) {
+      this.logger.log(
+        `[Tochka] duplicate webhook: tx=${transaction._id} status=${transaction.paymentStatus}`,
+      );
+      return { ok: true };
+    }
+
+    // 4. Делегируем в общий handler, передавая УЖЕ распарсенный payload
+    await this.handlePaymentWebhook('tochka', payload, {});
+
+    return { ok: true };
   }
 
   // ─── Конвертация валюты ─────────────────────────────────────────
@@ -491,7 +557,7 @@ export class BillingService {
   async createTokenPayment(
     userId: string,
     packageId: string,
-    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay',
+    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay' | 'tochka' | 'heleket',
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
   ) {
@@ -545,7 +611,7 @@ export class BillingService {
   // ─── Webhook обработка ──────────────────────────────────────────
 
   async handlePaymentWebhook(
-    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay',
+    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay' | 'tochka' | 'heleket',
     body: any,
     headers: any,
   ) {
@@ -787,7 +853,7 @@ export class BillingService {
   async createSubscription(
     userId: string,
     plan: SubscriptionPlan,
-    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay',
+    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay' | 'tochka' | 'heleket',
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
   ) {
@@ -1233,11 +1299,14 @@ export class BillingService {
         return this.cryptomusProvider;
       case 'stars':
         return this.starsProvider;
-      case 'freedompay': return this.freedompayProvider;
+      case 'freedompay':
+        return this.freedompayProvider;
+      case 'tochka':
+        return this.tochkaProvider;
+      case 'heleket': // 👈 NEW
+        return this.heleketProvider;
       default:
-        throw new BadRequestException(
-          `Unknown payment provider: ${provider}`,
-        );
+        throw new BadRequestException(`Unknown payment provider: ${provider}`);
     }
   }
 
