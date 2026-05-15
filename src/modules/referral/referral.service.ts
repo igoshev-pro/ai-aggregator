@@ -37,7 +37,7 @@ export class ReferralService {
 
   // ─── Резолв имени бота ───────────────────────────────────────
 
-  /**
+    /**
    * Получить username бота:
    * 1. Из env (TG_BOT_USERNAME / TELEGRAM_BOT_USERNAME / BOT_USERNAME).
    * 2. Если в env пусто — спрашиваем у Telegram через getMe.
@@ -53,11 +53,10 @@ export class ReferralService {
       process.env.BOT_USERNAME;
 
     if (fromEnv && fromEnv.trim().length > 0) {
-      this.cachedBotUsername = fromEnv.replace(/^@/, '').trim();
-      this.logger.log(
-        `🤖 Bot username from env: @${this.cachedBotUsername}`,
-      );
-      return this.cachedBotUsername;
+      const username = fromEnv.replace(/^@/, '').trim();
+      this.cachedBotUsername = username;
+      this.logger.log(`🤖 Bot username from env: @${username}`);
+      return username;
     }
 
     // 2. Через Telegram API getMe
@@ -73,15 +72,12 @@ export class ReferralService {
         );
         const json: any = await res.json();
         if (json?.ok && json?.result?.username) {
-          this.cachedBotUsername = json.result.username;
-          this.logger.log(
-            `🤖 Bot username from Telegram API: @${this.cachedBotUsername}`,
-          );
-          return this.cachedBotUsername;
+          const username: string = json.result.username;
+          this.cachedBotUsername = username;
+          this.logger.log(`🤖 Bot username from Telegram API: @${username}`);
+          return username;
         }
-        this.logger.error(
-          `getMe failed: ${JSON.stringify(json)}`,
-        );
+        this.logger.error(`getMe failed: ${JSON.stringify(json)}`);
       } catch (e: any) {
         this.logger.error(`getMe error: ${e?.message || e}`);
       }
