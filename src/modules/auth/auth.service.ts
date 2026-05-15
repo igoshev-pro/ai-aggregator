@@ -24,7 +24,11 @@ export class AuthService {
 
   // ─── Mini App Auth (initData) ─────────────────────────────────
 
-  async authenticateWithTelegram(dto: TelegramAuthDto): Promise<AuthResponseDto> {
+    async authenticateWithTelegram(dto: TelegramAuthDto): Promise<AuthResponseDto> {
+    if (dto.referralCode) {
+      this.logger.log(`🎟️ Telegram auth with referralCode: "${dto.referralCode}"`);
+    }
+
     // DEV Mode Bypass
     if (this.isDev) {
       if (dto.initData.includes('test') || dto.initData.includes('dev')) {
@@ -40,13 +44,33 @@ export class AuthService {
       throw new UnauthorizedException('Invalid Telegram authentication data');
     }
 
+    // Запоминаем "был ли пользователь" до создания
+    const existedBefore = await this.usersService
+      .findByTelegramId(telegramUser.id)
+      .catch(() => null);
+    const isNewUser = !existedBefore;
+
     const user = await this.usersService.findOrCreateByTelegram(
       telegramUser,
       dto.referralCode,
     );
 
     if (user.isBanned) {
-      throw new UnauthorizedException('Account is banned: ' + (user.banReason || 'No reason'));
+      throw new UnauthorizedException(
+        'Account is banned: ' + (user.banReason || 'No reason'),
+      );
+    }
+
+    // Создаём запись в Referral только для НОВЫХ юзеров с referralCode + установленным referredBy
+    if (isNewUser && user.referredBy) {
+      try {
+        await this.referralService.recordReferral(
+          user.referredBy.toString(),
+          user._id.toString(),
+        );
+      } catch (err) {
+        this.logger.warn(`Failed to record referral: ${err.message}`);
+      }
     }
 
     return this.buildAuthResponse(user);
@@ -54,7 +78,13 @@ export class AuthService {
 
   // ─── Telegram Login Widget Auth ───────────────────────────────
 
-  async authenticateWithTelegramWidget(dto: TelegramWidgetAuthDto): Promise<AuthResponseDto> {
+    async authenticateWithTelegramWidget(
+    dto: TelegramWidgetAuthDto,
+  ): Promise<AuthResponseDto> {
+    if (dto.referralCode) {
+      this.logger.log(`🎟️ Widget auth with referralCode: "${dto.referralCode}"`);
+    }
+
     // DEV Mode Bypass
     if (this.isDev && dto.hash === 'dev_bypass') {
       this.logger.log('🔧 DEV mode: bypassing Widget validation');
@@ -65,7 +95,25 @@ export class AuthService {
         username: dto.username,
         photo_url: dto.photo_url,
       };
-      const user = await this.usersService.findOrCreateByTelegram(telegramUser, dto.referralCode);
+
+      const existedBefore = await this.usersService
+        .findByTelegramId(dto.id)
+        .catch(() => null);
+      const isNewUser = !existedBefore;
+
+      const user = await this.usersService.findOrCreateByTelegram(
+        telegramUser,
+        dto.referralCode,
+      );
+
+      if (isNewUser && user.referredBy) {
+        await this.referralService
+          .recordReferral(user.referredBy.toString(), user._id.toString())
+          .catch((err) =>
+            this.logger.warn(`Failed to record referral: ${err.message}`),
+          );
+      }
+
       return this.buildAuthResponse(user);
     }
 
@@ -76,14 +124,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid Telegram Login Widget data');
     }
 
-    // Check auth_date freshness (24 hours)
+    // Check auth_date freshness
     const now = Math.floor(Date.now() / 1000);
-    const maxAge = this.isDev ? 86400 * 30 : 86400; // 30 days in dev, 24h in prod
+    const maxAge = this.isDev ? 86400 * 30 : 86400;
     if (now - dto.auth_date > maxAge) {
       throw new UnauthorizedException('Telegram login data has expired');
     }
 
-    // Convert to TelegramUser format
     const telegramUser: TelegramUser = {
       id: dto.id,
       first_name: dto.first_name,
@@ -92,16 +139,36 @@ export class AuthService {
       photo_url: dto.photo_url,
     };
 
+    const existedBefore = await this.usersService
+      .findByTelegramId(dto.id)
+      .catch(() => null);
+    const isNewUser = !existedBefore;
+
     const user = await this.usersService.findOrCreateByTelegram(
       telegramUser,
       dto.referralCode,
     );
 
     if (user.isBanned) {
-      throw new UnauthorizedException('Account is banned: ' + (user.banReason || 'No reason'));
+      throw new UnauthorizedException(
+        'Account is banned: ' + (user.banReason || 'No reason'),
+      );
     }
 
-    this.logger.log(`✅ Telegram Widget auth successful for user ${dto.id} (@${dto.username || 'no-username'})`);
+    if (isNewUser && user.referredBy) {
+      try {
+        await this.referralService.recordReferral(
+          user.referredBy.toString(),
+          user._id.toString(),
+        );
+      } catch (err: any) {
+        this.logger.warn(`Failed to record referral: ${err.message}`);
+      }
+    }
+
+    this.logger.log(
+      `✅ Telegram Widget auth successful for user ${dto.id} (@${dto.username || 'no-username'})`,
+    );
 
     return this.buildAuthResponse(user);
   }

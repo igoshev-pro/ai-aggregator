@@ -52,6 +52,20 @@ export class User {
   @Prop({ default: 0, min: 0 })
   bonusTokens: number;
 
+  /**
+   * Кэшбэк от рефералов (10% от покупок приглашённых).
+   * Тратится как обычные спички, но может быть выведен реальными деньгами.
+   */
+  @Prop({ default: 0, min: 0 })
+  cashbackBalance: number;
+
+  /**
+   * Всего заработано кэшбеком за всё время (для статистики).
+   * Не уменьшается при тратах/выводе.
+   */
+  @Prop({ default: 0, min: 0 })
+  cashbackEarnedTotal: number;
+
   @Prop({ default: 0 })
   totalTokensSpent: number;
 
@@ -137,4 +151,3 @@ UserSchema.index(
 UserSchema.index({ username: 1 });
 UserSchema.index({ role: 1 });
 UserSchema.index({ createdAt: -1 });
-// Удалён дублирующийся индекс для referralCode
