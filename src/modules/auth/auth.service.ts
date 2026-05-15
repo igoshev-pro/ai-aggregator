@@ -6,6 +6,7 @@ import { TelegramUser, JwtPayload, AuthProvider } from '@/common/interfaces';
 import { TelegramAuthDto, TelegramWidgetAuthDto, AuthResponseDto } from './dto/telegram-auth.dto';
 import { UserDocument } from '@/modules/users/schemas/user.schema';
 import * as crypto from 'crypto';
+import { ReferralService } from '@/modules/referral/referral.service';
 
 @Injectable()
 export class AuthService {
@@ -16,6 +17,7 @@ export class AuthService {
     private jwtService: JwtService,
     private usersService: UsersService,
     private configService: ConfigService,
+    private referralService: ReferralService,
   ) {
     this.isDev = this.configService.get('NODE_ENV') !== 'production';
   }

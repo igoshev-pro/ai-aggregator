@@ -15,6 +15,7 @@ import { TochkaProvider } from './providers/tochka/tochka.provider';
 import { TochkaClient } from './providers/tochka/tochka.client';
 import { TochkaWebhookVerifier } from './providers/tochka/tochka-webhook.verifier';
 import { HeleketProvider } from './providers/heleket.provider'; // 👈 NEW
+import { ReferralModule } from '../referral/referral.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { HeleketProvider } from './providers/heleket.provider'; // 👈 NEW
       { name: AIModel.name, schema: AIModelSchema },
     ]),
     forwardRef(() => UsersModule),
+    forwardRef(() => ReferralModule),
   ],
   controllers: [BillingController],
   providers: [

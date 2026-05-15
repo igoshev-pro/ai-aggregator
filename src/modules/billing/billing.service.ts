@@ -29,6 +29,7 @@ import { FreedomPayProvider } from './providers/freedompay/freedompay.provider';
 import { TochkaProvider } from './providers/tochka/tochka.provider';
 import { TochkaAcquiringWebhookPayload } from './providers/tochka/tochka.types';
 import { HeleketProvider } from './providers/heleket.provider';
+import { ReferralService } from '../referral/referral.service';
 
 // ─── Курс конвертации ────────────────────────────────────────────
 const RUB_TO_USD_RATE = 75; // 90₽ = $1
@@ -278,6 +279,8 @@ export class BillingService {
     private modelModel: Model<ModelDocument>,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
+    @Inject(forwardRef(() => ReferralService))
+    private referralService: ReferralService,
     private yookassaProvider: YookassaProvider,
     private cryptomusProvider: CryptomusProvider,
     private starsProvider: StarsProvider,
@@ -679,6 +682,8 @@ export class BillingService {
 
   // ─── Реферальный бонус ──────────────────────────────────────────
 
+    // ─── Реферальный бонус (кэшбек 10% от покупок) ─────────────────
+
   private async processReferralBonus(
     transaction: TransactionDocument,
   ) {
@@ -687,23 +692,40 @@ export class BillingService {
     );
     if (!userDoc.referredBy) return;
 
-    const referralBonus = Math.floor(transaction.amount * 0.1);
-    if (referralBonus <= 0) return;
+    const cashbackAmount = Math.floor(transaction.amount * 0.1);
+    if (cashbackAmount <= 0) return;
 
-    await this.usersService.addBonusTokens(
-      userDoc.referredBy.toString(),
-      referralBonus,
-    );
+    const referrerId = userDoc.referredBy.toString();
 
-    await this.createTransaction(userDoc.referredBy.toString(), {
+    // 1. Начисляем кэшбек в специальный баланс (можно вывести)
+    await this.usersService.addCashback(referrerId, cashbackAmount);
+
+    // 2. Запись в Referral коллекции (отмечаем покупку + bonusEarned)
+    try {
+      await this.referralService.markReferralPurchase(
+        transaction.userId.toString(),
+        cashbackAmount,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to update Referral record: ${err.message}`,
+      );
+    }
+
+    // 3. Транзакция для истории
+    await this.createTransaction(referrerId, {
       type: TransactionType.REFERRAL_BONUS,
-      amount: referralBonus,
-      description: `Реферальный бонус от покупки пользователя ${userDoc.firstName}`,
+      amount: cashbackAmount,
+      description: `Кэшбек 10% от покупки пользователя ${userDoc.firstName || 'друга'}`,
       paymentStatus: PaymentStatus.COMPLETED,
       referralUserId: transaction.userId,
+      metadata: { cashback: true, sourceAmount: transaction.amount },
     });
-  }
 
+    this.logger.log(
+      `💰 Cashback +${cashbackAmount} → user ${referrerId} (10% of ${transaction.amount})`,
+    );
+  }
   // ─── Списание за генерацию ──────────────────────────────────────
 
   async chargeForGeneration(

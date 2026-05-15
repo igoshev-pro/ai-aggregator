@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
+import { ReferralModule } from '../referral/referral.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { UsersModule } from '../users/users.module';
         signOptions: { expiresIn: config.get<string>('JWT_EXPIRATION', '7d') },
       }),
     }),
+     forwardRef(() => ReferralModule),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
