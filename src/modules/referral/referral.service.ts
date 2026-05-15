@@ -24,6 +24,9 @@ const MIN_WITHDRAWAL_AMOUNT = 100; // минимум 100 спичек = 100₽
 export class ReferralService {
   private readonly logger = new Logger(ReferralService.name);
 
+  // Кэш username бота, чтобы не дёргать Telegram API на каждый запрос
+  private cachedBotUsername: string | null = null;
+
   constructor(
     @InjectModel(Referral.name) private referralModel: Model<ReferralDocument>,
     @InjectModel(Withdrawal.name)
@@ -32,11 +35,70 @@ export class ReferralService {
     private usersService: UsersService,
   ) {}
 
+  // ─── Резолв имени бота ───────────────────────────────────────
+
+  /**
+   * Получить username бота:
+   * 1. Из env (TG_BOT_USERNAME / TELEGRAM_BOT_USERNAME / BOT_USERNAME).
+   * 2. Если в env пусто — спрашиваем у Telegram через getMe.
+   * 3. Кэшируем результат.
+   */
+  private async resolveBotUsername(): Promise<string> {
+    if (this.cachedBotUsername) return this.cachedBotUsername;
+
+    // 1. Из env
+    const fromEnv =
+      process.env.TG_BOT_USERNAME ||
+      process.env.TELEGRAM_BOT_USERNAME ||
+      process.env.BOT_USERNAME;
+
+    if (fromEnv && fromEnv.trim().length > 0) {
+      this.cachedBotUsername = fromEnv.replace(/^@/, '').trim();
+      this.logger.log(
+        `🤖 Bot username from env: @${this.cachedBotUsername}`,
+      );
+      return this.cachedBotUsername;
+    }
+
+    // 2. Через Telegram API getMe
+    const token =
+      process.env.TG_BOT_TOKEN ||
+      process.env.TELEGRAM_BOT_TOKEN ||
+      process.env.BOT_TOKEN;
+
+    if (token) {
+      try {
+        const res = await fetch(
+          `https://api.telegram.org/bot${token}/getMe`,
+        );
+        const json: any = await res.json();
+        if (json?.ok && json?.result?.username) {
+          this.cachedBotUsername = json.result.username;
+          this.logger.log(
+            `🤖 Bot username from Telegram API: @${this.cachedBotUsername}`,
+          );
+          return this.cachedBotUsername;
+        }
+        this.logger.error(
+          `getMe failed: ${JSON.stringify(json)}`,
+        );
+      } catch (e: any) {
+        this.logger.error(`getMe error: ${e?.message || e}`);
+      }
+    }
+
+    // 3. Фолбэк
+    this.logger.warn(
+      '⚠️ Bot username NOT configured! Set TG_BOT_USERNAME or TG_BOT_TOKEN in .env',
+    );
+    return 'UNKNOWN_BOT';
+  }
+
   // ─── Старый формат (для обратной совместимости) ──────────────
 
   async getReferralStats(userId: string) {
     const user = await this.usersService.findById(userId);
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SpichkiBot';
+    const botUsername = await this.resolveBotUsername();
 
     const referrals = await this.referralModel
       .find({ referrerId: new Types.ObjectId(userId) })
@@ -62,7 +124,7 @@ export class ReferralService {
 
   async getReferralInfo(userId: string) {
     const user = await this.usersService.findById(userId);
-    const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'SpichkiBot';
+    const botUsername = await this.resolveBotUsername();
 
     const referrals = await this.referralModel
       .find({ referrerId: new Types.ObjectId(userId) })
