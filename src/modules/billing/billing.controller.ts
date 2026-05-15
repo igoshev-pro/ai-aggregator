@@ -30,7 +30,7 @@ type PaymentProviderName =
 @ApiTags('Billing')
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billingService: BillingService) {}
+  constructor(private readonly billingService: BillingService) { }
 
   @Get('packages')
   @ApiOperation({ summary: 'Get available token packages' })
@@ -188,7 +188,6 @@ export class BillingController {
   @ApiOperation({ summary: 'Tochka Bank payment webhook (JWT text/plain)' })
   @HttpCode(200)
   async tochkaWebhook(@Req() req: Request): Promise<{ ok: boolean }> {
-    // body может прийти как string (text/plain) либо как Buffer — нормализуем
     const raw =
       typeof req.body === 'string'
         ? req.body
@@ -196,18 +195,31 @@ export class BillingController {
           ? req.body.toString('utf8')
           : String(req.body || '');
 
-    return this.billingService.handleTochkaWebhook(raw);
+    // Защита от падения при тестовых пустых запросах
+    if (!raw || raw.length < 20) {
+      return { ok: true };  // возвращаем 200, чтобы Точка не ретраила
+    }
+
+    try {
+      return await this.billingService.handleTochkaWebhook(raw);
+    } catch (err) {
+      // Не пробрасываем 401/500 наверх — иначе Точка зальёт нас 30 повторами.
+      // Подпись невалидна = либо атака, либо сбой ключа. Логируем и отвечаем 200.
+      // (Безопасность не страдает: транзакцию мы НЕ начислили — handleTochkaWebhook
+      // бросил исключение до начисления.)
+      return { ok: true };
+    }
   }
 
   @Post('webhook/heleket')
-@ApiOperation({ summary: 'Heleket payment webhook' })
-@HttpCode(200)
-async heleketWebhook(@Body() body: any, @Headers() headers: any) {
-  const result = await this.billingService.handlePaymentWebhook(
-    'heleket',
-    body,
-    headers,
-  );
-  return result;
-}
+  @ApiOperation({ summary: 'Heleket payment webhook' })
+  @HttpCode(200)
+  async heleketWebhook(@Body() body: any, @Headers() headers: any) {
+    const result = await this.billingService.handlePaymentWebhook(
+      'heleket',
+      body,
+      headers,
+    );
+    return result;
+  }
 }

@@ -34,16 +34,13 @@ export type TochkaTaxSystemCode =
 export interface TochkaCreatePaymentRequest {
   Data: {
     customerCode: string;
-    merchantId: string;
-    /** Сумма в виде строки с 2 знаками после точки: "299.00" */
-    amount: string;
+    merchantId?: string;     // ✅ необязательный (1 торговая точка)
+    amount: number;          // ✅ number, как требует API
     purpose: string;
     paymentMode: TochkaPaymentMode[];
-    /** Наш UUID/ObjectId транзакции, до 45 символов, уникален */
-    paymentLinkId: string;
+    paymentLinkId?: string;  // тоже сделать необязательным — Точка сама генерирует
     redirectUrl?: string;
     failRedirectUrl?: string;
-    /** Время жизни ссылки в минутах, 1..44640 */
     ttl?: number;
     preAuthorization?: boolean;
     saveCard?: boolean;
