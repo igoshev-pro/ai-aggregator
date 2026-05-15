@@ -20,6 +20,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './modules/health/health.module'
 import { ModelsModule } from './modules/models/models.module';
 import { UploadModule } from './modules/upload/upload.module';
+import { TelegramBotModule } from './modules/telegram-bot/telegram-bot.module';
 
 @Module({
   imports: [
@@ -86,7 +87,8 @@ import { UploadModule } from './modules/upload/upload.module';
     SupportModule,
     AnalyticsModule,
     HealthModule,
-    UploadModule
+    UploadModule,
+    TelegramBotModule
   ],
 })
 export class AppModule {}
