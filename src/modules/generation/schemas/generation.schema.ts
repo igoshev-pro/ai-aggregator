@@ -27,22 +27,50 @@ export class Generation {
 
   @Prop({ type: Object, default: {} })
   params: {
+    // ─── IMAGE ────────────────────────────
     width?: number;
     height?: number;
-    aspectRatio?: string;    // ← ДОБАВИТЬ
-    resolution?: string;     // ← ДОБАВИТЬ
-    quality?: string;        // ← ДОБАВИТЬ
-    outputFormat?: string;   // ← ДОБАВИТЬ
+    aspectRatio?: string;
+    resolution?: string;       // '1K' | '2K' | '4K' | '720p' | '1080p' | '768P'
+    quality?: string;          // 'basic' | 'high' (seedream)
+    outputFormat?: string;     // 'png' | 'jpg'
     steps?: number;
     seed?: number;
     numImages?: number;
     style?: string;
-    imageUrl?: string;
-    inputUrls?: string[];    // ← ДОБАВИТЬ
+    inputUrls?: string[];      // img2img
+    mode?: string;             // 🆕 midjourney: normal/fast/turbo; kling: std/pro
+    version?: string;          // 🆕 flux: normal/pro
+
+    // ─── VIDEO ────────────────────────────
+    imageUrl?: string;         // i2v (single image)
+    imageUrls?: string[];      // 🆕 i2v (multiple, kling)
+    videoUrls?: string[];      // 🆕 kling motion-control
     duration?: number;
+    sound?: boolean;           // 🆕 kling sound
+    stable?: boolean;          // 🆕 sora stable (зарезервировано на будущее)
+    removeWatermark?: boolean; // 🆕 sora
+    promptOptimizer?: boolean; // 🆕 hailuo
+
+    // ─── AUDIO (Suno) ─────────────────────
+    operation?: string;        // 🆕 generate/extend/boost/cover/...
+    title?: string;            // 🆕 suno track title
     instrumental?: boolean;
+    customMode?: boolean;      // 🆕 suno
+    audioUrl?: string;         // 🆕 для extend/cover
+
+    // ─── AUDIO (ElevenLabs) ───────────────
     voiceId?: string;
     language?: string;
+    stability?: number;        // 🆕
+    similarity?: number;       // 🆕
+    speed?: number;            // 🆕
+    loop?: boolean;            // 🆕 SFX
+    promptInfluence?: number;  // 🆕 SFX
+    dialogue?: Array<{ text: string; voice: string }>; // 🆕
+
+    // ─── EXTRA ────────────────────────────
+    [key: string]: any;        // на случай произвольных параметров
   };
 
   @Prop({ type: [String], default: [] })
@@ -87,6 +115,19 @@ export class Generation {
 
   @Prop({ default: 0 })
   tokensCost: number; // стоимость в наших внутренних токенах
+
+  // 🆕 Аудит расчёта цены — какое правило сработало в pricingMatrix
+  @Prop({ type: Object, default: null })
+  pricingBreakdown: {
+    modelSlug: string;
+    modelName: string;
+    type: string;
+    rule?: string;
+    params: Record<string, any>;
+    costInTokens: number;
+    costInDollars: number;
+    fallback: boolean;
+  } | null;
 
   @Prop({ default: false })
   isRefunded: boolean;

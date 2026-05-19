@@ -1,7 +1,9 @@
+// src/modules/billing/billing.module.ts
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
+import { PricingService } from './pricing.service'; // 🆕
 import { Transaction, TransactionSchema } from './schemas/transaction.schema';
 import { Subscription, SubscriptionSchema } from './schemas/subscription.schema';
 import { PromoCode, PromoCodeSchema } from './schemas/promo-code.schema';
@@ -31,6 +33,7 @@ import { ReferralModule } from '../referral/referral.module';
   controllers: [BillingController],
   providers: [
     BillingService,
+    PricingService, // 🆕 централизованный расчёт цены
     YookassaProvider,
     CryptomusProvider,
     StarsProvider,
@@ -42,6 +45,9 @@ import { ReferralModule } from '../referral/referral.module';
     // Heleket 👇
     HeleketProvider,
   ],
-  exports: [BillingService],
+  exports: [
+    BillingService,
+    PricingService, // 🆕 экспортируем для GenerationModule
+  ],
 })
 export class BillingModule {}

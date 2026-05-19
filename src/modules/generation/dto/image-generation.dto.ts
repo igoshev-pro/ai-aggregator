@@ -15,7 +15,6 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
-
 export class ImageGenerationDto {
   @ApiProperty()
   @IsString()
@@ -84,8 +83,25 @@ export class ImageGenerationDto {
   @IsOptional()
   @IsString()
   style?: string;
-}
 
+  // 🆕 Midjourney mode: normal | fast | turbo
+  @ApiPropertyOptional({
+    enum: ['normal', 'fast', 'turbo'],
+    description: 'Midjourney mode: normal/fast/turbo (влияет на цену)',
+  })
+  @IsOptional()
+  @IsString()
+  mode?: string;
+
+  // 🆕 Flux version: normal | pro
+  @ApiPropertyOptional({
+    enum: ['normal', 'pro'],
+    description: 'Flux version: normal/pro (Pro дороже)',
+  })
+  @IsOptional()
+  @IsString()
+  version?: string;
+}
 
 export class VideoGenerationDto {
   @ApiProperty({ example: 'sora-2-txt2vid' })
@@ -107,10 +123,20 @@ export class VideoGenerationDto {
   @IsOptional()
   imageUrl?: string;
 
-  @ApiPropertyOptional({ description: 'Array of image URLs (for models supporting multiple)' })
+  @ApiPropertyOptional({
+    description: 'Array of image URLs (for models supporting multiple)',
+  })
   @IsOptional()
   @IsArray()
   imageUrls?: string[];
+
+  // 🆕 Video URLs для Kling motion-control
+  @ApiPropertyOptional({
+    description: 'Array of video URLs (for Kling motion-control)',
+  })
+  @IsOptional()
+  @IsArray()
+  videoUrls?: string[];
 
   @ApiPropertyOptional({ default: 5, description: 'Duration in seconds' })
   @IsNumber()
@@ -119,22 +145,32 @@ export class VideoGenerationDto {
   @Max(20)
   duration?: number;
 
-  @ApiPropertyOptional({ enum: ['16:9', '9:16', '1:1', '4:3', '3:4', 'portrait', 'landscape'] })
+  @ApiPropertyOptional({
+    enum: ['16:9', '9:16', '1:1', '4:3', '3:4', 'portrait', 'landscape'],
+  })
   @IsString()
   @IsOptional()
   aspectRatio?: string;
 
-  @ApiPropertyOptional({ enum: ['720p', '1080p', '768P', '1080P', 'std', 'pro'] })
+  @ApiPropertyOptional({
+    enum: ['720p', '1080p', '768P', '1080P', 'std', 'pro'],
+  })
   @IsString()
   @IsOptional()
   resolution?: string;
 
-  @ApiPropertyOptional({ enum: ['std', 'pro'], description: 'Kling mode: std (720p) or pro (1080p)' })
+  @ApiPropertyOptional({
+    enum: ['std', 'pro'],
+    description: 'Kling mode: std (720p) or pro (1080p)',
+  })
   @IsString()
   @IsOptional()
   mode?: string;
 
-  @ApiPropertyOptional({ enum: ['standard', 'high'], description: 'Sora Pro size quality' })
+  @ApiPropertyOptional({
+    enum: ['standard', 'high'],
+    description: 'Sora Pro size quality',
+  })
   @IsString()
   @IsOptional()
   quality?: string;
@@ -143,6 +179,14 @@ export class VideoGenerationDto {
   @IsOptional()
   @IsBoolean()
   sound?: boolean;
+
+  // 🆕 Sora stable mode (зарезервировано на будущее)
+  @ApiPropertyOptional({
+    description: 'Sora stable mode (reserved for future use)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  stable?: boolean;
 
   @ApiPropertyOptional({ description: 'Remove watermark (Sora)' })
   @IsOptional()
@@ -165,7 +209,6 @@ export class VideoGenerationDto {
   style?: string;
 }
 
-
 export class DialogueLineDto {
   @ApiProperty({ description: 'Text of the dialogue line' })
   @IsString()
@@ -175,7 +218,6 @@ export class DialogueLineDto {
   @IsString()
   voice: string;
 }
-
 
 export class AudioGenerationDto {
   @ApiProperty({ example: 'suno-v4' })
@@ -208,6 +250,32 @@ export class AudioGenerationDto {
   @IsOptional()
   @IsBoolean()
   customMode?: boolean;
+
+  // 🆕 Suno operation type
+  @ApiPropertyOptional({
+    enum: [
+      'generate',
+      'extend',
+      'boost',
+      'cover',
+      'persona',
+      'stems',
+      'instrumental',
+      'lyrics',
+      'video',
+    ],
+    description:
+      'Suno operation type: generate/extend/boost/cover/persona/stems/instrumental/lyrics/video',
+  })
+  @IsOptional()
+  @IsString()
+  operation?: string;
+
+  // 🆕 Suno track title
+  @ApiPropertyOptional({ description: 'Track title (Suno)' })
+  @IsOptional()
+  @IsString()
+  title?: string;
 
   @ApiPropertyOptional({ description: 'Voice ID for ElevenLabs TTS' })
   @IsString()
@@ -245,20 +313,25 @@ export class AudioGenerationDto {
   @IsBoolean()
   loop?: boolean;
 
-  @ApiPropertyOptional({ description: 'Prompt influence 0-1 (ElevenLabs SFX)' })
+  @ApiPropertyOptional({
+    description: 'Prompt influence 0-1 (ElevenLabs SFX)',
+  })
   @IsNumber()
   @IsOptional()
   @Min(0)
   @Max(1)
   promptInfluence?: number;
 
-  @ApiPropertyOptional({ description: 'Audio URL for processing (isolation/STT)' })
+  @ApiPropertyOptional({
+    description: 'Audio URL for processing (isolation/STT)',
+  })
   @IsString()
   @IsOptional()
   audioUrl?: string;
 
   @ApiPropertyOptional({
-    description: 'Dialogue lines array for text-to-dialogue (each with text + voice)',
+    description:
+      'Dialogue lines array for text-to-dialogue (each with text + voice)',
     type: [DialogueLineDto],
   })
   @IsOptional()

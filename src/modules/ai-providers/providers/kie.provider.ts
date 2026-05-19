@@ -243,7 +243,7 @@ export class KieProvider extends BaseProvider {
         `KIE generateImage: model=${modelId}, prompt="${request.prompt?.substring(0, 60)}"`,
       );
 
-      const input: Record<string, any> = {
+            const input: Record<string, any> = {
         prompt: request.prompt,
       };
 
@@ -254,6 +254,16 @@ export class KieProvider extends BaseProvider {
         input.quality = (request as any).quality || 'basic';
       } else if (modelParams?.resolutions?.length > 0) {
         input.resolution = (request as any).resolution || '1K';
+      }
+
+      // 🆕 Midjourney mode: turbo / fast / relax
+      if (modelId === 'mj_txt2img' || modelId === 'mj_img2img') {
+        input.mode = (request as any).mode || 'fast';
+      }
+
+      // 🆕 Flux version (на случай, если KIE поддерживает версию через input)
+      if ((request as any).version) {
+        input.version = (request as any).version;
       }
 
       if (modelParams?.hasNegativePrompt && request.negativePrompt) {
@@ -407,12 +417,17 @@ export class KieProvider extends BaseProvider {
       input.duration = String(r.duration || config.durations[0]);
     }
 
-    // Image input
+       // Image input
     if (config.hasImageInput && r.imageUrl) {
       input.image_urls = [r.imageUrl];
     }
     if (config.hasImageInput && r.imageUrls?.length > 0) {
       input.image_urls = r.imageUrls;
+    }
+
+    // 🆕 Video input (Kling motion-control)
+    if (r.videoUrls?.length > 0) {
+      input.video_urls = r.videoUrls;
     }
 
     // Kling-specific
@@ -424,6 +439,11 @@ export class KieProvider extends BaseProvider {
       // Kling requires these fields
       input.multi_shots = false;
       input.multi_prompt = [];
+    }
+
+    // 🆕 Sora stable mode (reserved for future use)
+    if (r.stable !== undefined) {
+      input.stable = r.stable;
     }
 
     // Sora Pro size
@@ -1110,16 +1130,26 @@ export class KieProvider extends BaseProvider {
           providerSlug: this.slug,
         };
 
-      } else if (sunoModels.has(modelId)) {
+            } else if (sunoModels.has(modelId)) {
         const sunoModel = sunoModelMap[modelId] || modelId;
-        this.logger.debug(`KIE generateAudio: using Suno model=${modelId} → mapped to ${sunoModel}`);
+        this.logger.debug(
+          `KIE generateAudio: using Suno model=${modelId} → mapped to ${sunoModel}, ` +
+          `operation=${r.operation || 'generate'}`,
+        );
+
+        // 🆕 operation — пока логируем; в будущем будет менять endpoint
+        // ('extend', 'cover', 'stems', 'lyrics' и т.д.)
+        // По умолчанию 'generate' использует /api/v1/generate
+        const operation = r.operation || 'generate';
 
         const body: any = {
           prompt: r.prompt || request.prompt,
           customMode: r.customMode || false,
           instrumental: r.instrumental || false,
           model: sunoModel,
-          callBackUrl: r.callBackUrl || 'https://spichki.tw1.ru/api/v1/webhooks/kie-callback',
+          callBackUrl:
+            r.callBackUrl ||
+            'https://spichki.tw1.ru/api/v1/webhooks/kie-callback',
           style: r.style,
           title: r.title,
           negativeTags: r.negativeTags,
@@ -1130,6 +1160,7 @@ export class KieProvider extends BaseProvider {
           personaId: r.personaId,
           uploadUrl: r.uploadUrl,
           duration: r.duration,
+          operation, // 🆕 проброс в body (Suno API игнорирует, если не нужно)
         };
 
         this.logger.debug(`Sending request to KIE Suno: ${JSON.stringify(body).substring(0, 300)}`);

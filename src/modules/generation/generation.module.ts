@@ -1,3 +1,4 @@
+// src/modules/generation/generation.module.ts
 import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bull';
@@ -8,15 +9,20 @@ import { GenerationService } from './generation.service';
 import { GenerationGateway } from './generation.gateway';
 import { GenerationConsumer } from './queues/generation.consumer';
 import { Generation, GenerationSchema } from './schemas/generation.schema';
+import {
+  AIModel,
+  AIModelSchema,
+} from '../ai-providers/schemas/model.schema'; // 🆕
 import { AiProvidersModule } from '../ai-providers/ai-providers.module';
 import { UsersModule } from '../users/users.module';
 import { BillingModule } from '../billing/billing.module';
-import { StorageModule } from '../storage/storage.module'; // ← ДОБАВИТЬ
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Generation.name, schema: GenerationSchema },
+      { name: AIModel.name, schema: AIModelSchema }, // 🆕 для getModelUIConfig
     ]),
     BullModule.registerQueue({
       name: 'generation',
@@ -36,7 +42,7 @@ import { StorageModule } from '../storage/storage.module'; // ← ДОБАВИТ
     }),
     forwardRef(() => AiProvidersModule),
     forwardRef(() => UsersModule),
-    forwardRef(() => BillingModule),
+    forwardRef(() => BillingModule), // 👈 даёт доступ к PricingService
     StorageModule,
   ],
   controllers: [GenerationController],

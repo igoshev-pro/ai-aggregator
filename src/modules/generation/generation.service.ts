@@ -1,3 +1,4 @@
+// src/modules/generation/generation.service.ts
 import {
   Injectable,
   Logger,
@@ -12,9 +13,11 @@ import { InjectQueue } from '@nestjs/bull';
 import { Model, Types } from 'mongoose';
 import { Queue } from 'bull';
 import { Generation, GenerationDocument } from './schemas/generation.schema';
+import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema'; // 🆕
 import { AiProvidersService } from '../ai-providers/ai-providers.service';
 import { UsersService } from '../users/users.service';
 import { BillingService } from '../billing/billing.service';
+import { PricingService } from '../billing/pricing.service'; // 🆕
 import { GenerationType, GenerationStatus } from '@/common/interfaces';
 import {
   ImageGenerationDto,
@@ -22,13 +25,15 @@ import {
   AudioGenerationDto,
 } from './dto/image-generation.dto';
 
-
 @Injectable()
 export class GenerationService {
   private readonly logger = new Logger(GenerationService.name);
 
   constructor(
-    @InjectModel(Generation.name) private generationModel: Model<GenerationDocument>,
+    @InjectModel(Generation.name)
+    private generationModel: Model<GenerationDocument>,
+    @InjectModel(AIModel.name) // 🆕
+    private modelModel: Model<ModelDocument>,
     @InjectQueue('generation') private generationQueue: Queue,
     @Inject(forwardRef(() => AiProvidersService))
     private aiProvidersService: AiProvidersService,
@@ -36,14 +41,31 @@ export class GenerationService {
     private usersService: UsersService,
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
+    private pricingService: PricingService, // 🆕
   ) {}
 
+  // ─── IMAGE ──────────────────────────────────────────────────────
 
   async generateImage(userId: string, dto: ImageGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    const { costInTokens } = await this.billingService.calculateGenerationCost(dto.modelSlug);
+    // 🆕 Расчёт через PricingService с params (mode, version, и т.д.)
+    const priceParams = {
+      mode: dto.mode,
+      version: dto.version,
+      aspectRatio: dto.aspectRatio,
+      resolution: dto.resolution,
+      quality: dto.quality,
+      hasInputImage: !!(dto.inputUrls && dto.inputUrls.length > 0),
+      numImages: dto.numImages || 1,
+    };
 
+    const priceCalc = await this.pricingService.calculatePrice(
+      dto.modelSlug,
+      priceParams,
+    );
+
+    const costInTokens = priceCalc.costInTokens;
     await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
@@ -65,26 +87,22 @@ export class GenerationService {
         numImages: dto.numImages || 1,
         style: dto.style,
         inputUrls: dto.inputUrls,
+        mode: dto.mode,         // 🆕
+        version: dto.version,   // 🆕
       },
       tokensCost: costInTokens,
+      costInDollars: priceCalc.costInDollars,
+      pricingBreakdown: priceCalc.breakdown, // 🆕
     });
     await generation.save();
 
-    await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
+    await this.usersService.deductTokens(
+      userId,
+      costInTokens,
+      'generation_reserve',
+    );
 
-    const p = generation.params as {
-      width?: number;
-      height?: number;
-      aspectRatio?: string;
-      resolution?: string;
-      quality?: string;
-      outputFormat?: string;
-      steps?: number;
-      seed?: number;
-      numImages?: number;
-      style?: string;
-      inputUrls?: string[];
-    };
+    const p = generation.params as any;
 
     await this.generationQueue.add(
       'process-generation',
@@ -107,6 +125,8 @@ export class GenerationService {
           numImages: p.numImages,
           style: p.style,
           inputUrls: p.inputUrls,
+          mode: p.mode,         // 🆕
+          version: p.version,   // 🆕
         },
       },
       {
@@ -121,15 +141,35 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
+      costInDollars: priceCalc.costInDollars,    // 🆕
+      pricingBreakdown: priceCalc.breakdown,     // 🆕
     };
   }
 
+  // ─── VIDEO ──────────────────────────────────────────────────────
 
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    const { costInTokens } = await this.billingService.calculateGenerationCost(dto.modelSlug);
+    // 🆕 Расчёт через PricingService
+    const priceParams = {
+      mode: dto.mode,
+      duration: dto.duration,
+      resolution: dto.resolution,
+      aspectRatio: dto.aspectRatio,
+      quality: dto.quality,
+      sound: dto.sound,
+      stable: dto.stable,
+      hasInputImage: !!dto.imageUrl || !!(dto.imageUrls && dto.imageUrls.length > 0),
+      hasInputVideo: !!(dto.videoUrls && dto.videoUrls.length > 0),
+    };
 
+    const priceCalc = await this.pricingService.calculatePrice(
+      dto.modelSlug,
+      priceParams,
+    );
+
+    const costInTokens = priceCalc.costInTokens;
     await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
@@ -142,22 +182,30 @@ export class GenerationService {
       params: {
         imageUrl: dto.imageUrl,
         imageUrls: dto.imageUrls,
+        videoUrls: dto.videoUrls,                                        // 🆕
         duration: dto.duration || (model.defaultParams as any)?.duration || 5,
         aspectRatio: dto.aspectRatio || (model.defaultParams as any)?.aspectRatio || '16:9',
         resolution: dto.resolution || (model.defaultParams as any)?.resolution || '720p',
         mode: dto.mode,
         quality: dto.quality,
         sound: dto.sound,
+        stable: dto.stable,                                              // 🆕
         removeWatermark: dto.removeWatermark,
         promptOptimizer: dto.promptOptimizer,
         waterMark: dto.waterMark,
         style: dto.style,
       },
       tokensCost: costInTokens,
+      costInDollars: priceCalc.costInDollars,
+      pricingBreakdown: priceCalc.breakdown,  // 🆕
     });
     await generation.save();
 
-    await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
+    await this.usersService.deductTokens(
+      userId,
+      costInTokens,
+      'generation_reserve',
+    );
 
     const p = generation.params as any;
 
@@ -173,12 +221,14 @@ export class GenerationService {
           negativePrompt: dto.negativePrompt,
           imageUrl: p.imageUrl,
           imageUrls: p.imageUrls,
+          videoUrls: p.videoUrls,                  // 🆕
           duration: p.duration,
           aspectRatio: p.aspectRatio,
           resolution: p.resolution,
           mode: p.mode,
           quality: p.quality,
           sound: p.sound,
+          stable: p.stable,                        // 🆕
           removeWatermark: p.removeWatermark,
           promptOptimizer: p.promptOptimizer,
           waterMark: p.waterMark,
@@ -197,15 +247,33 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
+      costInDollars: priceCalc.costInDollars,    // 🆕
+      pricingBreakdown: priceCalc.breakdown,     // 🆕
     };
   }
 
+  // ─── AUDIO ──────────────────────────────────────────────────────
 
   async generateAudio(userId: string, dto: AudioGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    const { costInTokens } = await this.billingService.calculateGenerationCost(dto.modelSlug);
+    // 🆕 Расчёт через PricingService
+    const priceParams = {
+      operation: dto.operation,
+      duration: dto.duration,
+      instrumental: dto.instrumental,
+      customMode: dto.customMode,
+      language: dto.language,
+      hasAudioInput: !!dto.audioUrl,
+      hasDialogue: !!(dto.dialogue && dto.dialogue.length > 0),
+    };
 
+    const priceCalc = await this.pricingService.calculatePrice(
+      dto.modelSlug,
+      priceParams,
+    );
+
+    const costInTokens = priceCalc.costInTokens;
     await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
@@ -218,6 +286,9 @@ export class GenerationService {
         style: dto.style,
         duration: dto.duration,
         instrumental: dto.instrumental,
+        customMode: dto.customMode,        // 🆕
+        operation: dto.operation,          // 🆕
+        title: dto.title,                  // 🆕
         voiceId: dto.voiceId,
         language: dto.language,
         stability: dto.stability,
@@ -229,10 +300,16 @@ export class GenerationService {
         dialogue: dto.dialogue,
       },
       tokensCost: costInTokens,
+      costInDollars: priceCalc.costInDollars,
+      pricingBreakdown: priceCalc.breakdown, // 🆕
     });
     await generation.save();
 
-    await this.usersService.deductTokens(userId, costInTokens, 'generation_reserve');
+    await this.usersService.deductTokens(
+      userId,
+      costInTokens,
+      'generation_reserve',
+    );
 
     const p = generation.params as any;
 
@@ -243,6 +320,9 @@ export class GenerationService {
       style: p.style,
       duration: p.duration,
       instrumental: p.instrumental,
+      customMode: dto.customMode,
+      operation: p.operation,    // 🆕 Suno operation type
+      title: p.title,            // 🆕 Suno track title
       voiceId: p.voiceId,
       voice: p.voiceId, // KIE ElevenLabs uses 'voice'
       language: p.language,
@@ -252,12 +332,11 @@ export class GenerationService {
       similarity: p.similarity,
       speed: p.speed,
       loop: p.loop,
-      prompt_influence: p.promptInfluence, // KIE ElevenLabs uses 'prompt_influence'
+      prompt_influence: p.promptInfluence,
       promptInfluence: p.promptInfluence,
-      audio_url: p.audioUrl, // KIE ElevenLabs uses 'audio_url'
+      audio_url: p.audioUrl,
       audioUrl: p.audioUrl,
-      dialogue: p.dialogue, // KIE ElevenLabs dialogue uses 'dialogue' array
-      customMode: dto.customMode,
+      dialogue: p.dialogue,
     };
 
     await this.generationQueue.add(
@@ -281,9 +360,52 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
+      costInDollars: priceCalc.costInDollars,    // 🆕
+      pricingBreakdown: priceCalc.breakdown,     // 🆕
     };
   }
 
+  // 🆕 ─── РАСЧЁТ ЦЕНЫ (для preview на фронте) ────────────────────
+
+  async calculatePrice(modelSlug: string, params: Record<string, any>) {
+    return this.pricingService.calculatePrice(modelSlug, params);
+  }
+
+  // 🆕 ─── UI-КОНФИГ МОДЕЛИ (для рендера формы на фронте) ────────
+
+  async getModelUIConfig(slug: string) {
+    const model = await this.modelModel
+      .findOne({ slug, isActive: true })
+      .lean();
+
+    if (!model) {
+      throw new NotFoundException(`Model "${slug}" not found`);
+    }
+
+    return {
+      slug: model.slug,
+      name: model.name,
+      displayName: model.displayName,
+      description: model.description,
+      icon: model.icon,
+      type: model.type,
+      isPremium: model.isPremium,
+      capabilities: model.capabilities || [],
+      uiParameters: model.uiParameters || [],
+      inputCapabilities: model.inputCapabilities || {},
+      pricingMatrix: (model.pricingMatrix || []).map((rule) => ({
+        conditions: rule.conditions,
+        costInTokens: rule.costInTokens,
+        costInDollars: rule.costInDollars,
+        label: rule.label,
+      })),
+      minTokenCost: model.minTokenCost,
+      defaultParams: model.defaultParams || {},
+      limits: model.limits || {},
+    };
+  }
+
+  // ─── СТАТУС / ИСТОРИЯ ───────────────────────────────────────────
 
   async getGenerationStatus(userId: string, generationId: string) {
     const generation = await this.generationModel.findById(generationId);
@@ -302,6 +424,8 @@ export class GenerationService {
       resultUrls: generation.resultUrls,
       resultContent: generation.resultContent,
       tokensCost: generation.tokensCost,
+      costInDollars: generation.costInDollars,        // 🆕
+      pricingBreakdown: generation.pricingBreakdown,  // 🆕
       errorMessage: generation.errorMessage,
       prompt: generation.prompt,
       params: generation.params,
@@ -311,8 +435,7 @@ export class GenerationService {
     };
   }
 
-
-  async getUserGenerations(
+    async getUserGenerations(
     userId: string,
     type?: GenerationType,
     page = 1,
@@ -342,6 +465,7 @@ export class GenerationService {
         prompt: g.prompt,
         resultUrls: g.resultUrls,
         tokensCost: g.tokensCost,
+        costInDollars: g.costInDollars,    // 🆕
         isFavorite: g.isFavorite,
         createdAt: g['createdAt'],
         completedAt: g.completedAt,
@@ -349,7 +473,6 @@ export class GenerationService {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
-
 
   async updateGeneration(
     generationId: string,
@@ -362,6 +485,7 @@ export class GenerationService {
     );
   }
 
+  // ─── REFUND ─────────────────────────────────────────────────────
 
   async refundGeneration(generationId: string) {
     const generation = await this.generationModel.findById(generationId);
@@ -383,6 +507,7 @@ export class GenerationService {
     await generation.save();
   }
 
+  // ─── FAVORITES ──────────────────────────────────────────────────
 
   async toggleFavorite(userId: string, generationId: string) {
     const generation = await this.generationModel.findById(generationId);
@@ -395,7 +520,6 @@ export class GenerationService {
     await generation.save();
     return { isFavorite: generation.isFavorite };
   }
-
 
   async getFavorites(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -421,6 +545,7 @@ export class GenerationService {
     };
   }
 
+  // ─── PRIVATE HELPERS ────────────────────────────────────────────
 
   private async validateBalance(userId: string, cost: number) {
     const user = await this.usersService.findById(userId);

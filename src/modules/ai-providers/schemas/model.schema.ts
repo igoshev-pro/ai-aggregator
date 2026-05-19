@@ -4,6 +4,53 @@ import { GenerationType } from '@/common/interfaces';
 
 export type ModelDocument = AIModel & Document;
 
+// ─── ИНТЕРФЕЙСЫ ─────────────────────────────────────────
+
+export interface PricingRule {
+  conditions: Record<string, any>;   // { mode: 'turbo', resolution: '2K' }
+  costInTokens: number;
+  costInDollars: number;
+  label?: string;                    // для админки
+}
+
+export interface UIParameterOption {
+  value: string | number | boolean;
+  label: string;
+}
+
+export interface UIParameter {
+  key: string;                       // 'mode', 'resolution', 'duration'
+  label: string;                     // 'Режим', 'Разрешение'
+  type:
+    | 'select'
+    | 'toggle'
+    | 'number'
+    | 'text'
+    | 'image-upload'
+    | 'audio-upload'
+    | 'video-upload';
+  options?: UIParameterOption[];
+  default?: any;
+  affectsPrice?: boolean;
+  visibleWhen?: Record<string, any>; // { mode: ['fast', 'turbo'] }
+  min?: number;
+  max?: number;
+  step?: number;
+  placeholder?: string;
+}
+
+export interface InputCapabilities {
+  acceptsImages?: boolean;
+  acceptsFiles?: boolean;
+  acceptsAudio?: boolean;
+  acceptsVideo?: boolean;
+  maxInputImages?: number;
+  maxFileSize?: number;              // в MB
+  acceptedMimeTypes?: string[];
+}
+
+// ─── СХЕМА ──────────────────────────────────────────────
+
 @Schema({ timestamps: true })
 export class AIModel {
   @Prop({ required: true, unique: true })
@@ -45,8 +92,9 @@ export class AIModel {
   fixedCostPerGeneration: number; // в долларах
 
   // Курс конвертации долларов в наши внутренние токены
-  @Prop({ default: 100 })
-  tokensPerDollar: number; // 1$ = 100 токенов по умолчанию
+  // ⚠️ ИЗМЕНЕНО: было 100, теперь 30 (1$ ≈ 30 спичек по нашему курсу RUB=75/USD, 1🔥=3₽)
+  @Prop({ default: 30 })
+  tokensPerDollar: number;
 
   // Минимальная стоимость генерации в токенах
   @Prop({ default: 1 })
@@ -63,6 +111,7 @@ export class AIModel {
       modelId: String,
       priority: Number,
       isActive: Boolean,
+      metadata: Object, // 🆕 для доп. параметров маппинга (например, { version: 'pro' })
     }],
     default: [],
   })
@@ -72,6 +121,7 @@ export class AIModel {
     modelId: string;
     priority: number;
     isActive: boolean;
+    metadata?: Record<string, any>;
   }[];
 
   @Prop({ type: Object, default: {} })
@@ -94,11 +144,49 @@ export class AIModel {
     maxResolution?: string;
     maxDuration?: number;
     cooldownSeconds?: number;
-    includedInPlans?: string[]; // ['pro', 'unlimited'] - в каких подписках доступна
+    includedInPlans?: string[]; // ['plus', 'max', 'ultimate'] - в каких подписках доступна
+    freeLimitPerHour?: number;  // 🆕 для бесплатных моделей в подписках
+    freeLimitPerDay?: number;   // 🆕
   };
 
   @Prop({ type: [String], default: [] })
   capabilities: string[];
+
+  // 🆕 МАТРИЦА ЦЕН — основа динамического ценообразования
+  // Каждое правило: conditions (что должно совпасть в params) → цена в спичках/долларах
+  @Prop({
+    type: [{
+      conditions: Object,
+      costInTokens: Number,
+      costInDollars: Number,
+      label: String,
+    }],
+    default: [],
+  })
+  pricingMatrix: PricingRule[];
+
+  // 🆕 ПАРАМЕТРЫ ДЛЯ UI — описывают как фронт должен рисовать форму генерации
+  @Prop({
+    type: [{
+      key: String,
+      label: String,
+      type: String,
+      options: [{ value: Object, label: String }],
+      default: Object,
+      affectsPrice: Boolean,
+      visibleWhen: Object,
+      min: Number,
+      max: Number,
+      step: Number,
+      placeholder: String,
+    }],
+    default: [],
+  })
+  uiParameters: UIParameter[];
+
+  // 🆕 КАКОЙ КОНТЕНТ ПРИНИМАЕТ МОДЕЛЬ (для чата с мультимодальностью)
+  @Prop({ type: Object, default: {} })
+  inputCapabilities: InputCapabilities;
 
   @Prop({ type: Object, default: {} })
   stats: {

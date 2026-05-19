@@ -1,3 +1,4 @@
+// src/modules/generation/generation.controller.ts
 import {
   Controller,
   Get,
@@ -18,6 +19,7 @@ import {
   VideoGenerationDto,
   AudioGenerationDto,
 } from './dto/image-generation.dto';
+import { CalculatePriceDto } from './dto/calculate-price.dto'; // 🆕
 import { GenerationType } from '@/common/interfaces';
 import { Throttle } from '@nestjs/throttler';
 
@@ -61,6 +63,34 @@ export class GenerationController {
     @Body() dto: AudioGenerationDto,
   ) {
     const result = await this.generationService.generateAudio(userId, dto);
+    return { success: true, data: result };
+  }
+
+  // 🆕 ─── РАСЧЁТ ЦЕНЫ ───────────────────────────────────────────
+  @Post('calculate-price')
+  @ApiOperation({
+    summary: 'Calculate generation price for given params',
+    description:
+      'Возвращает стоимость генерации в спичках и долларах. Используется фронтом для отображения цены перед нажатием "Сгенерировать".',
+  })
+  @HttpCode(200)
+  async calculatePrice(@Body() dto: CalculatePriceDto) {
+    const result = await this.generationService.calculatePrice(
+      dto.modelSlug,
+      dto.params || {},
+    );
+    return { success: true, data: result };
+  }
+
+  // 🆕 ─── UI-КОНФИГ МОДЕЛИ ──────────────────────────────────────
+  @Get('models/:slug/ui-config')
+  @ApiOperation({
+    summary: 'Get UI configuration for a model',
+    description:
+      'Возвращает uiParameters, pricingMatrix и inputCapabilities модели. Фронт использует это чтобы динамически нарисовать форму генерации и показать матрицу цен.',
+  })
+  async getModelUIConfig(@Param('slug') slug: string) {
+    const result = await this.generationService.getModelUIConfig(slug);
     return { success: true, data: result };
   }
 
