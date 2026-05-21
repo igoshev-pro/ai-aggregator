@@ -132,6 +132,9 @@ export class Generation {
   @Prop({ default: false })
   isRefunded: boolean;
 
+  @Prop({ default: false })
+  billingRecorded: boolean;
+
   @Prop()
   startedAt: Date;
 

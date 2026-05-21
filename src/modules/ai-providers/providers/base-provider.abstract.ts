@@ -5,9 +5,26 @@ export interface ProviderConfig {
   headers?: Record<string, string>;
 }
 
+/**
+ * 🆕 Сообщение в чате с поддержкой vision (multimodal).
+ *
+ * Форматы content:
+ * - string — простой текст (legacy)
+ * - any[] — массив multimodal-частей (OpenAI-style: text + image_url)
+ *
+ * Поле imageUrls — упрощённый формат: текст + список URL картинок.
+ * Провайдеры сами конвертируют его в нужный формат (OpenAI / Anthropic).
+ */
+export interface ChatMessage {
+  role: string;
+  content: string | any[];
+  imageUrls?: string[];
+}
+
 export interface TextGenerationRequest {
   model: string;
-  messages: { role: string; content: string }[];
+  // 🆕 Расширенный тип сообщений с поддержкой vision
+  messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
   topP?: number;
@@ -20,15 +37,15 @@ export interface ImageGenerationRequest {
   negativePrompt?: string;
   width?: number;
   height?: number;
-  aspectRatio?: string;      // ← ДОБАВИТЬ: '1:1', '16:9' и т.д.
-  resolution?: string;       // ← ДОБАВИТЬ: '1K', '2K', '4K'
-  quality?: string;          // ← ДОБАВИТЬ: 'basic', 'high' (seedream)
-  outputFormat?: string;     // ← ДОБАВИТЬ: 'png', 'jpg' (nano-banana)
+  aspectRatio?: string;      // '1:1', '16:9' и т.д.
+  resolution?: string;       // '1K', '2K', '4K'
+  quality?: string;          // 'basic', 'high' (seedream)
+  outputFormat?: string;     // 'png', 'jpg' (nano-banana)
   steps?: number;
   seed?: number;
   numImages?: number;
   style?: string;
-  inputUrls?: string[];      // ← ДОБАВИТЬ: для img2img
+  inputUrls?: string[];      // для img2img
 }
 
 export interface VideoGenerationRequest {

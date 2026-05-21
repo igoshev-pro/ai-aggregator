@@ -31,12 +31,66 @@ export class OpenRouterProvider extends BaseProvider {
     });
   }
 
+  // ========================================
+  // 🆕 VISION HELPER — OpenAI-compatible multimodal content
+  // ========================================
+
+  /**
+   * 🆕 Строит OpenAI-style content (массив частей) для vision-моделей.
+   * OpenRouter полностью совместим с OpenAI multimodal форматом.
+   * Работает для: GPT-4 Vision, Gemini Pro Vision, Claude через OR и т.д.
+   *
+   * Если imageUrls нет — возвращает строку (legacy формат).
+   * Иначе — массив [{type:'text', text}, {type:'image_url', image_url:{url}}, ...]
+   */
+  private buildOpenAIContent(
+    text: string,
+    imageUrls?: string[],
+  ): string | any[] {
+    if (!imageUrls || imageUrls.length === 0) {
+      return text;
+    }
+
+    const parts: any[] = [];
+
+    if (text && text.trim().length > 0) {
+      parts.push({ type: 'text', text });
+    }
+
+    for (const url of imageUrls) {
+      parts.push({
+        type: 'image_url',
+        image_url: { url },
+      });
+    }
+
+    return parts;
+  }
+
+  /**
+   * 🆕 Преобразует входящие messages с imageUrls в OpenAI multimodal формат.
+   */
+  private prepareMessages(messages: any[]): any[] {
+    return messages.map((msg: any) => {
+      if (msg.imageUrls && msg.imageUrls.length > 0) {
+        return {
+          role: msg.role,
+          content: this.buildOpenAIContent(msg.content, msg.imageUrls),
+        };
+      }
+      return { role: msg.role, content: msg.content };
+    });
+  }
+
   async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
+      // 🆕 Преобразуем messages — поддержка vision
+      const messages = this.prepareMessages(request.messages as any[]);
+
       const response = await this.client.post('/chat/completions', {
         model: request.model,
-        messages: request.messages,
+        messages,
         max_tokens: request.maxTokens || 4096,
         temperature: request.temperature ?? 0.7,
         top_p: request.topP ?? 1,
@@ -78,11 +132,14 @@ export class OpenRouterProvider extends BaseProvider {
         `OpenRouter stream request: model=${request.model}, messages=${request.messages?.length}`,
       );
 
+      // 🆕 Преобразуем messages — поддержка vision
+      const messages = this.prepareMessages(request.messages as any[]);
+
       const response = await this.client.post(
         '/chat/completions',
         {
           model: request.model,
-          messages: request.messages,
+          messages,
           max_tokens: request.maxTokens || 4096,
           temperature: request.temperature ?? 0.7,
           top_p: request.topP ?? 1,

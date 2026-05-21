@@ -1,3 +1,4 @@
+// src/modules/generation/queues/generation.consumer.ts
 import { Processor, Process, OnQueueFailed } from '@nestjs/bull';
 import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { Job } from 'bull';
@@ -28,11 +29,18 @@ export class GenerationConsumer {
     private storageService: StorageService,
   ) {}
 
+  // ═══════════════════════════════════════════════════════════════
+  // ОСНОВНОЙ ОБРАБОТЧИК
+  // ═══════════════════════════════════════════════════════════════
+
   @Process('process-generation')
   async handleGeneration(job: Job<GenerationJobData>) {
     const { generationId, userId, type, modelSlug, request } = job.data;
+    const attemptInfo = `attempt ${job.attemptsMade + 1}/${job.opts.attempts ?? 1}`;
 
-    this.logger.log(`Processing ${type} generation ${generationId} with model ${modelSlug}`);
+    this.logger.log(
+      `Processing ${type} generation ${generationId} with model ${modelSlug} (${attemptInfo})`,
+    );
 
     await this.generationService.updateGeneration(generationId, {
       status: GenerationStatus.PROCESSING,
@@ -65,7 +73,11 @@ export class GenerationConsumer {
         throw new Error(result.error?.message || 'Generation failed');
       }
 
-      if (result.data?.taskId && (!result.data?.urls || result.data.urls.length === 0)) {
+      // ─── ASYNC TASK (poll until ready) ─────────────────────────
+      if (
+        result.data?.taskId &&
+        (!result.data?.urls || result.data.urls.length === 0)
+      ) {
         await this.pollTaskUntilComplete(
           generationId,
           userId,
@@ -76,6 +88,7 @@ export class GenerationConsumer {
         return;
       }
 
+      // ─── SYNC RESULT ───────────────────────────────────────────
       const providerUrls: string[] = result.data?.urls || [];
       const { storageUrls, storageKeys } = await this.saveToStorage(
         providerUrls,
@@ -83,7 +96,6 @@ export class GenerationConsumer {
         type,
       );
 
-      const now = new Date();
       await this.generationService.updateGeneration(generationId, {
         status: GenerationStatus.COMPLETED,
         resultUrls: storageUrls.length ? storageUrls : providerUrls,
@@ -93,10 +105,13 @@ export class GenerationConsumer {
         resultContent: result.data?.content,
         providerSlug: result.providerSlug,
         responseTimeMs: result.responseTimeMs,
-        completedAt: now,
+        completedAt: new Date(),
         progress: 100,
         metadata: result.data?.metadata || {},
       });
+
+      // 🆕 ЗАПИСЫВАЕМ ТРАНЗАКЦИЮ В BILLING
+      await this.generationService.recordSuccessfulGeneration(generationId);
 
       this.generationGateway.sendToUser(userId, 'generation:completed', {
         generationId,
@@ -110,26 +125,72 @@ export class GenerationConsumer {
         `✅ Generation ${generationId} completed in ${result.responseTimeMs}ms, saved to S3: ${storageUrls.length} files`,
       );
     } catch (error: any) {
-      this.logger.error(`❌ Generation ${generationId} failed: ${error.message}`);
+      // ⚠️ ВАЖНО: НЕ делаем refund здесь — Bull может сделать retry.
+      // Refund + WS-уведомление "failed" происходит ТОЛЬКО в @OnQueueFailed(),
+      // когда все попытки исчерпаны.
+      this.logger.warn(
+        `⚠️ Generation ${generationId} attempt failed (${attemptInfo}): ${error.message}`,
+      );
 
+      // Сохраняем последнюю ошибку для аудита
+      await this.generationService.updateGeneration(generationId, {
+        errorMessage: error.message,
+      });
+
+      throw error; // Bull увидит ошибку и сделает retry (или финальный fail)
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ФИНАЛЬНЫЙ FAIL — после исчерпания всех retry
+  // ═══════════════════════════════════════════════════════════════
+
+  @OnQueueFailed()
+  async onFailed(job: Job<GenerationJobData>, error: Error) {
+    const { generationId, userId } = job.data;
+    const maxAttempts = job.opts.attempts ?? 1;
+    const isFinalFailure = job.attemptsMade >= maxAttempts;
+
+    if (!isFinalFailure) {
+      this.logger.warn(
+        `🔄 Job ${job.id} (gen ${generationId}) failed attempt ${job.attemptsMade}/${maxAttempts}, will retry: ${error.message}`,
+      );
+      return;
+    }
+
+    this.logger.error(
+      `🔴 Job ${job.id} for generation ${generationId} FINALLY failed after ${job.attemptsMade} attempts: ${error.message}`,
+    );
+
+    try {
+      // 1) Помечаем генерацию как окончательно failed
       await this.generationService.updateGeneration(generationId, {
         status: GenerationStatus.FAILED,
         errorMessage: error.message,
         completedAt: new Date(),
       });
 
+      // 2) Возвращаем токены (идемпотентно — через флаг isRefunded)
       await this.generationService.refundGeneration(generationId);
 
+      // 3) Уведомляем пользователя
       this.generationGateway.sendToUser(userId, 'generation:failed', {
         generationId,
         status: GenerationStatus.FAILED,
         errorMessage: error.message,
         refunded: true,
       });
-
-      throw error;
+    } catch (handlerError: any) {
+      this.logger.error(
+        `❌ Critical: failed to handle final failure for gen ${generationId}: ${handlerError.message}`,
+        handlerError.stack,
+      );
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PRIVATE: SAVE TO S3
+  // ═══════════════════════════════════════════════════════════════
 
   private async saveToStorage(
     urls: string[],
@@ -147,7 +208,9 @@ export class GenerationConsumer {
 
     try {
       const results = await Promise.all(
-        urls.map((url) => this.storageService.downloadAndSave(url, userId, mediaType)),
+        urls.map((url) =>
+          this.storageService.downloadAndSave(url, userId, mediaType),
+        ),
       );
 
       const storageUrls = results.map((r) => r.s3Url).filter(Boolean);
@@ -159,6 +222,10 @@ export class GenerationConsumer {
       return { storageUrls: [], storageKeys: [] };
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // PRIVATE: ASYNC POLL
+  // ═══════════════════════════════════════════════════════════════
 
   private async pollTaskUntilComplete(
     generationId: string,
@@ -192,7 +259,11 @@ export class GenerationConsumer {
           `Poll ${generationId}: attempt ${attempts}, status: ${taskResult.status}`,
         );
 
-        if (taskResult.progress !== undefined || taskResult.eta !== undefined) {
+        // Обновление прогресса
+        if (
+          taskResult.progress !== undefined ||
+          taskResult.eta !== undefined
+        ) {
           await this.generationService.updateGeneration(generationId, {
             progress: taskResult.progress || 0,
             eta: taskResult.eta,
@@ -206,6 +277,7 @@ export class GenerationConsumer {
           });
         }
 
+        // ─── УСПЕХ ─────────────────────────────────────────────
         if (taskResult.status === 'completed') {
           const providerUrls = taskResult.resultUrls || [];
 
@@ -225,6 +297,9 @@ export class GenerationConsumer {
             progress: 100,
           });
 
+          // 🆕 ЗАПИСЫВАЕМ ТРАНЗАКЦИЮ В BILLING
+          await this.generationService.recordSuccessfulGeneration(generationId);
+
           this.generationGateway.sendToUser(userId, 'generation:completed', {
             generationId,
             status: GenerationStatus.COMPLETED,
@@ -235,6 +310,7 @@ export class GenerationConsumer {
           return;
         }
 
+        // ─── НЕУДАЧА от провайдера ─────────────────────────────
         if (taskResult.status === 'failed') {
           consecutiveFailures++;
           const errorMsg = taskResult.error || 'Task failed at provider';
@@ -248,7 +324,7 @@ export class GenerationConsumer {
           continue;
         }
 
-        // Task is still processing — reset consecutive failure counter
+        // Задача всё ещё processing — сбрасываем счётчик ошибок
         consecutiveFailures = 0;
       } catch (error: any) {
         if (error.message.startsWith('Provider task failed:')) {
@@ -261,18 +337,15 @@ export class GenerationConsumer {
         );
 
         if (consecutiveFailures >= maxConsecutiveFailures) {
-          throw new Error(`Generation failed after ${consecutiveFailures} consecutive errors: ${error.message}`);
+          throw new Error(
+            `Generation failed after ${consecutiveFailures} consecutive errors: ${error.message}`,
+          );
         }
       }
     }
 
-    throw new Error(`Generation timeout: task ${taskId} did not complete after ${maxAttempts} attempts`);
-  }
-
-  @OnQueueFailed()
-  async onFailed(job: Job<GenerationJobData>, error: Error) {
-    this.logger.error(
-      `Job ${job.id} for generation ${job.data.generationId} failed after ${job.attemptsMade} attempts: ${error.message}`,
+    throw new Error(
+      `Generation timeout: task ${taskId} did not complete after ${maxAttempts} attempts`,
     );
   }
 

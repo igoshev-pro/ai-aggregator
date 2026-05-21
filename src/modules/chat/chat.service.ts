@@ -29,6 +29,13 @@ export interface SendMessageDto {
   maxTokens?: number;
 }
 
+// 🆕 Тип для сообщения с поддержкой vision (imageUrls)
+interface ContextMessage {
+  role: string;
+  content: string;
+  imageUrls?: string[];
+}
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
@@ -45,7 +52,7 @@ export class ChatService {
     private billingService: BillingService,
     @Inject(forwardRef(() => ProviderRegistryService))
     private providerRegistry: ProviderRegistryService,
-  ) { }
+  ) {}
 
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -99,6 +106,7 @@ export class ChatService {
       userId,
       modelSlug: dto.modelSlug,
       contentLength: dto.content?.length,
+      hasImages: !!(dto.imageUrls && dto.imageUrls.length > 0),
     });
 
     // Проверка существования модели
@@ -296,9 +304,9 @@ export class ChatService {
         imageUrls: dto.imageUrls || [],
       });
       await userMessage.save();
-      console.log('12. User message saved:', userMessage._id);
+      console.log('12. User message saved:', userMessage._id, 'images:', dto.imageUrls?.length || 0);
 
-      // 6. Построение контекста
+      // 6. Построение контекста (🆕 теперь с imageUrls)
       console.log('13. Building context...');
       const contextMessages = await this.buildContext(conversation, dto);
       console.log('14. Context ready, messages count:', contextMessages.length);
@@ -503,11 +511,19 @@ export class ChatService {
     return conversation;
   }
 
+  /**
+   * 🆕 Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
+   *
+   * Что меняется:
+   * - В историю включаем imageUrls из сохранённых сообщений
+   *   → модель видит ВСЕ картинки чата, не только последнюю
+   * - Последнее user-сообщение использует imageUrls из dto (свежие)
+   */
   private async buildContext(
     conversation: ConversationDocument,
     dto: SendMessageDto,
-  ): Promise<{ role: string; content: string }[]> {
-    const messages: { role: string; content: string }[] = [];
+  ): Promise<ContextMessage[]> {
+    const messages: ContextMessage[] = [];
 
     const systemPrompt = dto.systemPrompt || conversation.systemPrompt;
     if (systemPrompt) {
@@ -528,13 +544,29 @@ export class ChatService {
     const orderedHistory = history.reverse();
 
     for (const msg of orderedHistory) {
-      messages.push({
+      const contextMsg: ContextMessage = {
         role: msg.role,
         content: msg.content,
-      });
+      };
+
+      // 🆕 Прокидываем картинки из истории (если есть)
+      const msgImages = (msg as any).imageUrls;
+      if (Array.isArray(msgImages) && msgImages.length > 0) {
+        contextMsg.imageUrls = msgImages;
+      }
+
+      messages.push(contextMsg);
     }
 
-    messages.push({ role: 'user', content: dto.content });
+    // 🆕 Последнее user-сообщение с свежими imageUrls из dto
+    const lastUserMsg: ContextMessage = {
+      role: 'user',
+      content: dto.content,
+    };
+    if (dto.imageUrls && dto.imageUrls.length > 0) {
+      lastUserMsg.imageUrls = dto.imageUrls;
+    }
+    messages.push(lastUserMsg);
 
     return messages;
   }

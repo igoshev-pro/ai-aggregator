@@ -16,8 +16,8 @@ import { Logger } from '@nestjs/common';
  * Evolink AI Provider
  *
  * API форматы:
- * - GPT, DeepSeek → POST /v1/chat/completions (OpenAI-compatible)
- * - Claude → POST /v1/messages (Anthropic Messages API)
+ * - GPT, DeepSeek → POST /v1/chat/completions (OpenAI-compatible, поддержка vision)
+ * - Claude → POST /v1/messages (Anthropic Messages API, поддержка vision)
  * - Images → POST /v1/images/generations (async, returns task id)
  * - Video → POST /v1/videos/generations (async, returns task id)
  * - Audio → POST /v1/audio/generations (async, returns task id)
@@ -43,7 +43,7 @@ const KLING_MOTION_MODELS = ['kling-v3-motion-control'];
 
 export class EvolinkProvider extends BaseProvider {
   private client: AxiosInstance;
-  private readonly logger = new Logger(EvolinkProvider.name);  // ← ДОБАВИТЬ
+  private readonly logger = new Logger(EvolinkProvider.name);
 
   constructor(config: ProviderConfig) {
     super('evolink', config);
@@ -78,6 +78,83 @@ export class EvolinkProvider extends BaseProvider {
     }
   }
 
+  // ========================================
+  // 🆕 VISION HELPERS — multimodal content
+  // ========================================
+
+  /**
+   * Определяет MIME-тип по URL (по расширению).
+   * Используется если нужно явно указать media_type (например для base64).
+   */
+  private detectImageMime(url: string): string {
+    const lower = url.toLowerCase();
+    if (lower.includes('.png')) return 'image/png';
+    if (lower.includes('.webp')) return 'image/webp';
+    if (lower.includes('.gif')) return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  /**
+   * 🆕 Строит OpenAI-style content (массив частей) для vision-моделей.
+   * Если imageUrls нет — возвращает строку (legacy формат).
+   * Иначе — массив [{type:'text', text}, {type:'image_url', image_url:{url}}, ...]
+   */
+  private buildOpenAIContent(
+    text: string,
+    imageUrls?: string[],
+  ): string | any[] {
+    if (!imageUrls || imageUrls.length === 0) {
+      return text;
+    }
+
+    const parts: any[] = [];
+
+    if (text && text.trim().length > 0) {
+      parts.push({ type: 'text', text });
+    }
+
+    for (const url of imageUrls) {
+      parts.push({
+        type: 'image_url',
+        image_url: { url },
+      });
+    }
+
+    return parts;
+  }
+
+  /**
+   * 🆕 Строит Claude content (массив блоков) для vision-моделей.
+   * Формат Anthropic: [{type:'image', source:{type:'url', url}}, {type:'text', text}]
+   * Картинки идут ПЕРЕД текстом (рекомендация Anthropic для лучшего результата).
+   */
+  private buildClaudeContent(
+    text: string,
+    imageUrls?: string[],
+  ): string | any[] {
+    if (!imageUrls || imageUrls.length === 0) {
+      return text;
+    }
+
+    const parts: any[] = [];
+
+    for (const url of imageUrls) {
+      parts.push({
+        type: 'image',
+        source: {
+          type: 'url',
+          url,
+        },
+      });
+    }
+
+    if (text && text.trim().length > 0) {
+      parts.push({ type: 'text', text });
+    }
+
+    return parts;
+  }
+
   // --- OpenAI-compatible (GPT-5.4, DeepSeek) ---
 
   private async generateTextOpenAI(
@@ -85,10 +162,21 @@ export class EvolinkProvider extends BaseProvider {
   ): Promise<GenerationResult> {
     const start = Date.now();
     try {
+      // 🆕 Преобразуем messages — если есть imageUrls, формируем multimodal content
+      const messages = request.messages.map((msg: any) => {
+        if (msg.imageUrls && msg.imageUrls.length > 0) {
+          return {
+            role: msg.role,
+            content: this.buildOpenAIContent(msg.content, msg.imageUrls),
+          };
+        }
+        return { role: msg.role, content: msg.content };
+      });
+
       const response = await this.client.post('/chat/completions', {
         model: request.model,
-        messages: request.messages,
-        max_completion_tokens: request.maxTokens || 4096, 
+        messages,
+        max_completion_tokens: request.maxTokens || 4096,
         temperature: request.temperature ?? 0.7,
         stream: false,
       });
@@ -117,11 +205,22 @@ export class EvolinkProvider extends BaseProvider {
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
     try {
+      // 🆕 Преобразуем messages — если есть imageUrls, формируем multimodal content
+      const messages = request.messages.map((msg: any) => {
+        if (msg.imageUrls && msg.imageUrls.length > 0) {
+          return {
+            role: msg.role,
+            content: this.buildOpenAIContent(msg.content, msg.imageUrls),
+          };
+        }
+        return { role: msg.role, content: msg.content };
+      });
+
       const response = await this.client.post(
         '/chat/completions',
         {
           model: request.model,
-          messages: request.messages,
+          messages,
           max_completion_tokens: request.maxTokens || 4096,
           temperature: request.temperature ?? 0.7,
           stream: true,
@@ -163,75 +262,75 @@ export class EvolinkProvider extends BaseProvider {
               return;
             }
           } catch (error) {
-  const status = error?.response?.status;
-  let errorMessage = error.message;
+            const status = error?.response?.status;
+            let errorMessage = error.message;
 
-  try {
-    if (error?.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorMessage = error.response.data.substring(0, 500);
-      } else if (typeof error.response.data.pipe === 'function') {
-        const chunks: Buffer[] = [];
-        for await (const chunk of error.response.data) {
-          chunks.push(Buffer.from(chunk));
-          if (chunks.length > 5) break;
-        }
-        const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
-        try {
-          const parsed = JSON.parse(body);
-          errorMessage = parsed?.error?.message || parsed?.message || body;
-        } catch {
-          errorMessage = body || error.message;
-        }
-      } else if (error.response.data?.error?.message) {
-        errorMessage = error.response.data.error.message;
-      }
-    }
-  } catch {
-    errorMessage = `HTTP ${status}: ${error.message}`;
-  }
+            try {
+              if (error?.response?.data) {
+                if (typeof error.response.data === 'string') {
+                  errorMessage = error.response.data.substring(0, 500);
+                } else if (typeof error.response.data.pipe === 'function') {
+                  const chunks: Buffer[] = [];
+                  for await (const chunk of error.response.data) {
+                    chunks.push(Buffer.from(chunk));
+                    if (chunks.length > 5) break;
+                  }
+                  const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+                  try {
+                    const parsed = JSON.parse(body);
+                    errorMessage = parsed?.error?.message || parsed?.message || body;
+                  } catch {
+                    errorMessage = body || error.message;
+                  }
+                } else if (error.response.data?.error?.message) {
+                  errorMessage = error.response.data.error.message;
+                }
+              }
+            } catch {
+              errorMessage = `HTTP ${status}: ${error.message}`;
+            }
 
-  this.logger.error(`Evolink OpenAI stream error: status=${status}, message=${errorMessage}`);
-  yield { content: '', done: true, error: `Evolink: ${status || 'NETWORK'} - ${errorMessage}` };
-}
+            this.logger.error(`Evolink OpenAI stream error: status=${status}, message=${errorMessage}`);
+            yield { content: '', done: true, error: `Evolink: ${status || 'NETWORK'} - ${errorMessage}` };
+          }
         }
       }
     } catch (error) {
-  const status = error?.response?.status;
-  let errorMessage = error.message;
+      const status = error?.response?.status;
+      let errorMessage = error.message;
 
-  // Безопасное извлечение ошибки — response.data может быть стримом
-  try {
-    if (error?.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorMessage = error.response.data.substring(0, 500);
-      } else if (typeof error.response.data.pipe === 'function') {
-        // Это стрим — читаем его
-        const chunks: Buffer[] = [];
-        for await (const chunk of error.response.data) {
-          chunks.push(Buffer.from(chunk));
-          if (chunks.length > 5) break;
+      // Безопасное извлечение ошибки — response.data может быть стримом
+      try {
+        if (error?.response?.data) {
+          if (typeof error.response.data === 'string') {
+            errorMessage = error.response.data.substring(0, 500);
+          } else if (typeof error.response.data.pipe === 'function') {
+            // Это стрим — читаем его
+            const chunks: Buffer[] = [];
+            for await (const chunk of error.response.data) {
+              chunks.push(Buffer.from(chunk));
+              if (chunks.length > 5) break;
+            }
+            const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+            try {
+              const parsed = JSON.parse(body);
+              errorMessage = parsed?.error?.message || parsed?.message || body;
+            } catch {
+              errorMessage = body || error.message;
+            }
+          } else if (error.response.data?.error?.message) {
+            errorMessage = error.response.data.error.message;
+          }
         }
-        const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
-        try {
-          const parsed = JSON.parse(body);
-          errorMessage = parsed?.error?.message || parsed?.message || body;
-        } catch {
-          errorMessage = body || error.message;
-        }
-      } else if (error.response.data?.error?.message) {
-        errorMessage = error.response.data.error.message;
+      } catch {
+        errorMessage = `HTTP ${status}: ${error.message}`;
       }
-    }
-  } catch {
-    errorMessage = `HTTP ${status}: ${error.message}`;
-  }
 
-  this.logger.error(
-    `Evolink OpenAI stream error: status=${status}, message=${errorMessage}`,
-  );
-  yield { content: '', done: true, error: `Evolink: ${status || 'NETWORK'} - ${errorMessage}` };
-}
+      this.logger.error(
+        `Evolink OpenAI stream error: status=${status}, message=${errorMessage}`,
+      );
+      yield { content: '', done: true, error: `Evolink: ${status || 'NETWORK'} - ${errorMessage}` };
+    }
   }
 
   // --- Anthropic Messages API (Claude Sonnet 4.6, Claude Opus 4.6) ---
@@ -374,82 +473,117 @@ export class EvolinkProvider extends BaseProvider {
                 };
                 return;
             }
-          } catch { }
+          } catch {}
         }
       }
     } catch (error) {
-  const status = error?.response?.status;
-  let errorMessage = error.message;
+      const status = error?.response?.status;
+      let errorMessage = error.message;
 
-  try {
-    if (error?.response?.data) {
-      if (typeof error.response.data === 'string') {
-        errorMessage = error.response.data.substring(0, 500);
-      } else if (typeof error.response.data.pipe === 'function') {
-        const chunks: Buffer[] = [];
-        for await (const chunk of error.response.data) {
-          chunks.push(Buffer.from(chunk));
-          if (chunks.length > 5) break;
+      try {
+        if (error?.response?.data) {
+          if (typeof error.response.data === 'string') {
+            errorMessage = error.response.data.substring(0, 500);
+          } else if (typeof error.response.data.pipe === 'function') {
+            const chunks: Buffer[] = [];
+            for await (const chunk of error.response.data) {
+              chunks.push(Buffer.from(chunk));
+              if (chunks.length > 5) break;
+            }
+            const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+            try {
+              const parsed = JSON.parse(body);
+              errorMessage = parsed?.error?.message || parsed?.message || body;
+            } catch {
+              errorMessage = body || error.message;
+            }
+          } else if (error.response.data?.error?.message) {
+            errorMessage = error.response.data.error.message;
+          }
         }
-        const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
-        try {
-          const parsed = JSON.parse(body);
-          errorMessage = parsed?.error?.message || parsed?.message || body;
-        } catch {
-          errorMessage = body || error.message;
-        }
-      } else if (error.response.data?.error?.message) {
-        errorMessage = error.response.data.error.message;
+      } catch {
+        errorMessage = `HTTP ${status}: ${error.message}`;
       }
-    }
-  } catch {
-    errorMessage = `HTTP ${status}: ${error.message}`;
-  }
 
-  this.logger.error(
-    `Evolink Claude stream error: status=${status}, message=${errorMessage}`,
-  );
-  yield { content: '', done: true, error: `Evolink Claude: ${status || 'NETWORK'} - ${errorMessage}` };
-}
+      this.logger.error(
+        `Evolink Claude stream error: status=${status}, message=${errorMessage}`,
+      );
+      yield { content: '', done: true, error: `Evolink Claude: ${status || 'NETWORK'} - ${errorMessage}` };
+    }
   }
 
   /**
    * Конвертирует OpenAI-style messages в формат Anthropic Messages API.
    * - system messages выносятся в отдельный параметр
    * - объединяются подряд идущие сообщения одной роли
+   * - 🆕 поддерживает imageUrls в сообщениях (vision)
    */
   private convertToClaudeMessages(
-    messages: { role: string; content: string }[],
+    messages: { role: string; content: string | any[]; imageUrls?: string[] }[],
   ): {
     system: string | null;
-    messages: { role: string; content: string }[];
+    messages: { role: string; content: string | any[] }[];
   } {
     let system: string | null = null;
-    const claudeMessages: { role: string; content: string }[] = [];
+    const claudeMessages: { role: string; content: string | any[] }[] = [];
 
     for (const msg of messages) {
       if (msg.role === 'system') {
-        system = system ? `${system}\n\n${msg.content}` : msg.content;
+        // system всегда плоский текст
+        const text =
+          typeof msg.content === 'string'
+            ? msg.content
+            : Array.isArray(msg.content)
+            ? msg.content
+                .filter((p: any) => p.type === 'text')
+                .map((p: any) => p.text)
+                .join('\n')
+            : '';
+        system = system ? `${system}\n\n${text}` : text;
       } else {
-        claudeMessages.push({
-          role: msg.role === 'assistant' ? 'assistant' : 'user',
-          content: msg.content,
-        });
+        const role = msg.role === 'assistant' ? 'assistant' : 'user';
+
+        // 🆕 Если content уже массив — используем как есть
+        // Если строка + есть imageUrls → строим Claude multimodal content
+        let content: string | any[];
+        if (Array.isArray(msg.content)) {
+          content = msg.content;
+        } else {
+          content = this.buildClaudeContent(
+            typeof msg.content === 'string' ? msg.content : '',
+            msg.imageUrls,
+          );
+        }
+
+        claudeMessages.push({ role, content });
       }
     }
 
     // Claude требует чередования user/assistant
     // Объединяем подряд идущие сообщения одной роли
-    const merged: { role: string; content: string }[] = [];
+    const merged: { role: string; content: string | any[] }[] = [];
     for (const msg of claudeMessages) {
       if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
-        merged[merged.length - 1].content += '\n\n' + msg.content;
+        const prev = merged[merged.length - 1];
+        // 🆕 Объединяем content: если оба строки — конкатенация, иначе массивы
+        if (typeof prev.content === 'string' && typeof msg.content === 'string') {
+          prev.content = prev.content + '\n\n' + msg.content;
+        } else {
+          // Конвертируем в массивы и сливаем
+          const prevArr = Array.isArray(prev.content)
+            ? prev.content
+            : [{ type: 'text', text: prev.content }];
+          const currArr = Array.isArray(msg.content)
+            ? msg.content
+            : [{ type: 'text', text: msg.content }];
+          prev.content = [...prevArr, ...currArr];
+        }
       } else {
         merged.push({ ...msg });
       }
     }
 
-    // Claude требует что первое сообщение было от user
+    // Claude требует чтобы первое сообщение было от user
     if (merged.length > 0 && merged[0].role === 'assistant') {
       merged.unshift({ role: 'user', content: '...' });
     }
@@ -511,7 +645,7 @@ export class EvolinkProvider extends BaseProvider {
     }
   }
 
-  // ========================================
+    // ========================================
   // VIDEO GENERATION
   // ========================================
 

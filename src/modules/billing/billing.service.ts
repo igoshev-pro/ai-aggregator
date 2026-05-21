@@ -1,3 +1,4 @@
+// src/modules/billing/billing.service.ts
 import {
   Injectable,
   Logger,
@@ -31,8 +32,10 @@ import { TochkaAcquiringWebhookPayload } from './providers/tochka/tochka.types';
 import { HeleketProvider } from './providers/heleket.provider';
 import { ReferralService } from '../referral/referral.service';
 
+
 // ─── Курс конвертации ────────────────────────────────────────────
-const RUB_TO_USD_RATE = 75; // 90₽ = $1
+const RUB_TO_USD_RATE = 75; // 75₽ = $1
+
 
 // ─── Пакеты токенов ──────────────────────────────────────────────
 const TOKEN_PACKAGES = [
@@ -70,13 +73,15 @@ const TOKEN_PACKAGES = [
   },
 ];
 
+
 // ─── Бесплатные модели по подпискам ──────────────────────────────
 interface FreeModelAccess {
   modelSlug: string;
   displayName: string;
-  hourlyLimit: number | null; // null = безлимит
-  dailyLimit: number | null; // null = безлимит
+  hourlyLimit: number | null;
+  dailyLimit: number | null;
 }
+
 
 interface SubscriptionPlanConfig {
   name: string;
@@ -94,6 +99,7 @@ interface SubscriptionPlanConfig {
   };
   capabilities: string[];
 }
+
 
 const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
   [SubscriptionPlan.BASIC]: {
@@ -258,11 +264,13 @@ const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
   },
 };
 
+
 // Маппинг deprecated планов на новые (для обратной совместимости)
 const PLAN_MIGRATION: Record<string, SubscriptionPlan> = {
   [SubscriptionPlan.PRO]: SubscriptionPlan.PLUS,
   [SubscriptionPlan.UNLIMITED]: SubscriptionPlan.ULTIMATE,
 };
+
 
 @Injectable()
 export class BillingService {
@@ -287,16 +295,13 @@ export class BillingService {
     private freedompayProvider: FreedomPayProvider,
     private tochkaProvider: TochkaProvider,
     private heleketProvider: HeleketProvider,
-  ) { }
+  ) {}
 
-  /**
- * Обработка webhook от FreedomPay.
- * Отличается от других тем что:
- *  - тело приходит form-encoded
- *  - в ответ ОБЯЗАТЕЛЬНО XML с pg_sig
- */
+  // ═══════════════════════════════════════════════════════════════
+  // WEBHOOKS — без изменений
+  // ═══════════════════════════════════════════════════════════════
+
   async handleFreedomPayWebhook(body: any): Promise<string> {
-    // Идемпотентность: ищем транзакцию ещё до verifyWebhook (для повторных webhook'ов)
     const fpResult = await this.freedompayProvider.verifyWebhook(body, {});
 
     if (fpResult.metadata?.reason === 'invalid_signature') {
@@ -306,7 +311,6 @@ export class BillingService {
       );
     }
 
-    // Ищем транзакцию (любого статуса — для идемпотентности)
     const transaction = await this.transactionModel.findOne({
       externalPaymentId: fpResult.paymentId,
       paymentProvider: 'freedompay',
@@ -320,7 +324,6 @@ export class BillingService {
       );
     }
 
-    // Если уже обработано — отвечаем ok без повторных действий
     if (transaction.paymentStatus !== PaymentStatus.PENDING) {
       this.logger.log(
         `[FP] duplicate webhook: tx=${transaction._id} status=${transaction.paymentStatus}`,
@@ -331,30 +334,18 @@ export class BillingService {
       );
     }
 
-    // Делегируем в общий handler
     await this.handlePaymentWebhook('freedompay', body, {});
 
     return this.freedompayProvider.buildWebhookResponseXml('ok', 'Order paid');
   }
 
-  /**
- * Обработка webhook от Точки.
- *
- * Особенности:
- *  - тело приходит как text/plain — JWT-строка
- *  - подпись проверяется RS256 публичным ключом Точки
- *  - в ответ ожидается HTTP 200 (тело не важно)
- *  - идемпотентно: повторный webhook вернёт 200 без двойного начисления
- */
   async handleTochkaWebhook(rawJwt: string): Promise<{ ok: boolean }> {
-    // 1. Верифицируем подпись JWT (выбросит UnauthorizedException, если невалидна)
     const verifier = this.tochkaProvider.getVerifier();
     let payload: TochkaAcquiringWebhookPayload;
     try {
       payload = verifier.verify(rawJwt);
     } catch (err: any) {
       this.logger.warn(`[Tochka] webhook rejected: ${err.message}`);
-      // Бросаем дальше — контроллер вернёт 401
       throw err;
     }
 
@@ -362,7 +353,6 @@ export class BillingService {
       `[Tochka] webhook: op=${payload.operationId} status=${payload.status} type=${payload.webhookType}`,
     );
 
-    // 2. Игнорируем не-эквайринговые события (если Точка вдруг пришлёт что-то ещё)
     if (payload.webhookType !== 'acquiringInternetPayment') {
       this.logger.log(
         `[Tochka] ignoring webhook type: ${payload.webhookType}`,
@@ -370,7 +360,6 @@ export class BillingService {
       return { ok: true };
     }
 
-    // 3. Идемпотентность: ищем транзакцию ЛЮБОГО статуса
     const transaction = await this.transactionModel.findOne({
       externalPaymentId: payload.operationId,
       paymentProvider: 'tochka',
@@ -380,8 +369,6 @@ export class BillingService {
       this.logger.warn(
         `[Tochka] transaction not found: op=${payload.operationId}`,
       );
-      // Возвращаем 200, чтобы Точка не ретраила.
-      // Если транзакция реально потеряна — разберёмся вручную через getPaymentStatus.
       return { ok: true };
     }
 
@@ -392,18 +379,16 @@ export class BillingService {
       return { ok: true };
     }
 
-    // 4. Делегируем в общий handler, передавая УЖЕ распарсенный payload
     await this.handlePaymentWebhook('tochka', payload, {});
 
     return { ok: true };
   }
 
-  // ─── Конвертация валюты ─────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Конвертация валюты
+  // ═══════════════════════════════════════════════════════════════
 
-  private convertPrice(
-    priceRub: number,
-    currency: 'RUB' | 'USD',
-  ): number {
+  private convertPrice(priceRub: number, currency: 'RUB' | 'USD'): number {
     if (currency === 'RUB') return priceRub;
     return Math.round((priceRub / RUB_TO_USD_RATE) * 100) / 100;
   }
@@ -412,7 +397,9 @@ export class BillingService {
     return currency === 'RUB' ? '₽' : '$';
   }
 
-  // ─── Пакеты токенов ─────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Пакеты токенов
+  // ═══════════════════════════════════════════════════════════════
 
   getTokenPackages(currency: 'RUB' | 'USD' = 'RUB') {
     return TOKEN_PACKAGES.map((pack) => ({
@@ -420,17 +407,17 @@ export class BillingService {
       price: this.convertPrice(pack.priceRub, currency),
       currency,
       currencySymbol: this.getCurrencySymbol(currency),
-      // Оставляем priceRub для обратной совместимости
     }));
   }
 
-  // ─── Планы подписки ─────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Планы подписки
+  // ═══════════════════════════════════════════════════════════════
 
   getSubscriptionPlans(currency: 'RUB' | 'USD' = 'RUB') {
     const result: any[] = [];
 
     for (const [planId, config] of Object.entries(SUBSCRIPTION_PLANS)) {
-      // Пропускаем deprecated планы в выдаче
       if (
         planId === SubscriptionPlan.PRO ||
         planId === SubscriptionPlan.UNLIMITED
@@ -463,25 +450,21 @@ export class BillingService {
         features: config.features,
         capabilities: config.capabilities,
         tokenPriceRub: 3,
-        tokenPriceUsd:
-          Math.round((3 / RUB_TO_USD_RATE) * 1000) / 1000,
+        tokenPriceUsd: Math.round((3 / RUB_TO_USD_RATE) * 1000) / 1000,
       });
     }
 
     return result;
   }
 
-  // ─── Получить конфиг плана (с поддержкой deprecated) ────────────
-
-  private getPlanConfig(
-    plan: SubscriptionPlan,
-  ): SubscriptionPlanConfig | null {
-    // Если это deprecated план — маппим на новый
+  private getPlanConfig(plan: SubscriptionPlan): SubscriptionPlanConfig | null {
     const effectivePlan = PLAN_MIGRATION[plan] || plan;
     return SUBSCRIPTION_PLANS[effectivePlan] || null;
   }
 
-  // ─── Проверка бесплатного доступа к модели ─────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Проверка бесплатного доступа к модели
+  // ═══════════════════════════════════════════════════════════════
 
   async checkFreeModelAccess(
     userId: string,
@@ -497,15 +480,10 @@ export class BillingService {
     );
     if (!freeModel) return { isFree: false };
 
-    // Безлимитный доступ
-    if (
-      freeModel.hourlyLimit === null &&
-      freeModel.dailyLimit === null
-    ) {
+    if (freeModel.hourlyLimit === null && freeModel.dailyLimit === null) {
       return { isFree: true };
     }
 
-    // Проверяем лимиты
     const now = new Date();
     const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const dayStart = new Date(now);
@@ -514,21 +492,21 @@ export class BillingService {
     const [hourlyCount, dailyCount] = await Promise.all([
       freeModel.hourlyLimit !== null
         ? this.transactionModel.countDocuments({
-          userId: new Types.ObjectId(userId),
-          type: TransactionType.GENERATION,
-          modelSlug,
-          createdAt: { $gte: hourAgo },
-          'metadata.freeAccess': true,
-        })
+            userId: new Types.ObjectId(userId),
+            type: TransactionType.GENERATION,
+            modelSlug,
+            createdAt: { $gte: hourAgo },
+            'metadata.freeAccess': true,
+          })
         : Promise.resolve(0),
       freeModel.dailyLimit !== null
         ? this.transactionModel.countDocuments({
-          userId: new Types.ObjectId(userId),
-          type: TransactionType.GENERATION,
-          modelSlug,
-          createdAt: { $gte: dayStart },
-          'metadata.freeAccess': true,
-        })
+            userId: new Types.ObjectId(userId),
+            type: TransactionType.GENERATION,
+            modelSlug,
+            createdAt: { $gte: dayStart },
+            'metadata.freeAccess': true,
+          })
         : Promise.resolve(0),
     ]);
 
@@ -542,10 +520,7 @@ export class BillingService {
       };
     }
 
-    if (
-      freeModel.dailyLimit !== null &&
-      dailyCount >= freeModel.dailyLimit
-    ) {
+    if (freeModel.dailyLimit !== null && dailyCount >= freeModel.dailyLimit) {
       return {
         isFree: false,
         reason: `Дневной лимит ${freeModel.dailyLimit} исчерпан`,
@@ -555,7 +530,9 @@ export class BillingService {
     return { isFree: true };
   }
 
-  // ─── Оплата пакета токенов ──────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Оплата пакета токенов — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async createTokenPayment(
     userId: string,
@@ -582,9 +559,7 @@ export class BillingService {
     });
 
     if (!result.success) {
-      throw new BadRequestException(
-        result.error || 'Payment creation failed',
-      );
+      throw new BadRequestException(result.error || 'Payment creation failed');
     }
 
     await this.createTransaction(userId, {
@@ -611,9 +586,11 @@ export class BillingService {
     };
   }
 
-  // ─── Webhook обработка ──────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Webhook обработка — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
-  async handlePaymentWebhook(
+    async handlePaymentWebhook(
     provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay' | 'tochka' | 'heleket',
     body: any,
     headers: any,
@@ -622,9 +599,7 @@ export class BillingService {
     const result = await paymentProvider.verifyWebhook(body, headers);
 
     if (!result.success) {
-      this.logger.warn(
-        `Webhook verification failed for ${provider}`,
-      );
+      this.logger.warn(`Webhook verification failed for ${provider}`);
       return { processed: false };
     }
 
@@ -641,7 +616,6 @@ export class BillingService {
     }
 
     if (result.status === 'completed') {
-      // Основные токены
       const user = await this.usersService.addTokens(
         transaction.userId.toString(),
         transaction.amount,
@@ -651,7 +625,6 @@ export class BillingService {
       transaction.balanceAfter = user.tokenBalance;
       await transaction.save();
 
-      // Если это подписка — активируем и начисляем бонусные
       if (
         transaction.type === TransactionType.SUBSCRIPTION &&
         transaction.metadata?.plan
@@ -680,13 +653,11 @@ export class BillingService {
     return { processed: false, status: 'pending' };
   }
 
-  // ─── Реферальный бонус ──────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Реферальный бонус (кэшбек 10% от покупок) — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
-    // ─── Реферальный бонус (кэшбек 10% от покупок) ─────────────────
-
-  private async processReferralBonus(
-    transaction: TransactionDocument,
-  ) {
+  private async processReferralBonus(transaction: TransactionDocument) {
     const userDoc = await this.usersService.findById(
       transaction.userId.toString(),
     );
@@ -697,22 +668,17 @@ export class BillingService {
 
     const referrerId = userDoc.referredBy.toString();
 
-    // 1. Начисляем кэшбек в специальный баланс (можно вывести)
     await this.usersService.addCashback(referrerId, cashbackAmount);
 
-    // 2. Запись в Referral коллекции (отмечаем покупку + bonusEarned)
     try {
       await this.referralService.markReferralPurchase(
         transaction.userId.toString(),
         cashbackAmount,
       );
     } catch (err: any) {
-      this.logger.warn(
-        `Failed to update Referral record: ${err.message}`,
-      );
+      this.logger.warn(`Failed to update Referral record: ${err.message}`);
     }
 
-    // 3. Транзакция для истории
     await this.createTransaction(referrerId, {
       type: TransactionType.REFERRAL_BONUS,
       amount: cashbackAmount,
@@ -726,8 +692,20 @@ export class BillingService {
       `💰 Cashback +${cashbackAmount} → user ${referrerId} (10% of ${transaction.amount})`,
     );
   }
-  // ─── Списание за генерацию ──────────────────────────────────────
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🔥 СПИСАНИЕ ЗА ГЕНЕРАЦИЮ — обновлён (добавлен params)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Списание за генерацию (универсальный метод для text/image/video/audio).
+   *
+   * Для text-моделей передавай inputTokens/outputTokens.
+   * Для media-моделей передавай params (для матричного pricing).
+   *
+   * @param params - параметры генерации (quality, resolution, duration, mode, sound и т.п.)
+   *                 используются для выбора правильной цены из pricingMatrix
+   */
   async chargeForGeneration(
     userId: string,
     modelSlug: string,
@@ -735,15 +713,12 @@ export class BillingService {
     generationId: string,
     inputTokens?: number,
     outputTokens?: number,
+    params?: Record<string, any>,
   ) {
     // Проверяем бесплатный доступ по подписке
-    const freeAccess = await this.checkFreeModelAccess(
-      userId,
-      modelSlug,
-    );
+    const freeAccess = await this.checkFreeModelAccess(userId, modelSlug);
 
     if (freeAccess.isFree) {
-      // Записываем транзакцию с нулевой стоимостью (для трекинга лимитов)
       await this.createTransaction(userId, {
         type: TransactionType.GENERATION,
         amount: 0,
@@ -752,7 +727,12 @@ export class BillingService {
         generationId,
         generationType,
         modelSlug,
-        metadata: { freeAccess: true, inputTokens, outputTokens },
+        metadata: {
+          freeAccess: true,
+          inputTokens,
+          outputTokens,
+          params,
+        },
       });
 
       return {
@@ -763,44 +743,186 @@ export class BillingService {
     }
 
     const user = await this.usersService.findById(userId);
-    const { costInDollars, costInTokens } =
+    const { costInDollars, costInTokens, matchedTier } =
       await this.calculateGenerationCost(
         modelSlug,
         inputTokens,
         outputTokens,
+        params,
       );
 
     // Списываем токены
-    await this.usersService.deductTokens(
-      userId,
-      costInTokens,
-      'generation',
-    );
+    await this.usersService.deductTokens(userId, costInTokens, 'generation');
 
     await this.createTransaction(userId, {
       type: TransactionType.GENERATION,
       amount: -costInTokens,
-      description: `Генерация ${generationType}: ${modelSlug}`,
+      description: `Генерация ${generationType}: ${modelSlug}${matchedTier ? ` (${matchedTier})` : ''}`,
       paymentStatus: PaymentStatus.COMPLETED,
       generationId,
       generationType,
       modelSlug,
-      balanceBefore:
-        user.tokenBalance + user.bonusTokens + costInTokens,
+      balanceBefore: user.tokenBalance + user.bonusTokens + costInTokens,
       balanceAfter: user.tokenBalance + user.bonusTokens,
       metadata: {
         inputTokens,
         outputTokens,
         costInDollars,
         freeAccess: false,
+        params,
+        matchedTier,
       },
     });
 
     return { costInTokens, costInDollars, freeAccess: false };
   }
 
-  // ─── Рефанд ─────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 NEW: ЗАПИСЬ МЕДИА-ГЕНЕРАЦИИ С ГОТОВОЙ ЦЕНОЙ
+  // ═══════════════════════════════════════════════════════════════
 
+  /**
+   * Альтернатива chargeForGeneration для async-генераций (image/video/audio),
+   * где цена уже была рассчитана заранее (до постановки задачи в очередь),
+   * списана с баланса в начале, а здесь нужно только зафиксировать транзакцию
+   * после получения результата от провайдера.
+   *
+   * Используется в:
+   *   - ImageService.generateImage (после получения готовой картинки)
+   *   - VideoService.generateVideo (после coverage задачи провайдером)
+   *   - AudioService.generateAudio
+   *
+   * Если генерация провалилась — используй recordRefund для возврата.
+   */
+  async recordMediaGeneration(
+    userId: string,
+    params: {
+      modelSlug: string;
+      generationType: 'image' | 'video' | 'audio';
+      generationId: string;
+      costInTokens: number;
+      costInDollars: number;
+      matchedTier?: string;
+      generationParams?: Record<string, any>;
+      providerSlug?: string;
+      providerJobId?: string;
+    },
+  ) {
+    const user = await this.usersService.findById(userId);
+
+    await this.createTransaction(userId, {
+      type: TransactionType.GENERATION,
+      amount: -params.costInTokens,
+      description: `Генерация ${params.generationType}: ${params.modelSlug}${
+        params.matchedTier ? ` (${params.matchedTier})` : ''
+      }`,
+      paymentStatus: PaymentStatus.COMPLETED,
+      generationId: params.generationId,
+      generationType: params.generationType,
+      modelSlug: params.modelSlug,
+      balanceBefore: user.tokenBalance + user.bonusTokens + params.costInTokens,
+      balanceAfter: user.tokenBalance + user.bonusTokens,
+      metadata: {
+        costInDollars: params.costInDollars,
+        matchedTier: params.matchedTier,
+        params: params.generationParams,
+        providerSlug: params.providerSlug,
+        providerJobId: params.providerJobId,
+        freeAccess: false,
+        asyncMode: true,
+      },
+    });
+
+    this.logger.log(
+      `📝 Recorded media generation: ${params.modelSlug} | -${params.costInTokens}🔥 | user=${userId}`,
+    );
+  }
+
+  /**
+   * 🆕 NEW: Списание токенов для async-генераций ДО постановки в очередь.
+   * Возвращает baseline баланса для последующего rollback в случае ошибки.
+   *
+   * Flow:
+   *   1) preChargeMediaGeneration(userId, modelSlug, params) → списали токены
+   *   2) Поставили задачу в очередь провайдера
+   *   3a) Успех → recordMediaGeneration (фиксируем транзакцию)
+   *   3b) Ошибка → recordRefund (возвращаем токены + транзакция-возврат)
+   */
+  async preChargeMediaGeneration(
+    userId: string,
+    modelSlug: string,
+    generationParams?: Record<string, any>,
+  ): Promise<{
+    costInTokens: number;
+    costInDollars: number;
+    matchedTier?: string;
+    freeAccess: boolean;
+    balanceBefore: number;
+    balanceAfter: number;
+  }> {
+    // Проверяем бесплатный доступ
+    const freeAccess = await this.checkFreeModelAccess(userId, modelSlug);
+
+    if (freeAccess.isFree) {
+      const user = await this.usersService.findById(userId);
+      return {
+        costInTokens: 0,
+        costInDollars: 0,
+        freeAccess: true,
+        balanceBefore: user.tokenBalance + user.bonusTokens,
+        balanceAfter: user.tokenBalance + user.bonusTokens,
+      };
+    }
+
+    const user = await this.usersService.findById(userId);
+    const balanceBefore = user.tokenBalance + user.bonusTokens;
+
+    const { costInDollars, costInTokens, matchedTier } =
+      await this.calculateGenerationCost(
+        modelSlug,
+        undefined,
+        undefined,
+        generationParams,
+      );
+
+    if (balanceBefore < costInTokens) {
+      throw new BadRequestException(
+        `Недостаточно токенов. Требуется: ${costInTokens}🔥, доступно: ${balanceBefore}🔥`,
+      );
+    }
+
+    // Списываем токены
+    await this.usersService.deductTokens(userId, costInTokens, 'generation');
+
+    return {
+      costInTokens,
+      costInDollars,
+      matchedTier,
+      freeAccess: false,
+      balanceBefore,
+      balanceAfter: balanceBefore - costInTokens,
+    };
+  }
+
+    // ═══════════════════════════════════════════════════════════════
+  // Рефанд — ОБНОВЛЁНО: НЕ начисляет токены (это делает caller)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Записывает транзакцию возврата токенов.
+   *
+   * ⚠️ ВАЖНО: этот метод НЕ начисляет токены на баланс!
+   * Возврат токенов — ответственность вызывающего кода
+   * (GenerationService.refundGeneration вызывает usersService.refundTokens
+   * ДО вызова этого метода).
+   *
+   * Это сделано чтобы избежать двойного начисления.
+   *
+   * @param userId        - кому возврат
+   * @param amount        - сколько токенов (положительное число)
+   * @param description   - причина возврата
+   * @param generationId  - связанная генерация
+   */
   async recordRefund(
     userId: string,
     amount: number,
@@ -815,12 +937,21 @@ export class BillingService {
       description,
       paymentStatus: PaymentStatus.COMPLETED,
       generationId,
-      balanceBefore: user.tokenBalance - amount,
-      balanceAfter: user.tokenBalance,
+      balanceBefore: user.tokenBalance + user.bonusTokens - amount,
+      balanceAfter: user.tokenBalance + user.bonusTokens,
+      metadata: {
+        refund: true,
+      },
     });
+
+    this.logger.log(
+      `↩️ Refund transaction recorded: +${amount}🔥 → user ${userId} | ${description}`,
+    );
   }
 
-  // ─── Промокоды ──────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Промокоды — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async applyPromoCode(userId: string, code: string) {
     const promo = await this.promoCodeModel.findOne({
@@ -832,16 +963,11 @@ export class BillingService {
     if (promo.expiresAt && promo.expiresAt < new Date()) {
       throw new BadRequestException('Промокод истёк');
     }
-    if (
-      promo.maxUses !== null &&
-      promo.currentUses >= promo.maxUses
-    ) {
+    if (promo.maxUses !== null && promo.currentUses >= promo.maxUses) {
       throw new BadRequestException('Промокод исчерпан');
     }
     if (promo.usedByUsers.includes(userId)) {
-      throw new BadRequestException(
-        'Вы уже использовали этот промокод',
-      );
+      throw new BadRequestException('Вы уже использовали этот промокод');
     }
 
     const user = await this.usersService.addBonusTokens(
@@ -870,7 +996,9 @@ export class BillingService {
     };
   }
 
-  // ─── Подписки ───────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Подписки — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async createSubscription(
     userId: string,
@@ -886,14 +1014,10 @@ export class BillingService {
     const planConfig = this.getPlanConfig(plan);
     if (!planConfig) throw new BadRequestException('Invalid plan');
 
-    // Маппим deprecated план на актуальный
     const effectivePlan = PLAN_MIGRATION[plan] || plan;
 
     const paymentProvider = this.getPaymentProvider(provider);
-    const paymentAmount = this.convertPrice(
-      planConfig.priceRub,
-      currency,
-    );
+    const paymentAmount = this.convertPrice(planConfig.priceRub, currency);
 
     const result = await paymentProvider.createPayment({
       amount: paymentAmount,
@@ -905,9 +1029,7 @@ export class BillingService {
     });
 
     if (!result.success) {
-      throw new BadRequestException(
-        result.error || 'Payment failed',
-      );
+      throw new BadRequestException(result.error || 'Payment failed');
     }
 
     await this.createTransaction(userId, {
@@ -940,11 +1062,7 @@ export class BillingService {
     };
   }
 
-  async activateSubscription(
-    userId: string,
-    plan: SubscriptionPlan,
-  ) {
-    // Маппим deprecated план
+    async activateSubscription(userId: string, plan: SubscriptionPlan) {
     const effectivePlan = PLAN_MIGRATION[plan] || plan;
     const planConfig = SUBSCRIPTION_PLANS[effectivePlan];
     if (!planConfig) return;
@@ -953,7 +1071,6 @@ export class BillingService {
     const endDate = new Date(now);
     endDate.setMonth(endDate.getMonth() + 1);
 
-    // Деактивируем предыдущие подписки
     await this.subscriptionModel.updateMany(
       { userId: new Types.ObjectId(userId), isActive: true },
       { isActive: false },
@@ -978,20 +1095,14 @@ export class BillingService {
     await user.save();
 
     // Начисляем основные токены
-    await this.usersService.addTokens(
-      userId,
-      planConfig.tokensPerMonth,
-    );
+    await this.usersService.addTokens(userId, planConfig.tokensPerMonth);
 
     // Начисляем бонусные токены (если есть)
     if (planConfig.bonusTokens > 0) {
-      await this.usersService.addBonusTokens(
-        userId,
-        planConfig.bonusTokens,
-      );
+      await this.usersService.addBonusTokens(userId, planConfig.bonusTokens);
 
       await this.createTransaction(userId, {
-        type: TransactionType.PROMO_CODE, // используем как бонус
+        type: TransactionType.PROMO_CODE,
         amount: planConfig.bonusTokens,
         description: `Бонус подписки ${planConfig.name}: +${planConfig.bonusTokens} токенов`,
         paymentStatus: PaymentStatus.COMPLETED,
@@ -1004,17 +1115,18 @@ export class BillingService {
     );
   }
 
-  // ─── Баланс ─────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Баланс — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async getBalance(userId: string) {
     const user = await this.usersService.findById(userId);
 
-    const activeSubscription =
-      await this.subscriptionModel.findOne({
-        userId: new Types.ObjectId(userId),
-        isActive: true,
-        endDate: { $gt: new Date() },
-      });
+    const activeSubscription = await this.subscriptionModel.findOne({
+      userId: new Types.ObjectId(userId),
+      isActive: true,
+      endDate: { $gt: new Date() },
+    });
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -1035,7 +1147,6 @@ export class BillingService {
       },
     ]);
 
-    // Определяем конфиг подписки для freeModels
     let subscriptionData: any = null;
     if (activeSubscription) {
       const planConfig = this.getPlanConfig(
@@ -1065,13 +1176,14 @@ export class BillingService {
       rates: {
         rubToUsd: RUB_TO_USD_RATE,
         tokenPriceRub: 3,
-        tokenPriceUsd:
-          Math.round((3 / RUB_TO_USD_RATE) * 1000) / 1000,
+        tokenPriceUsd: Math.round((3 / RUB_TO_USD_RATE) * 1000) / 1000,
       },
     };
   }
 
-  // ─── Транзакции ─────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Транзакции — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async getTransactionHistory(
     userId: string,
@@ -1105,7 +1217,9 @@ export class BillingService {
     };
   }
 
-  // ─── Cron ───────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Cron — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   @Cron(CronExpression.EVERY_HOUR)
   async checkExpiredSubscriptions() {
@@ -1118,9 +1232,7 @@ export class BillingService {
       sub.isActive = false;
       await sub.save();
 
-      const user = await this.usersService.findById(
-        sub.userId.toString(),
-      );
+      const user = await this.usersService.findById(sub.userId.toString());
       user.subscriptionPlan = SubscriptionPlan.FREE;
       user.subscriptionExpiresAt = null;
       await user.save();
@@ -1131,13 +1243,13 @@ export class BillingService {
     }
 
     if (expired.length > 0) {
-      this.logger.log(
-        `Deactivated ${expired.length} expired subscriptions`,
-      );
+      this.logger.log(`Deactivated ${expired.length} expired subscriptions`);
     }
   }
 
-  // ─── Миграция старых подписок ───────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Миграция старых подписок — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async migrateDeprecatedSubscriptions() {
     const deprecated = await this.subscriptionModel.find({
@@ -1152,9 +1264,7 @@ export class BillingService {
       sub.plan = newPlan;
       await sub.save();
 
-      const user = await this.usersService.findById(
-        sub.userId.toString(),
-      );
+      const user = await this.usersService.findById(sub.userId.toString());
       user.subscriptionPlan = newPlan;
       await user.save();
 
@@ -1170,7 +1280,9 @@ export class BillingService {
     }
   }
 
-  // ─── Админ: промокоды ──────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Админ: промокоды — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async createPromoCode(data: {
     code: string;
@@ -1185,8 +1297,7 @@ export class BillingService {
     const existing = await this.promoCodeModel.findOne({
       code: data.code.toUpperCase(),
     });
-    if (existing)
-      throw new BadRequestException('Promo code already exists');
+    if (existing) throw new BadRequestException('Promo code already exists');
 
     const promo = new this.promoCodeModel({
       ...data,
@@ -1196,10 +1307,7 @@ export class BillingService {
   }
 
   async getAllPromoCodes() {
-    return this.promoCodeModel
-      .find()
-      .sort({ createdAt: -1 })
-      .exec();
+    return this.promoCodeModel.find().sort({ createdAt: -1 }).exec();
   }
 
   async deactivatePromoCode(code: string) {
@@ -1212,7 +1320,9 @@ export class BillingService {
     return promo;
   }
 
-  // ─── Админ: корректировка баланса ──────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Админ: корректировка баланса — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async adminAdjustBalance(
     adminUserId: string,
@@ -1233,8 +1343,7 @@ export class BillingService {
       );
     }
 
-    const updatedUser =
-      await this.usersService.findById(targetUserId);
+    const updatedUser = await this.usersService.findById(targetUserId);
 
     await this.createTransaction(targetUserId, {
       type: TransactionType.ADMIN_ADJUSTMENT,
@@ -1253,65 +1362,128 @@ export class BillingService {
     };
   }
 
-  // ─── Статистика ─────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // Статистика — без изменений
+  // ═══════════════════════════════════════════════════════════════
 
   async getRevenueStats(days = 30) {
     const since = new Date();
     since.setDate(since.getDate() - days);
 
-    const [revenue, generations, newSubscriptions] =
-      await Promise.all([
-        this.transactionModel.aggregate([
-          {
-            $match: {
-              type: TransactionType.DEPOSIT,
-              paymentStatus: PaymentStatus.COMPLETED,
-              createdAt: { $gte: since },
-            },
+    const [revenue, generations, newSubscriptions] = await Promise.all([
+      this.transactionModel.aggregate([
+        {
+          $match: {
+            type: TransactionType.DEPOSIT,
+            paymentStatus: PaymentStatus.COMPLETED,
+            createdAt: { $gte: since },
           },
-          {
-            $group: {
-              _id: {
-                $dateToString: {
-                  format: '%Y-%m-%d',
-                  date: '$createdAt',
-                },
-              },
-              totalRub: { $sum: '$paymentAmountRub' },
-              totalTokens: { $sum: '$amount' },
-              count: { $sum: 1 },
-            },
-          },
-          { $sort: { _id: 1 } },
-        ]),
-        this.transactionModel.aggregate([
-          {
-            $match: {
-              type: TransactionType.GENERATION,
-              createdAt: { $gte: since },
-            },
-          },
-          {
-            $group: {
-              _id: '$modelSlug',
-              count: { $sum: 1 },
-              tokensSpent: {
-                $sum: { $abs: '$amount' },
+        },
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$createdAt',
               },
             },
+            totalRub: { $sum: '$paymentAmountRub' },
+            totalTokens: { $sum: '$amount' },
+            count: { $sum: 1 },
           },
-          { $sort: { count: -1 } },
-        ]),
-        this.subscriptionModel.countDocuments({
-          createdAt: { $gte: since },
-          isActive: true,
-        }),
-      ]);
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      this.transactionModel.aggregate([
+        {
+          $match: {
+            type: TransactionType.GENERATION,
+            createdAt: { $gte: since },
+          },
+        },
+        {
+          $group: {
+            _id: '$modelSlug',
+            count: { $sum: 1 },
+            tokensSpent: { $sum: { $abs: '$amount' } },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+      this.subscriptionModel.countDocuments({
+        createdAt: { $gte: since },
+        isActive: true,
+      }),
+    ]);
 
     return { revenue, generations, newSubscriptions };
   }
 
-  // ─── Private helpers ────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 NEW: Pricing API для фронта
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Возвращает полный pricing-объект модели для фронта:
+   *   - pricingMatrix (для вычисления цены по выбранным параметрам)
+   *   - uiParameters (для рендера формы)
+   *   - defaultCost (базовая стоимость)
+   *   - inputCapabilities (нужно ли загружать картинки)
+   *
+   * Использование на фронте:
+   *   GET /api/billing/models/midjourney/pricing
+   *   → { matrix: [...], parameters: [...], defaultCost: {...} }
+   */
+  async getModelPricing(modelSlug: string) {
+    const model = await this.modelModel.findOne({ slug: modelSlug }).lean();
+    if (!model) throw new NotFoundException(`Model ${modelSlug} not found`);
+
+    return {
+      slug: model.slug,
+      name: model.name,
+      displayName: model.displayName,
+      type: model.type,
+      defaultCost: {
+        costInTokens: model.minTokenCost,
+        costInDollars: model.fixedCostPerGeneration,
+      },
+      pricingMatrix: model.pricingMatrix || [],
+      uiParameters: model.uiParameters || [],
+      inputCapabilities: model.inputCapabilities || {
+        acceptsImages: false,
+        maxInputImages: 0,
+      },
+      limits: model.limits || {},
+      defaultParams: model.defaultParams || {},
+    };
+  }
+
+  /**
+   * 🆕 NEW: Расчёт стоимости генерации для конкретных параметров
+   * (без списания) — для preview на фронте.
+   *
+   * Использование:
+   *   POST /api/billing/models/midjourney/estimate
+   *   body: { params: { quality: 'high', mode: 'fast' } }
+   *   → { costInTokens: 12, costInDollars: 0.10, matchedTier: 'High Quality (Fast)' }
+   */
+  async estimateGenerationCost(
+    modelSlug: string,
+    params?: Record<string, any>,
+    inputTokens?: number,
+    outputTokens?: number,
+  ) {
+    return this.calculateGenerationCost(
+      modelSlug,
+      inputTokens,
+      outputTokens,
+      params,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Private helpers
+  // ═══════════════════════════════════════════════════════════════
 
   private getPaymentProvider(provider: string) {
     switch (provider) {
@@ -1325,7 +1497,7 @@ export class BillingService {
         return this.freedompayProvider;
       case 'tochka':
         return this.tochkaProvider;
-      case 'heleket': // 👈 NEW
+      case 'heleket':
         return this.heleketProvider;
       default:
         throw new BadRequestException(`Unknown payment provider: ${provider}`);
@@ -1346,37 +1518,156 @@ export class BillingService {
     return transaction.save();
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🔥 ОБНОВЛЁННЫЙ РАСЧЁТ СТОИМОСТИ — с поддержкой pricingMatrix
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Единый метод расчёта стоимости генерации.
+   *
+   * Для text-моделей:
+   *   - costPerMillionInputTokens + costPerMillionOutputTokens (по факту использования)
+   *
+   * Для media-моделей (image/video/audio):
+   *   - Если есть pricingMatrix → ищем подходящую строку по params
+   *   - Если нет матрицы или ничего не нашли → fixedCostPerGeneration (fallback)
+   *
+   * @param modelSlug - slug модели
+   * @param inputTokens - для text-моделей
+   * @param outputTokens - для text-моделей
+   * @param params - параметры генерации для матричной цены (для media)
+   *                 пример: { quality: 'high', mode: 'fast', sound: true }
+   *
+   * @returns costInDollars, costInTokens, matchedTier (label из матрицы, если совпало)
+   */
   async calculateGenerationCost(
     modelSlug: string,
     inputTokens?: number,
     outputTokens?: number,
-  ): Promise<{ costInDollars: number; costInTokens: number }> {
+    params?: Record<string, any>,
+  ): Promise<{
+    costInDollars: number;
+    costInTokens: number;
+    matchedTier?: string;
+  }> {
     const model = await this.modelModel.findOne({ slug: modelSlug });
-    if (!model) throw new NotFoundException('Model not found');
+    if (!model) throw new NotFoundException(`Model ${modelSlug} not found`);
 
-    let costInDollars = 0;
-    let costInTokens = 0;
-
+    // ─── TEXT MODELS ─────────────────────────────────────────────
     if (model.type === 'text') {
       const inputCost =
-        ((inputTokens || 0) * model.costPerMillionInputTokens) /
+        ((inputTokens || 0) * (model.costPerMillionInputTokens || 0)) /
         1_000_000;
       const outputCost =
-        ((outputTokens || 0) * model.costPerMillionOutputTokens) /
+        ((outputTokens || 0) * (model.costPerMillionOutputTokens || 0)) /
         1_000_000;
-      costInDollars = inputCost + outputCost;
-      costInTokens = Math.ceil(
-        costInDollars * model.tokensPerDollar,
-      );
-      costInTokens = Math.max(costInTokens, model.minTokenCost);
-    } else {
-      costInDollars = model.fixedCostPerGeneration;
-      costInTokens = Math.ceil(
-        costInDollars * model.tokensPerDollar,
-      );
-      costInTokens = Math.max(costInTokens, model.minTokenCost);
+      const costInDollars = inputCost + outputCost;
+
+      let costInTokens = Math.ceil(costInDollars * (model.tokensPerDollar || 100));
+      costInTokens = Math.max(costInTokens, model.minTokenCost || 1);
+
+      return { costInDollars, costInTokens };
     }
 
+    // ─── MEDIA MODELS (image/video/audio) ────────────────────────
+    // 1) Пробуем найти подходящую строку в pricingMatrix
+    if (
+      model.pricingMatrix &&
+      Array.isArray(model.pricingMatrix) &&
+      model.pricingMatrix.length > 0 &&
+      params
+    ) {
+      const matched = this.matchPricingTier(model.pricingMatrix, params);
+      if (matched) {
+        const costInDollars = matched.costInDollars;
+        let costInTokens = matched.costInTokens;
+
+        // Защита: не меньше минимальной стоимости
+        costInTokens = Math.max(costInTokens, model.minTokenCost || 1);
+
+        return {
+          costInDollars,
+          costInTokens,
+          matchedTier: matched.label,
+        };
+      }
+    }
+
+    // 2) Fallback на фиксированную цену
+    const costInDollars = model.fixedCostPerGeneration || 0;
+    let costInTokens = Math.ceil(
+      costInDollars * (model.tokensPerDollar || 100),
+    );
+    costInTokens = Math.max(costInTokens, model.minTokenCost || 1);
+
     return { costInDollars, costInTokens };
+  }
+
+  /**
+   * Ищет подходящую строку в pricingMatrix по переданным параметрам.
+   *
+   * Логика:
+   *   - Перебираем матрицу СВЕРХУ ВНИЗ (порядок важен — самые специфичные сверху)
+   *   - Для каждой строки сравниваем все ключи conditions с params
+   *   - Если все ключи conditions совпали с params → возвращаем эту строку
+   *   - Пустые conditions ({}) — это "wildcard", матчит всегда (запасной вариант)
+   *
+   * @example
+   *   matrix = [
+   *     { conditions: { quality: 'ultra', mode: 'fast' }, costInTokens: 20 },
+   *     { conditions: { quality: 'ultra' }, costInTokens: 15 },
+   *     { conditions: {}, costInTokens: 10 },  // default fallback
+   *   ]
+   *
+   *   matchPricingTier(matrix, { quality: 'ultra', mode: 'fast' })  → 20
+   *   matchPricingTier(matrix, { quality: 'ultra', mode: 'slow' })  → 15
+   *   matchPricingTier(matrix, { quality: 'low' })                  → 10
+   */
+  private matchPricingTier(
+    matrix: Array<{
+      conditions: Record<string, any>;
+      costInTokens: number;
+      costInDollars: number;
+      label?: string;
+    }>,
+    params: Record<string, any>,
+  ): {
+    costInTokens: number;
+    costInDollars: number;
+    label?: string;
+  } | null {
+    for (const tier of matrix) {
+      const conditions = tier.conditions || {};
+      const conditionKeys = Object.keys(conditions);
+
+      // Пустые conditions = wildcard, матчит всегда
+      if (conditionKeys.length === 0) {
+        return {
+          costInTokens: tier.costInTokens,
+          costInDollars: tier.costInDollars,
+          label: tier.label,
+        };
+      }
+
+      // Проверяем что ВСЕ ключи conditions есть в params и совпадают по значению
+      const allMatch = conditionKeys.every((key) => {
+        const expected = conditions[key];
+        const actual = params[key];
+
+        // Нестрогое сравнение для number vs string ('5' === 5)
+        // eslint-disable-next-line eqeqeq
+        return expected == actual;
+      });
+
+      if (allMatch) {
+        return {
+          costInTokens: tier.costInTokens,
+          costInDollars: tier.costInDollars,
+          label: tier.label,
+        };
+      }
+    }
+
+    return null;
   }
 }

@@ -485,11 +485,31 @@ export class GenerationService {
     );
   }
 
-  // ─── REFUND ─────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════
+  // REFUND — возврат токенов за неудачную генерацию
+  // ═══════════════════════════════════════════════════════════════
 
+  /**
+   * Возврат токенов за неудачную генерацию.
+   *
+   * Идемпотентность: повторный вызов с тем же generationId не сделает
+   * двойной возврат (защита через флаг isRefunded).
+   *
+   * Flow:
+   *   1) usersService.refundTokens — реально возвращает токены на баланс
+   *   2) billingService.recordRefund — пишет транзакцию (БЕЗ повторного начисления)
+   *   3) generation.isRefunded = true
+   */
   async refundGeneration(generationId: string) {
     const generation = await this.generationModel.findById(generationId);
     if (!generation || generation.isRefunded) return;
+
+    // Не возвращаем за бесплатные генерации (по подписке)
+    if (!generation.tokensCost || generation.tokensCost <= 0) {
+      generation.isRefunded = true;
+      await generation.save();
+      return;
+    }
 
     await this.usersService.refundTokens(
       generation.userId.toString(),
@@ -505,8 +525,82 @@ export class GenerationService {
 
     generation.isRefunded = true;
     await generation.save();
+
+    this.logger.log(
+      `↩️ Refunded ${generation.tokensCost}🔥 for generation ${generationId}`,
+    );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // RECORD SUCCESSFUL MEDIA GENERATION
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * 🆕 Фиксирует успешную media-генерацию в billing.
+   * Вызывается из GenerationConsumer после получения результата от провайдера.
+   *
+   * Идемпотентность: повторный вызов не создаст дубль транзакции
+   * (защита через флаг billingRecorded в Generation).
+   *
+   * ВАЖНО: токены уже списаны на стадии generateImage/Video/Audio
+   * (через usersService.deductTokens). Здесь только запись транзакции
+   * + инкремент счётчиков freeModelAccess (через recordMediaGeneration в billing).
+   */
+  async recordSuccessfulGeneration(generationId: string) {
+    const generation = await this.generationModel.findById(generationId);
+    if (!generation) {
+      this.logger.warn(
+        `recordSuccessfulGeneration: generation ${generationId} not found`,
+      );
+      return;
+    }
+
+    // Идемпотентность — не дублируем транзакцию
+    if ((generation as any).billingRecorded) {
+      this.logger.debug(
+        `Generation ${generationId} already billed, skipping`,
+      );
+      return;
+    }
+
+    const isFree = !generation.tokensCost || generation.tokensCost <= 0;
+
+    try {
+      await this.billingService.recordMediaGeneration(
+        generation.userId.toString(),
+        {
+          modelSlug: generation.modelSlug,
+          generationType: generation.type as 'image' | 'video' | 'audio',
+          generationId,
+          costInTokens: generation.tokensCost || 0,
+          costInDollars: (generation as any).costInDollars || 0,
+          matchedTier:
+            (generation as any).pricingBreakdown?.rule || undefined,
+          generationParams: generation.params as any,
+          providerSlug: (generation as any).providerSlug,
+        },
+      );
+
+      // Помечаем чтобы не записать дважды (на случай retry в очереди)
+      await this.generationModel.updateOne(
+        { _id: generation._id },
+        { $set: { billingRecorded: true } },
+      );
+
+      this.logger.log(
+        `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${
+          isFree ? ' (free)' : ''
+        } | gen=${generationId}`,
+      );
+    } catch (err: any) {
+      // Не валим всю генерацию из-за ошибки billing — но логируем громко
+      this.logger.error(
+        `❌ Failed to record billing for generation ${generationId}: ${err.message}`,
+        err.stack,
+      );
+    }
+  }
+  
   // ─── FAVORITES ──────────────────────────────────────────────────
 
   async toggleFavorite(userId: string, generationId: string) {
