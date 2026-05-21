@@ -19,6 +19,7 @@ import { UsersService } from '../users/users.service';
 import { BillingService } from '../billing/billing.service';
 import { ProviderRegistryService } from '../ai-providers/providers/provider-registry.service';
 
+
 export interface SendMessageDto {
   conversationId?: string;
   modelSlug: string;
@@ -29,6 +30,7 @@ export interface SendMessageDto {
   maxTokens?: number;
 }
 
+
 // 🆕 Тип для сообщения с поддержкой vision (imageUrls)
 interface ContextMessage {
   role: string;
@@ -36,9 +38,11 @@ interface ContextMessage {
   imageUrls?: string[];
 }
 
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
+
 
   constructor(
     @InjectModel(Conversation.name) private conversationModel: Model<ConversationDocument>,
@@ -53,6 +57,7 @@ export class ChatService {
     @Inject(forwardRef(() => ProviderRegistryService))
     private providerRegistry: ProviderRegistryService,
   ) {}
+
 
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -75,6 +80,7 @@ export class ChatService {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
+
 
   async getMessages(
     userId: string,
@@ -101,6 +107,7 @@ export class ChatService {
     };
   }
 
+
   async sendMessage(userId: string, dto: SendMessageDto) {
     this.logger.log(`📥 Received chat request:`, {
       userId,
@@ -117,6 +124,27 @@ export class ChatService {
     }
 
     this.logger.log(`✅ Model found: ${model.displayName || model.name}`);
+
+    // ═══ 🆕 VISION VALIDATION ═══
+    if (dto.imageUrls && dto.imageUrls.length > 0) {
+      if (!(model as any).supportsVision) {
+        this.logger.warn(
+          `❌ Vision blocked: model="${dto.modelSlug}" does NOT support images, but ${dto.imageUrls.length} sent`,
+        );
+        throw new BadRequestException(
+          `Модель "${model.displayName || model.name}" не поддерживает анализ изображений. Выберите модель с vision (GPT-4o, Claude, Gemini, Grok).`,
+        );
+      }
+
+      const maxImages = (model as any).inputCapabilities?.maxInputImages || 4;
+      if (dto.imageUrls.length > maxImages) {
+        throw new BadRequestException(
+          `Слишком много изображений: ${dto.imageUrls.length}. Максимум для этой модели: ${maxImages}.`,
+        );
+      }
+
+      this.logger.log(`✅ Vision allowed: ${dto.imageUrls.length} image(s) for ${dto.modelSlug}`);
+    }
 
     const user = await this.usersService.findById(userId);
     const totalBalance = user.tokenBalance + user.bonusTokens;
@@ -213,12 +241,13 @@ export class ChatService {
           title: conversation.title,
         },
       };
-    } catch (error) {
+    } catch (error: any) {
       if (error instanceof BadRequestException) throw error;
       this.logger.error(`Chat generation error: ${error.message}`);
       throw new BadRequestException('Failed to generate response');
     }
   }
+
 
   async *streamMessage(
     userId: string,
@@ -261,6 +290,35 @@ export class ChatService {
         minTokenCost: model.minTokenCost,
         providerMappings: model.providerMappings?.length || 0,
       });
+
+      // ═══ 🆕 VISION VALIDATION (stream version) ═══
+      if (dto.imageUrls && dto.imageUrls.length > 0) {
+        if (!(model as any).supportsVision) {
+          console.log(
+            `ERROR: Model ${dto.modelSlug} does NOT support vision, but ${dto.imageUrls.length} images sent`,
+          );
+          yield {
+            type: 'error',
+            data: {
+              message: `Модель "${model.displayName || model.name}" не поддерживает анализ изображений. Выберите модель с vision (GPT-4o, Claude, Gemini, Grok).`,
+            },
+          };
+          return;
+        }
+
+        const maxImages = (model as any).inputCapabilities?.maxInputImages || 4;
+        if (dto.imageUrls.length > maxImages) {
+          yield {
+            type: 'error',
+            data: {
+              message: `Слишком много изображений: ${dto.imageUrls.length}. Максимум для этой модели: ${maxImages}.`,
+            },
+          };
+          return;
+        }
+
+        console.log(`7.5. Vision OK: ${dto.imageUrls.length} image(s) approved for ${dto.modelSlug}`);
+      }
 
       // 3. Проверка баланса
       console.log('8. Checking balance...');
@@ -404,7 +462,7 @@ export class ChatService {
         console.log('22. Stream iteration finished, success:', success);
         console.log('    Content length:', fullContent.length);
 
-      } catch (error) {
+      } catch (error: any) {
         console.error('ERROR in stream:', error);
         yield {
           type: 'error',
@@ -473,6 +531,7 @@ export class ChatService {
     }
   }
 
+
   async createConversation(
     userId: string,
     dto: Partial<SendMessageDto>,
@@ -490,12 +549,14 @@ export class ChatService {
     return conversation.save();
   }
 
+
   async deleteConversation(userId: string, conversationId: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
     await this.messageModel.deleteMany({ conversationId: conversation._id });
     await this.conversationModel.findByIdAndDelete(conversation._id);
     return { deleted: true };
   }
+
 
   async renameConversation(userId: string, conversationId: string, title: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
@@ -504,12 +565,14 @@ export class ChatService {
     return conversation;
   }
 
+
   async togglePin(userId: string, conversationId: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
     conversation.isPinned = !conversation.isPinned;
     await conversation.save();
     return conversation;
   }
+
 
   /**
    * 🆕 Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
@@ -571,6 +634,7 @@ export class ChatService {
     return messages;
   }
 
+
   private async getConversationWithAccess(
     userId: string,
     conversationId: string,
@@ -584,6 +648,7 @@ export class ChatService {
     }
     return conversation;
   }
+
 
   private generateTitle(content: string): string {
     const cleaned = content.replace(/\n/g, ' ').trim();

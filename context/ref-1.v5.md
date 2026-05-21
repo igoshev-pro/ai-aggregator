@@ -1382,3 +1382,616 @@ Replicateебя
 Время до завершения Итерации 3: ~3 часа после получения файлов.
 
 
+🎯 SPICHKI AI — Контекст рефакторинга (v6.4 PRE-ITERATION-3 / FILES-RECEIVED)
+
+v6.4 (текущая): 7 файлов для Итерации 3 получены и проанализированы. Обнаружен ВАЖНЫЙ факт: vision на бекенде УЖЕ РЕАЛИЗОВАН. Нужен только Upload контроллер + миграция моделей.
+v6.3: Итерация 2 завершена, цены откалиброваны, все 43 модели рентабельны.
+v6.2: Pricing Matrix валидирован end-to-end на проде (Midjourney + Flux 2).
+v6.1: Аудит цен — 43 модели рентабельны.
+v6.0: Итерация 1 завершена.
+0.8. 🆕 АНАЛИЗ ФАЙЛОВ ДЛЯ ИТЕРАЦИИ 3 (v6.4 — текущая сессия)
+
+0.8.1. 📂 Полученные файлы (7 шт.)
+
+#	Файл	Назначение	Состояние
+1	storage/storage.service.ts	S3 загрузка/скачивание	✅ Полная функциональность, есть uploadBuffer
+2	storage/storage.module.ts	NestJS модуль	⚠️ Импортирует UploadController которого ЕЩЁ НЕТ
+3	chat/schemas/message.schema.ts	Mongoose схема сообщения	✅ Уже есть imageUrls: string[]
+4	chat/chat.service.ts	Сервис чата	✅ Уже передаёт imageUrls в buildContext
+5	ai-providers/providers/evolink.provider.ts	Evolink (Claude+GPT)	✅ Уже умеет vision (Claude и OpenAI формат)
+6	ai-providers/providers/openrouter.provider.ts	OpenRouter (GPT-4o, Gemini)	✅ Уже умеет vision (OpenAI multimodal)
+7	chat/chat.controller.ts	Контроллер чата + SSE	✅ Уже принимает imageUrls в DTO
+0.8.2. 🎉 КЛЮЧЕВОЕ ОТКРЫТИЕ — Vision УЖЕ РАБОТАЕТ на бекенде!
+
+В отличие от плана v6.3 (где предполагалось что vision нужно делать с нуля), фактически 80% работы по Vision УЖЕ СДЕЛАНО:
+
+Возможность	Состояние	Где
+✅ Mongoose-схема хранит imageUrls в сообщениях	Готово	message.schema.ts
+✅ Chat DTO принимает imageUrls в /send и /stream	Готово	chat.controller.ts
+✅ chat.service.ts сохраняет картинки в БД и передаёт в провайдер	Готово	sendMessage, streamMessage
+✅ buildContext прокидывает картинки из истории + свежие	Готово	chat.service.ts
+✅ Claude vision формат: [{type:'image', source:{type:'url', url}}]	Готово	evolink.provider.ts → buildClaudeContent
+✅ OpenAI vision формат: [{type:'text'}, {type:'image_url'}]	Готово	evolink.provider.ts → buildOpenAIContent
+✅ OpenRouter vision (GPT-4o, Gemini, Claude через OR)	Готово	openrouter.provider.ts → prepareMessages
+✅ Объединение подряд идущих user/assistant сообщений Claude	Готово	convertToClaudeMessages
+✅ Streaming поддерживает vision	Готово	оба провайдера
+0.8.3. ❌ Что НЕ хватает для полной Итерации 3
+
+Что	Где взять
+🆕 upload.controller.ts	Создать — модуль ожидает его, но файла нет
+🆕 upload-response.dto.ts	Создать
+🆕 Поле supportsVision: boolean в схеме AIModel	Добавлено в v6.4 при фиксе model.schema.ts ✅
+🆕 Vision-валидация в chat.service.ts	Патч — если юзер прислал картинку, но модель не vision → BadRequest
+🆕 mongosh-скрипт для проставки supportsVision: true	Создать для всех vision-моделей в БД
+🟡 Лимит размера файла (config / .env)	Опционально — UPLOAD_MAX_SIZE_MB=10
+🟡 Whitelist MIME-типов	В коде контроллера
+0.8.4. 🔍 Найденные нюансы / потенциальные проблемы
+
+⚠️ Нюанс 1: storage.module.ts импортирует несуществующий файл
+
+Typescript
+
+import { UploadController } from './upload.controller';  // ← файла НЕТ!
+Это значит — бекенд при следующей пересборке упадёт, если кто-то перезапустит без выдачи upload.controller.ts.
+
+Решение: я выдаю upload.controller.ts вместе с этой итерацией. Без него бекенд не соберётся.
+
+⚠️ Нюанс 2: Vision-валидация ОТСУТСТВУЕТ
+
+Сейчас если юзер отправит imageUrls в не-vision модель (например deepseek-v3) — бекенд молча передаст картинку провайдеру, который вернёт ошибку типа "This model doesn't support images".
+
+UX-проблема: пользователь увидит непонятную ошибку от Evolink/OpenRouter вместо понятного сообщения от нашего бекенда.
+
+Решение: в chat.service.ts перед aiProvidersService.generateText/Stream проверить:
+
+Typescript
+
+if (dto.imageUrls?.length > 0 && !model.supportsVision) {
+  throw new BadRequestException(
+    `Модель ${model.displayName} не поддерживает картинки. Используйте Claude, GPT-4o или Gemini.`
+  );
+}
+⚠️ Нюанс 3: В БД пока нет поля supportsVision
+
+Я добавил это поле в схему model.schema.ts (v6.4 фикс), но значения у моделей в БД отсутствуют → model.supportsVision будет undefined для всех.
+
+Решение: mongosh-скрипт проставит true следующим моделям (известные vision-модели):
+
+Javascript
+
+const visionModels = [
+  // Claude (через Evolink)
+  /^claude-opus-4/,
+  /^claude-sonnet-4/,
+  /^claude-haiku-4/,
+  // GPT с vision (через Evolink или OpenRouter)
+  /^gpt-4o/,
+  /^gpt-5/,
+  /^gpt-4-turbo/,
+  /^gpt-4-vision/,
+  // Gemini (через OpenRouter)
+  /^gemini-2/,
+  /^gemini-pro/,
+  /^gemini-flash/,
+];
+
+db.aimodels.updateMany(
+  { 
+    type: 'text',
+    $or: visionModels.map(re => ({ slug: { $regex: re } }))
+  },
+  { $set: { supportsVision: true } }
+);
+⚠️ Нюанс 4: imageUrls в схеме — но не передаётся из БД-сообщений в провайдер?
+
+Перепроверил chat.service.ts → buildContext:
+
+Typescript
+
+const msgImages = (msg as any).imageUrls;
+if (Array.isArray(msgImages) && msgImages.length > 0) {
+  contextMsg.imageUrls = msgImages;
+}
+✅ Передаётся. Всё ок.
+
+⚠️ Нюанс 5: Storage конфиг через ENV
+
+Файл использует:
+
+S3_BUCKET (default: 'ai-generations')
+S3_PUBLIC_URL (default: '')
+S3_ENDPOINT (default: 'https://s3.timeweb.cloud')
+S3_REGION (default: 'ru-1')
+S3_ACCESS_KEY, S3_SECRET_KEY
+Нужно подтвердить: эти переменные в проде заполнены? Если S3_PUBLIC_URL пустой → uploadBuffer вернёт /key без домена → ссылки на S3 будут битые.
+
+⚠️ Нюанс 6: ACL public-read — для Timeweb работает?
+
+Timeweb S3-совместимый, но не все S3-провайдеры поддерживают ACL: 'public-read' (например, новый MinIO требует bucket policy вместо ACL).
+
+Что проверить: уже работает ли upload через downloadAndSave (т.е. картинки моделей сохраняются в S3 и открываются по URL)? Если да — значит ACL работает. Если нет → нужно настроить bucket policy.
+
+⚠️ Нюанс 7: Streaming Claude — message_delta не возвращает токены при stop_reason
+
+В generateTextStreamClaude:
+
+Typescript
+
+case 'message_delta':
+  outputTokens = parsed.usage?.output_tokens || 0;
+  if (parsed.delta?.stop_reason) {
+    yield { content: '', done: true, usage: {...} };
+    return;
+  }
+  break;
+Минорный нюанс: иногда Anthropic присылает message_stop без предварительного message_delta со stop_reason → токены могут быть 0. Не критично, но стоит знать. На точность биллинга не влияет (есть fallback на recordMediaGeneration → calculateGenerationCost).
+
+⚠️ Нюанс 8: Storage НЕ интегрирован в picture/video генерацию автоматически
+
+Сейчас kie.provider.ts и evolink.provider.ts возвращают URL картинок с провайдера (например cdn.kie.ai/...), а не сохраняют в S3.
+
+storage.service.ts → downloadAndSave есть, но где вызывается? Скорее всего в generation.consumer.ts после успешного pollTaskUntilComplete. Стоит проверить — но это не блокирует Итерацию 3.
+
+1. 🎯 ТЕКУЩЕЕ СОСТОЯНИЕ (v6.4)
+
+1.1. Метафора
+
+Трубопровод работает, в нём уже зашит "глазной нерв" — но нет адреса куда вставлять глаз.
+✅ Все 11 media-моделей с матрицами и UI-параметрами
+✅ Vision на бекенде полностью готов (схема, сервис, оба провайдера)
+✅ imageUrls пробрасываются через всю цепочку: DTO → сервис → провайдер → AI API
+⏳ Но нет /api/v1/upload/* → фронт не может загрузить картинку → нечего класть в imageUrls
+⏳ Нет vision-валидации → юзер получит непонятную ошибку при использовании не-vision модели
+1.2. Что работает уже сейчас (можно тестировать!)
+
+Bash
+
+# Если у тебя ЕСТЬ URL картинки (например с другого хостинга),
+# vision УЖЕ работает через /api/v1/chat/send:
+
+curl -X POST http://localhost:3001/api/v1/chat/send \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "modelSlug": "claude-sonnet-4-6",
+    "content": "Что на этой картинке?",
+    "imageUrls": ["https://example.com/cat.jpg"]
+  }'
+# → Claude увидит картинку, опишет содержимое 🎉
+⚠️ Но только если у модели в БД будет проставлен supportsVision: true (после миграции).
+
+1.3. Что нужно сделать в Итерации 3
+
+#	Действие	Время
+1	Создать upload.controller.ts (3 эндпоинта)	30 мин
+2	Создать upload-response.dto.ts	5 мин
+3	Патч chat.service.ts — добавить vision-валидацию	10 мин
+4	mongosh-скрипт seed-vision-flag.js	10 мин
+5	Снапшот БД + деплой + рестарт	15 мин
+6	Curl-тесты (upload + vision)	20 мин
+Итого		~1.5 часа ⚡
+Сильно быстрее изначальной оценки (~3 часа) — потому что vision уже готов.
+
+2. 🗺 ОБНОВЛЁННАЯ ДОРОЖНАЯ КАРТА
+
+🎯 ИТЕРАЦИЯ 3 — UPLOAD + VISION-ВАЛИДАЦИЯ (СЕЙЧАС) ⭐
+
+Цель: разблокировать загрузку картинок с фронта + защитить от UX-косяков.
+
+3A. Upload-контроллер
+
+src/modules/upload/upload.controller.ts — 3 эндпоинта:
+
+
+POST /api/v1/upload/image  ← multipart/form-data → { url, key, size, mimeType }
+POST /api/v1/upload/audio  ← аналогично для img2vid /motion control
+POST /api/v1/upload/video  ← для Kling motion control
+Технические детали:
+
+Использует FileInterceptor из @nestjs/platform-express
+Лимит размера: image 10MB, audio 20MB, video 50MB
+Whitelist MIME-типов
+Загрузка через storageService.uploadBuffer(file.buffer, key, file.mimetype)
+Ключ: uploads/{userId}/{type}/{uuid}.{ext}
+JWT-защита через @UseGuards(JwtAuthGuard)
+Возвращает { url, key, size, mimeType }
+3B. Vision-валидация в chat.service.ts
+
+В sendMessage и streamMessage перед вызовом провайдера:
+
+Typescript
+
+if (dto.imageUrls?.length > 0 && !model.supportsVision) {
+  throw new BadRequestException(
+    `Модель "${model.displayName}" не поддерживает изображения. ` +
+    `Используйте Claude Sonnet 4.6, GPT-4o или Gemini.`
+  );
+}
+3C. mongosh-скрипт seed-vision-flag.js
+
+Проставляет supportsVision: true для всех vision-моделей по regex-pattern'ам.
+
+3D. Upload-зависимости
+
+Проверить в package.json:
+
+@nestjs/platform-express ✅ (наверняка есть)
+multer ✅ (приходит с express)
+Типы для multer: @types/multer (может потребоваться)
+🎯 ИТЕРАЦИЯ 2.5 (опционально) — Suno операции
+
+Требуются точные URL endpoints от KIE (отложено).
+
+🎯 ИТЕРАЦИЯ 4 — АДМИНКА
+
+Управление pricingMatrix / uiParameters через UI (~2 часа).
+
+🎯 ИТЕРАЦИЯ 5 — ФРОНТ
+
+Динамические формы, real-time pricing, upload-кнопки.
+
+3. 🚨 ИЗВЕСТНЫЕ ПРОБЛЕМЫ (v6.4)
+
+Проблема	Критичность	Статус
+Нет upload.controller.ts → модуль не соберётся при чистой пересборке	🔴 Высокая	⏳ Итерация 3 (сейчас)
+Vision молча принимает картинки в не-vision модели → плохой UX	🟡 Средняя	⏳ Итерация 3
+Поля supportsVision: true нет ни у одной модели в БД	🔴 Высокая (vision не работает!)	⏳ Итерация 3 (mongosh)
+Suno только generate (нет extend/cover/boost)	🟢 Низкая	⏳ Итерация 2.5
+Нет админки для управления pricingMatrix	🟢 Низкая	⏳ Итерация 4
+Replicate провайдер не используется	🟢 Низкая	Не трогаем
+S3_PUBLIC_URL может быть не настроен в проде	🟡 Средняя	⏳ Проверить .env перед деплоем
+4. 🆕 РЕШЕНИЯ — ДОПОЛНЕНО (v6.4)
+
+#	Решение	Статус
+24	Vision на бекенде УЖЕ работает (Claude + GPT + Gemini) — не переписываем	✅ Подтверждено анализом
+25	supportsVision: boolean хранится в AIModel.supportsVision, проставляется через regex-миграцию	✅ Принято
+26	Vision-валидация в chat.service.ts (а не в DTO) — потому что нужен model.supportsVision из БД	✅ Принято
+27	Upload-эндпоинты в отдельном модуле UploadModule (а не в StorageModule) — для чистоты архитектуры	⏳ Обсудить — текущий код предполагает UploadController в storage.module.ts
+28	Лимиты размеров: image 10MB, audio 20MB, video 50MB — через multer.limits	✅ Принято
+29	Ключ S3 для uploads: uploads/{userId}/{type}/{uuid}.{ext}	✅ Принято
+5. ❓ Решения, которые жду от тебя
+
+Q1: Где UploadController — в storage.module.ts или в отдельном модуле?
+
+Сейчас storage.module.ts уже импортирует его из './upload.controller':
+
+Typescript
+
+import { UploadController } from './upload.controller';
+Вариант A (текущий план): создаём src/modules/storage/upload.controller.ts — рядом со StorageService. ✅ Просто, как ты задумал.
+
+Вариант B: отдельный src/modules/upload/upload.module.ts + upload.controller.ts. Чище архитектурно, но требует править storage.module.ts и app.module.ts.
+
+Моя рекомендация: Вариант A — раз ты уже предусмотрел путь ./upload.controller в storage.module.ts. Согласен? ✅/❌
+
+Q2: Какие модели в БД должны быть vision?
+
+Я предлагаю regex-pattern:
+
+claude-opus-4-*, claude-sonnet-4-*, claude-haiku-4-*
+gpt-4o*, gpt-5*, gpt-4-turbo*, gpt-4-vision*
+gemini-2*, gemini-pro*, gemini-flash*
+Пришли мне список text-моделей из БД (одной командой):
+
+Bash
+
+docker exec -it ai-mongo mongosh \
+  -u admin -p '<пароль>' \
+  --authenticationDatabase admin \
+  ai-aggregator \
+  --eval 'db.aimodels.find({type:"text"}, {slug:1, displayName:1, _id:0}).toArray()'
+→ Сравним и точечно проставлю флаг по конкретным slug'ам, без regex-сюрпризов.
+
+Q3: Storage конфиг
+
+Подтверди что в проде .env заполнено:
+
+S3_BUCKET ✅?
+S3_PUBLIC_URL ✅?
+S3_ENDPOINT ✅?
+S3_ACCESS_KEY, S3_SECRET_KEY ✅?
+(пароли не нужны, просто "да/нет/частично")
+
+Q4: Лимиты upload по плану юзера?
+
+Бесплатный план: до 10 файлов в день?
+Платные: безлимит?
+Или пока без лимитов? (можно добавить в Итерации 4 через админку)
+
+6. 🚦 ТВОИ СЛЕДУЮЩИЕ ШАГИ
+
+Ответь на 4 вопроса выше (Q1-Q4) — 5 минут
+Сделай снапшот БД перед деплоем:
+Bash
+
+docker exec -it ai-mongo mongodump \
+  -u admin -p '<пароль>' \
+  --authenticationDatabase admin \
+  --db ai-aggregator \
+  --archive=/tmp/full-pre-iter3-$(date +%Y%m%d).archive
+docker cp ai-mongo:/tmp/full-pre-iter3-$(date +%Y%m%d).archive ~/backups/
+После твоих ответов — я выдаю 4 артефакта одним пакетом:
+🆕 src/modules/storage/upload.controller.ts
+🆕 src/modules/storage/dto/upload-response.dto.ts
+🔄 Патч chat.service.ts (vision-валидация)
+📋 scripts/seed-vision-flag.js
+Применяешь → npm run build → docker compose restart ai-backend
+Тестируем:
+Bash
+
+# Upload
+curl -X POST http://localhost:3001/api/v1/upload/image \
+  -H "Authorization: Bearer <JWT>" \
+  -F "file=@cat.jpg"
+# → { url, key, size, mimeType }
+
+# Vision через чат с этим URL
+curl -X POST http://localhost:3001/api/v1/chat/send \
+  -H "Authorization: Bearer <JWT>" \
+  -d '{"modelSlug":"claude-sonnet-4-6","content":"Что на картинке?","imageUrls":["<url из upload>"]}'
+# → Claude описывает кота 🐱
+7. 📊 РЕЗЮМЕ ДЛЯ ТЕБЯ (продолжение)
+
+Хорошие новости:
+
+🎉 Vision уже работает на 80% — твоя прошлая работа не пропала
+⚡ Итерация 3 займёт ~1.5 часа (не 3, как планировалось)
+🛡 Все ключевые компоненты в порядке, риск минимален
+Что нужно сделать сейчас:
+
+⏳ Создать upload.controller.ts + DTO (главный блокер — без него бекенд не соберётся!)
+⏳ Добавить vision-валидацию в chat.service.ts
+⏳ Прогнать миграцию supportsVision в БД (сейчас флаг нигде не проставлен → vision не сработает в продакшене)
+⏳ Протестировать end-to-end: upload картинки → отправка в Claude/GPT-4o
+Что блокирует прогресс:
+
+⚠️ storage.module.ts импортирует ./upload.controller — этого файла нет → следующая пересборка бекенда упадёт с ошибкой компиляции
+⚠️ Поле supportsVision: true отсутствует в БД → даже если фронт пришлёт картинку, валидация (после добавления) её отклонит для ВСЕХ моделей
+Риски:
+
+🟡 Если S3_PUBLIC_URL не настроен в .env → uploadBuffer вернёт битый URL без домена
+🟡 Если Timeweb S3 не поддерживает ACL: public-read → загруженные файлы будут 403 Forbidden
+🟢 На существующие 11 media-моделей и pricing matrix Итерация 3 НЕ влияет (изменения только в чате и upload)
+8. ⚡ ПЛАН ДЕЙСТВИЙ — ПОШАГОВО
+
+Шаг 1 (5 минут) — Ответь на 4 вопроса
+
+Q1: Где UploadController?
+
+A: src/modules/storage/upload.controller.ts (рядом со StorageService) — мой выбор, согласен? ✅/❌
+B: Отдельный src/modules/upload/upload.module.ts
+Q2: Список text-моделей в БД для проставки supportsVision?
+
+Bash
+
+docker exec -it ai-mongo mongosh \
+  -u admin -p 'твой_пароль' \
+  --authenticationDatabase admin \
+  ai-aggregator \
+  --eval 'db.aimodels.find({type:"text"}, {slug:1, displayName:1, _id:0}).toArray()' \
+  --quiet
+Пришли вывод → точечно проставлю флаг.
+
+Q3: Storage .env заполнен?
+
+Bash
+
+grep -E "^S3_" ~/apps/.env | sed 's/=.*/=***/'
+(показывает только имена переменных без значений)
+
+Q4: Лимиты upload по плану юзера — нужны сейчас или отложим?
+
+🟢 Сейчас без лимитов — потом через админку (рекомендую)
+🟡 Сразу зашить лимит "10 файлов в день" в коде
+Шаг 2 (15 минут) — Backup + проверка S3
+
+Bash
+
+# 2.1. Полный снапшот БД
+docker exec -it ai-mongo mongodump \
+  -u admin -p 'твой_пароль' \
+  --authenticationDatabase admin \
+  --db ai-aggregator \
+  --archive=/tmp/full-pre-iter3-$(date +%Y%m%d-%H%M).archive
+
+mkdir -p ~/backups
+docker cp ai-mongo:/tmp/full-pre-iter3-$(date +%Y%m%d-%H%M).archive ~/backups/
+ls -lh ~/backups/ | tail -5
+
+# 2.2. Проверка что S3 рабочий (если уже использовался для генераций)
+docker logs ai-backend 2>&1 | grep -i "S3\|storage\|bucket" | tail -10
+# Если видишь "S3 bucket ai-generations is ready" — всё ок
+# Если "S3 bucket check failed" — нужно фиксить .env / ACL
+Шаг 3 (получишь от меня) — Артефакты Итерации 3
+
+После твоих ответов я выдам 4 файла одним пакетом:
+
+🆕 src/modules/storage/upload.controller.ts
+
+3 эндпоинта: /upload/image, /upload/audio, /upload/video
+Multer для multipart/form-data
+JWT-защита
+MIME-валидация
+Размер-валидация
+Throttling (10 загрузок/мин на юзера)
+🆕 src/modules/storage/dto/upload-response.dto.ts
+
+TypeScript-тип ответа: { url, key, size, mimeType, uploadedAt }
+🔄 chat.service.ts — патч (vision-валидация)
+
+5-7 строк в sendMessage
+5-7 строк в streamMessage
+Понятное сообщение об ошибке если модель не vision
+📋 scripts/seed-vision-flag.js — mongosh-скрипт
+
+Точечная проставка supportsVision: true по slug'ам (после Q2)
+С подсчётом затронутых документов
+С rollback-командой на случай проблем
+Шаг 4 (10 минут) — Применение
+
+Bash
+
+cd ~/apps/ai-aggregator-backend  # или твой путь
+
+# 4.1. Создай файлы (скопируй из моего ответа)
+# upload.controller.ts → src/modules/storage/
+# upload-response.dto.ts → src/modules/storage/dto/
+# Применить патч в chat.service.ts
+
+# 4.2. Установить недостающую зависимость (если её нет)
+npm list @types/multer 2>/dev/null | grep multer || npm i -D @types/multer
+
+# 4.3. Сборка
+npm run build
+# Если ошибки — присылаешь, фиксим
+
+# 4.4. Миграция БД
+docker exec -i ai-mongo mongosh \
+  -u admin -p 'твой_пароль' \
+  --authenticationDatabase admin \
+  ai-aggregator < scripts/seed-vision-flag.js
+
+# 4.5. Рестарт бекенда
+docker compose restart ai-backend
+sleep 5
+docker logs ai-backend --tail 30
+Шаг 5 (20 минут) — Тесты
+
+Тест 5.1: Upload картинки
+
+Bash
+
+# Подготовь любую картинку (cat.jpg)
+curl -X POST http://localhost:3001/api/v1/upload/image \
+  -H "Authorization: Bearer <JWT>" \
+  -F "file=@cat.jpg" \
+  -w "\n%{http_code}\n"
+
+# Ожидаемый ответ:
+# {
+#   "success": true,
+#   "data": {
+#     "url": "https://s3.timeweb.cloud/ai-generations/uploads/<userId>/image/<uuid>.jpg",
+#     "key": "uploads/<userId>/image/<uuid>.jpg",
+#     "size": 123456,
+#     "mimeType": "image/jpeg",
+#     "uploadedAt": "2025-..."
+#   }
+# }
+Тест 5.2: Открой URL в браузере
+
+Скопируй url из ответа → открой в браузере → должна показаться картинка.
+
+❌ Если 403 → проблема с ACL Timeweb → нужна bucket policy.
+❌ Если 404 → проблема с S3_PUBLIC_URL.
+
+Тест 5.3: Vision через чат (Claude)
+
+Bash
+
+curl -X POST http://localhost:3001/api/v1/chat/send \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "modelSlug": "claude-sonnet-4-6",
+    "content": "Опиши что на этой картинке одним предложением",
+    "imageUrls": ["https://s3.timeweb.cloud/...твой_url..."]
+  }'
+
+# Ожидание: Claude описывает содержимое 🐱
+Тест 5.4: Vision через GPT-4o
+
+Bash
+
+curl -X POST http://localhost:3001/api/v1/chat/send \
+  -d '{
+    "modelSlug": "gpt-4o-mini",
+    "content": "What is in this image?",
+    "imageUrls": ["...url..."]
+  }'
+Тест 5.5: Vision-валидация (ожидаемая ошибка)
+
+Bash
+
+# Отправляем картинку в НЕ-vision модель (DeepSeek)
+curl -X POST http://localhost:3001/api/v1/chat/send \
+  -d '{
+    "modelSlug": "deepseek-v3",
+    "content": "Опиши картинку",
+    "imageUrls": ["...url..."]
+  }'
+
+# Ожидание: HTTP 400 + понятная ошибка:
+# "Модель DeepSeek V3 не поддерживает изображения. Используйте Claude, GPT-4o или Gemini."
+Тест 5.6: Stream с vision
+
+Bash
+
+curl -X POST http://localhost:3001/api/v1/chat/stream \
+  -d '{
+    "modelSlug": "claude-sonnet-4-6",
+    "content": "Опиши картинку детально",
+    "imageUrls": ["...url..."]
+  }'
+# Ожидание: SSE-стрим с описанием
+Шаг 6 (5 минут) — Финальная проверка
+
+Bash
+
+# 6.1. Логи без ошибок?
+docker logs ai-backend --tail 50 | grep -iE "error|fatal" | head -10
+
+# 6.2. Сколько моделей с supportsVision: true?
+docker exec -i ai-mongo mongosh \
+  -u admin -p 'твой_пароль' \
+  --authenticationDatabase admin \
+  ai-aggregator \
+  --eval 'db.aimodels.countDocuments({supportsVision: true})' --quiet
+# Ожидание: 5-15 моделей (в зависимости от твоего набора)
+
+# 6.3. Все эндпоинты живы?
+curl -s http://localhost:3001/api/v1/models | jq '.data | length'
+# Ожидание: общее число моделей (должно совпадать с предыдущим)
+9. 🚦 КРИТЕРИИ УСПЕХА ИТЕРАЦИИ 3
+
+Итерация считается завершённой когда:
+
+✅ npm run build проходит без ошибок
+✅ Бекенд стартует и в логах нет fatal-ошибок
+✅ POST /api/v1/upload/image возвращает рабочий S3 URL
+✅ URL картинки открывается в браузере без 403/404
+✅ Claude и GPT-4o описывают содержимое картинки через /chat/send
+✅ Стрим через /chat/stream с картинкой работает
+✅ Не-vision модель возвращает понятную ошибку с подсказкой
+✅ В БД у нужных моделей проставлен supportsVision: true
+10. 🟡 ЧТО НЕ ВКЛЮЧЕНО В ИТЕРАЦИЮ 3
+
+Чтобы не растягивать и доставить ценность быстро, отложено на следующие итерации:
+
+Что	Куда отложено	Почему
+🟡 Лимиты загрузок (квоты по плану)	Итерация 4 (админка)	Сейчас нет приоритета — можно добавить позже
+🟡 Автоматическое удаление старых uploads через 30 дней	Cron job в Итерации 4	Нет переполнения сейчас
+🟡 Resize/optimize картинок перед загрузкой в S3	Опциональная Итерация 3.5	Sharp-зависимость + время
+🟡 Suno operations (extend/cover/boost)	Итерация 2.5	Нужны URL endpoints от KIE
+🟡 Интеграция downloadAndSave в media-генерацию (если ещё не сделано)	Проверить в Итерации 3.5	Возможно уже работает
+🟡 Webhook'и для async-задач (вместо polling)	Итерация 5+	Polling работает
+11. ⏰ ВРЕМЕННЫЕ РАМКИ
+
+Этап	Время	Кто
+Ответы на Q1-Q4 + бэкап	20 мин	Ты
+Генерация артефактов	5 мин	Я
+Применение + сборка + миграция	15 мин	Ты
+Тесты	20 мин	Ты
+Фиксы (если что-то не так)	15 мин	Совместно
+ИТОГО	~1ч 15мин	
+12. 🎬 ТВОЙ СЛЕДУЮЩИЙ ОТВЕТ
+
+Жду от тебя 4 вещи:
+
+✅ Ответ на Q1 — где UploadController (рекомендую вариант A — в storage модуле)
+📋 Вывод mongosh со списком text-моделей (Q2)
+✅ Что в .env по S3 (Q3 — да/нет/частично)
+✅ Решение по лимитам (Q4 — без лимитов / с лимитами)
+После этого — поехали к артефактам Итерации 3! 🚀
+
+P.S. Если хочешь сразу ускориться — можешь параллельно сделать снапшот БД (Шаг 2). Это безопасная операция, никакие данные не меняются.
