@@ -102,9 +102,6 @@ const KIE_MODEL_PARAMS: Record<string, {
 };
 
 
-// ═══════════════════════════════════════════════════════
-// VIDEO MODEL CONFIG
-// ═══════════════════════════════════════════════════════
 interface VideoModelConfig {
   kieModel: string;
   apiType: 'jobs' | 'runway';
@@ -123,7 +120,6 @@ interface VideoModelConfig {
 
 
 const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
-  // ── Sora 2 ──
   'sora-2-text-to-video': {
     kieModel: 'sora-2-text-to-video',
     apiType: 'jobs',
@@ -142,8 +138,6 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     nFrames: ['10', '15'],
     aspectRatios: ['portrait', 'landscape'],
   },
-
-  // ── Kling 3.0 ──
   'kling-3.0/video': {
     kieModel: 'kling-3.0/video',
     apiType: 'jobs',
@@ -164,8 +158,6 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
     aspectRatios: ['16:9', '9:16', '1:1'],
   },
-
-  // ── Runway ──
   'runway': {
     kieModel: 'runway',
     apiType: 'runway',
@@ -174,8 +166,6 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['5', '10'],
     aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
   },
-
-  // Hailuo Standard — text to video
   'hailuo/02-text-to-video-standard': {
     kieModel: 'hailuo/02-text-to-video-standard',
     apiType: 'jobs',
@@ -247,10 +237,7 @@ export class KieProvider extends BaseProvider {
         `KIE generateImage: model=${modelId}, prompt="${request.prompt?.substring(0, 60)}"`,
       );
 
-      const input: Record<string, any> = {
-        prompt: request.prompt,
-      };
-
+      const input: Record<string, any> = { prompt: request.prompt };
       const aspectRatio = this.toAspectRatio(request.width, request.height);
       input.aspect_ratio = aspectRatio;
 
@@ -298,7 +285,6 @@ export class KieProvider extends BaseProvider {
       });
 
       const data = response.data;
-
       this.logger.debug(
         `KIE image FULL RESPONSE: code=${data.code}, msg="${data.msg}", ` +
         `data=${JSON.stringify(data).substring(0, 800)}`
@@ -307,9 +293,7 @@ export class KieProvider extends BaseProvider {
       if (data.code !== 200) throw new Error(data.msg || 'KIE image task creation failed');
 
       const taskId = data.data?.taskId;
-      if (!taskId) {
-        throw new Error('No taskId in KIE response');
-      }
+      if (!taskId) throw new Error('No taskId in KIE response');
 
       this.logger.debug(`KIE image task created: ${taskId}`);
 
@@ -319,7 +303,7 @@ export class KieProvider extends BaseProvider {
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`KIE generateImage error: ${error.message}`);
       return this.handleError(error, start);
     }
@@ -348,29 +332,21 @@ export class KieProvider extends BaseProvider {
 
     if (modelSlug === 'hailuo/02-text-to-video-standard' && hasImage && VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-standard']) {
       config = VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-standard'];
-      this.logger.debug(`Hailuo Standard: switched to img2vid (has image)`);
     }
     if (modelSlug === 'hailuo/2-3-image-to-video-standard' && !hasImage && VIDEO_MODEL_MAP['hailuo/02-text-to-video-standard']) {
       config = VIDEO_MODEL_MAP['hailuo/02-text-to-video-standard'];
-      this.logger.debug(`Hailuo Standard: switched to txt2vid (no image)`);
     }
-
     if (modelSlug === 'hailuo/2-3-image-to-video-pro' && !hasImage && VIDEO_MODEL_MAP['hailuo/02-text-to-video-pro']) {
       config = VIDEO_MODEL_MAP['hailuo/02-text-to-video-pro'];
-      this.logger.debug(`Hailuo Pro: switched to txt2vid (no image)`);
     }
     if (modelSlug === 'hailuo/02-text-to-video-pro' && hasImage && VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-pro']) {
       config = VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-pro'];
-      this.logger.debug(`Hailuo Pro: switched to img2vid (has image)`);
     }
-
     if (modelSlug === 'sora-2-text-to-video' && hasImage && VIDEO_MODEL_MAP['sora-2-image-to-video']) {
       config = VIDEO_MODEL_MAP['sora-2-image-to-video'];
-      this.logger.debug(`Sora 2: switched to img2vid (has image)`);
     }
     if (modelSlug === 'sora-2-image-to-video' && !hasImage && VIDEO_MODEL_MAP['sora-2-text-to-video']) {
       config = VIDEO_MODEL_MAP['sora-2-text-to-video'];
-      this.logger.debug(`Sora 2: switched to txt2vid (no image)`);
     }
 
     this.logger.log(`KIE generateVideo: slug=${modelSlug}, kieModel=${config.kieModel}, hasImage=${hasImage}`);
@@ -380,7 +356,7 @@ export class KieProvider extends BaseProvider {
         return await this.generateRunwayVideo(request, config, start);
       }
       return await this.generateJobsVideo(request, config, start);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`KIE generateVideo error: ${error.message}`);
       return this.handleError(error, start);
     }
@@ -393,9 +369,7 @@ export class KieProvider extends BaseProvider {
     start: number,
   ): Promise<GenerationResult> {
     const r = request as any;
-    const input: Record<string, any> = {
-      prompt: request.prompt,
-    };
+    const input: Record<string, any> = { prompt: request.prompt };
 
     if (config.aspectRatios.length > 0) {
       let ar = r.aspectRatio || config.aspectRatios[0];
@@ -418,41 +392,21 @@ export class KieProvider extends BaseProvider {
     if (config.hasImageInput && r.imageUrls?.length > 0) {
       input.image_urls = r.imageUrls;
     }
-
     if (r.videoUrls?.length > 0) {
       input.video_urls = r.videoUrls;
     }
 
-    if (config.hasSound) {
-      input.sound = r.sound !== undefined ? r.sound : false;
-    }
+    if (config.hasSound) input.sound = r.sound !== undefined ? r.sound : false;
     if (config.hasMode) {
       input.mode = r.mode || 'std';
       input.multi_shots = false;
       input.multi_prompt = [];
     }
-
-    if (r.stable !== undefined) {
-      input.stable = r.stable;
-    }
-
-    if (config.hasSize) {
-      input.size = r.quality || 'standard';
-    }
-
-    if (config.hasRemoveWatermark) {
-      input.remove_watermark = r.removeWatermark !== false;
-    }
-
-    if (config.hasPromptOptimizer) {
-      input.prompt_optimizer = r.promptOptimizer !== false;
-    }
-
-    if (config.hasResolution) {
-      input.resolution = r.resolution || '768P';
-    }
-
-    this.logger.debug(`KIE jobs video request: model=${config.kieModel}, input=${JSON.stringify(input).substring(0, 200)}`);
+    if (r.stable !== undefined) input.stable = r.stable;
+    if (config.hasSize) input.size = r.quality || 'standard';
+    if (config.hasRemoveWatermark) input.remove_watermark = r.removeWatermark !== false;
+    if (config.hasPromptOptimizer) input.prompt_optimizer = r.promptOptimizer !== false;
+    if (config.hasResolution) input.resolution = r.resolution || '768P';
 
     const response = await this.client.post('/api/v1/jobs/createTask', {
       model: config.kieModel,
@@ -465,19 +419,11 @@ export class KieProvider extends BaseProvider {
     }
 
     const taskId = data.data?.taskId;
-    if (!taskId) {
-      throw new Error('No taskId in KIE video response');
-    }
-
-    this.logger.log(`KIE video task created: ${taskId} for model ${config.kieModel}`);
+    if (!taskId) throw new Error('No taskId in KIE video response');
 
     return {
       success: true,
-      data: {
-        taskId,
-        urls: [],
-        metadata: { model: config.kieModel, apiType: config.statusApiType },
-      },
+      data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: config.statusApiType } },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
@@ -497,34 +443,20 @@ export class KieProvider extends BaseProvider {
       aspectRatio: r.aspectRatio || '16:9',
       waterMark: r.waterMark || '',
     };
-
-    if (r.imageUrl) {
-      body.imageUrl = r.imageUrl;
-    }
-
-    this.logger.debug(`KIE runway video request: ${JSON.stringify(body).substring(0, 200)}`);
+    if (r.imageUrl) body.imageUrl = r.imageUrl;
 
     const response = await this.client.post('/api/v1/runway/generate', body);
-
     const data = response.data;
     if (data.code !== 200) {
       throw new Error(data.msg || `Runway video creation failed (code ${data.code})`);
     }
 
     const taskId = data.data?.taskId;
-    if (!taskId) {
-      throw new Error('No taskId in Runway response');
-    }
-
-    this.logger.log(`Runway video task created: ${taskId}`);
+    if (!taskId) throw new Error('No taskId in Runway response');
 
     return {
       success: true,
-      data: {
-        taskId,
-        urls: [],
-        metadata: { model: 'runway', apiType: 'runway' },
-      },
+      data: { taskId, urls: [], metadata: { model: 'runway', apiType: 'runway' } },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
@@ -583,7 +515,15 @@ export class KieProvider extends BaseProvider {
 
       this.logger.debug(`ElevenLabs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
 
-            const status = stateMap[task.state] || 'pending';
+      const stateMap: Record<string, TaskStatusResult['status']> = {
+        waiting: 'pending',
+        queuing: 'pending',
+        generating: 'processing',
+        success: 'completed',
+        fail: 'failed',
+      };
+
+      const status = stateMap[task.state] || 'pending';
 
       if (status === 'failed') {
         return {
@@ -697,6 +637,189 @@ export class KieProvider extends BaseProvider {
     } catch (error: any) {
       this.logger.warn(`Suno check error for ${taskId}: ${error.message}`);
       return { status: 'pending' };
+    }
+  }
+
+
+  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
+      const data = response.data;
+      if (data.code !== 200) {
+        return { status: 'failed', error: data.msg || 'Failed to get runway task status' };
+      }
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+
+      this.logger.debug(
+        `Runway task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
+      );
+
+      const stateMap: Record<string, TaskStatusResult['status']> = {
+        waiting: 'pending',
+        queued: 'pending',
+        running: 'processing',
+        succeeded: 'completed',
+        failed: 'failed',
+      };
+      const status = stateMap[task.state] || 'pending';
+
+      if (status === 'failed') {
+        return { status: 'failed', error: task.errorMessage || 'Runway generation failed' };
+      }
+
+      if (status === 'completed') {
+        let resultUrls: string[] = task.resultUrls || [];
+
+        if (resultUrls.length === 0) {
+          if (task.output?.url) resultUrls = [task.output.url];
+          else if (task.url) resultUrls = [task.url];
+          else if (task.video_url) resultUrls = [task.video_url];
+
+          this.logger.warn(
+            `Runway task ${taskId} completed. Keys: ${Object.keys(task).join(', ')}. Found URLs: ${resultUrls.length}`,
+          );
+        }
+
+        return { status: 'completed', resultUrls, progress: 100 };
+      }
+
+      return { status, progress: task.progress || 0 };
+    } catch (error: any) {
+      this.logger.error(`Runway check task status error: ${error.message}`);
+      return { status: 'failed', error: `Status check failed: ${error.message}` };
+    }
+  }
+
+
+  private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/jobs/recordInfo', { params: { taskId } });
+      const data = response.data;
+      if (data.code !== 200) {
+        return { status: 'failed', error: data.msg || 'Failed to get jobs task status' };
+      }
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+
+      this.logger.debug(
+        `Jobs task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
+      );
+
+      this.logger.debug(`Jobs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
+
+      const stateMap: Record<string, TaskStatusResult['status']> = {
+        waiting: 'pending',
+        queuing: 'pending',
+        generating: 'processing',
+        success: 'completed',
+        fail: 'failed',
+      };
+      const status = stateMap[task.state] || 'pending';
+
+      if (status === 'failed') {
+        return {
+          status: 'failed',
+          error: task.failMsg || task.failCode || 'Generation failed',
+        };
+      }
+
+      if (status === 'completed') {
+        let resultUrls: string[] = [];
+
+        if (task.resultUrls?.length > 0) {
+          resultUrls = task.resultUrls;
+        }
+        else if (task.output?.urls?.length > 0) {
+          resultUrls = task.output.urls;
+        }
+        else if (typeof task.output === 'string' && task.output.startsWith('http')) {
+          resultUrls = [task.output];
+        }
+        else if (Array.isArray(task.output)) {
+          resultUrls = task.output.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
+        }
+        else if (task.result?.urls?.length > 0) {
+          resultUrls = task.result.urls;
+        }
+        else if (typeof task.result === 'string' && task.result.startsWith('http')) {
+          resultUrls = [task.result];
+        }
+        else if (Array.isArray(task.result)) {
+          resultUrls = task.result.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
+        }
+        else if (task.images?.length > 0) {
+          resultUrls = task.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
+        }
+        else if (task.videos?.length > 0) {
+          resultUrls = task.videos.map((v: any) => typeof v === 'string' ? v : v.url).filter(Boolean);
+        }
+        else if (task.url) {
+          resultUrls = [task.url];
+        }
+        else if (task.image_url) {
+          resultUrls = [task.image_url];
+        }
+        else if (task.video_url) {
+          resultUrls = [task.video_url];
+        }
+        else if (task.audio_url) {
+          resultUrls = [task.audio_url];
+        }
+        else if (task.data?.urls?.length > 0) {
+          resultUrls = task.data.urls;
+        }
+        else if (task.data?.url) {
+          resultUrls = [task.data.url];
+        }
+        else if (task.resultJson) {
+          try {
+            const parsed = JSON.parse(task.resultJson);
+            if (parsed.resultUrls?.length > 0) {
+              resultUrls = parsed.resultUrls;
+            } else if (parsed.urls?.length > 0) {
+              resultUrls = parsed.urls;
+            } else if (parsed.url) {
+              resultUrls = [parsed.url];
+            } else if (parsed.images?.length > 0) {
+              resultUrls = parsed.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
+            }
+          } catch {
+            this.logger.error(`Failed to parse resultJson: ${task.resultJson?.substring(0, 200)}`);
+          }
+        }
+
+        this.logger.log(
+          `Jobs task ${taskId} completed. Found ${resultUrls.length} URLs: ${JSON.stringify(resultUrls).substring(0, 300)}`,
+        );
+
+        if (resultUrls.length === 0) {
+          this.logger.warn(
+            `Jobs task ${taskId} completed but NO URLs found! Full task keys: ${Object.keys(task).join(', ')}`,
+          );
+        }
+
+        return {
+          status: 'completed',
+          resultUrls,
+          progress: 100,
+        };
+      }
+
+      return {
+        status,
+        progress: task.progress || 0,
+      };
+    } catch (error: any) {
+      this.logger.error(`Jobs check task status error: ${error.message}`);
+      return {
+        status: 'failed',
+        error: `Status check failed: ${error.message}`,
+      };
     }
   }
 
@@ -1080,7 +1203,6 @@ export class KieProvider extends BaseProvider {
     }
 
     try {
-      // 🆕 Преобразуем messages с поддержкой vision
       const messages = this.prepareMessages(request.messages as any[]);
       const hasImages = messages.some((m: any) => Array.isArray(m.content));
 
@@ -1126,7 +1248,6 @@ export class KieProvider extends BaseProvider {
     }
 
     try {
-      // 🆕 Преобразуем messages с поддержкой vision
       const messages = this.prepareMessages(request.messages as any[]);
       const hasImages = messages.some((m: any) => Array.isArray(m.content));
 
@@ -1231,7 +1352,7 @@ export class KieProvider extends BaseProvider {
         errorMessage = `HTTP ${status}: ${error.message}`;
       }
 
-            this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
+      this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
       yield { content: '', done: true, error: `KIE: ${status || 'NETWORK'} - ${errorMessage}` };
     }
   }
@@ -1292,188 +1413,5 @@ export class KieProvider extends BaseProvider {
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
-  }
-
-
-  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
-    try {
-      const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
-      const data = response.data;
-      if (data.code !== 200) {
-        return { status: 'failed', error: data.msg || 'Failed to get runway task status' };
-      }
-      const task = data.data;
-      if (!task) {
-        return { status: 'pending' };
-      }
-
-      this.logger.debug(
-        `Runway task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
-      );
-
-      const stateMap: Record<string, TaskStatusResult['status']> = {
-        waiting: 'pending',
-        queued: 'pending',
-        running: 'processing',
-        succeeded: 'completed',
-        failed: 'failed',
-      };
-      const status = stateMap[task.state] || 'pending';
-
-      if (status === 'failed') {
-        return { status: 'failed', error: task.errorMessage || 'Runway generation failed' };
-      }
-
-      if (status === 'completed') {
-        let resultUrls: string[] = task.resultUrls || [];
-
-        if (resultUrls.length === 0) {
-          if (task.output?.url) resultUrls = [task.output.url];
-          else if (task.url) resultUrls = [task.url];
-          else if (task.video_url) resultUrls = [task.video_url];
-
-          this.logger.warn(
-            `Runway task ${taskId} completed. Keys: ${Object.keys(task).join(', ')}. Found URLs: ${resultUrls.length}`,
-          );
-        }
-
-        return { status: 'completed', resultUrls, progress: 100 };
-      }
-
-      return { status, progress: task.progress || 0 };
-    } catch (error: any) {
-      this.logger.error(`Runway check task status error: ${error.message}`);
-      return { status: 'failed', error: `Status check failed: ${error.message}` };
-    }
-  }
-
-
-  private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
-    try {
-      const response = await this.client.get('/api/v1/jobs/recordInfo', { params: { taskId } });
-      const data = response.data;
-      if (data.code !== 200) {
-        return { status: 'failed', error: data.msg || 'Failed to get jobs task status' };
-      }
-      const task = data.data;
-      if (!task) {
-        return { status: 'pending' };
-      }
-
-      this.logger.debug(
-        `Jobs task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
-      );
-
-      this.logger.debug(`Jobs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
-
-      const stateMap: Record<string, TaskStatusResult['status']> = {
-        waiting: 'pending',
-        queuing: 'pending',
-        generating: 'processing',
-        success: 'completed',
-        fail: 'failed',
-      };
-      const status = stateMap[task.state] || 'pending';
-
-      if (status === 'failed') {
-        return {
-          status: 'failed',
-          error: task.failMsg || task.failCode || 'Generation failed',
-        };
-      }
-
-      if (status === 'completed') {
-        let resultUrls: string[] = [];
-
-        if (task.resultUrls?.length > 0) {
-          resultUrls = task.resultUrls;
-        }
-        else if (task.output?.urls?.length > 0) {
-          resultUrls = task.output.urls;
-        }
-        else if (typeof task.output === 'string' && task.output.startsWith('http')) {
-          resultUrls = [task.output];
-        }
-        else if (Array.isArray(task.output)) {
-          resultUrls = task.output.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
-        }
-        else if (task.result?.urls?.length > 0) {
-          resultUrls = task.result.urls;
-        }
-        else if (typeof task.result === 'string' && task.result.startsWith('http')) {
-          resultUrls = [task.result];
-        }
-        else if (Array.isArray(task.result)) {
-          resultUrls = task.result.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
-        }
-        else if (task.images?.length > 0) {
-          resultUrls = task.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
-        }
-        else if (task.videos?.length > 0) {
-          resultUrls = task.videos.map((v: any) => typeof v === 'string' ? v : v.url).filter(Boolean);
-        }
-        else if (task.url) {
-          resultUrls = [task.url];
-        }
-        else if (task.image_url) {
-          resultUrls = [task.image_url];
-        }
-        else if (task.video_url) {
-          resultUrls = [task.video_url];
-        }
-        else if (task.audio_url) {
-          resultUrls = [task.audio_url];
-        }
-        else if (task.data?.urls?.length > 0) {
-          resultUrls = task.data.urls;
-        }
-        else if (task.data?.url) {
-          resultUrls = [task.data.url];
-        }
-        else if (task.resultJson) {
-          try {
-            const parsed = JSON.parse(task.resultJson);
-            if (parsed.resultUrls?.length > 0) {
-              resultUrls = parsed.resultUrls;
-            } else if (parsed.urls?.length > 0) {
-              resultUrls = parsed.urls;
-            } else if (parsed.url) {
-              resultUrls = [parsed.url];
-            } else if (parsed.images?.length > 0) {
-              resultUrls = parsed.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
-            }
-          } catch {
-            this.logger.error(`Failed to parse resultJson: ${task.resultJson?.substring(0, 200)}`);
-          }
-        }
-
-        this.logger.log(
-          `Jobs task ${taskId} completed. Found ${resultUrls.length} URLs: ${JSON.stringify(resultUrls).substring(0, 300)}`,
-        );
-
-        if (resultUrls.length === 0) {
-          this.logger.warn(
-            `Jobs task ${taskId} completed but NO URLs found! Full task keys: ${Object.keys(task).join(', ')}`,
-          );
-        }
-
-        return {
-          status: 'completed',
-          resultUrls,
-          progress: 100,
-        };
-      }
-
-      return {
-        status,
-        progress: task.progress || 0,
-      };
-    } catch (error: any) {
-      this.logger.error(`Jobs check task status error: ${error.message}`);
-      return {
-        status: 'failed',
-        error: `Status check failed: ${error.message}`,
-      };
-    }
   }
 }
