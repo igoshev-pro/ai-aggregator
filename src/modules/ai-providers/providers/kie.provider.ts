@@ -1,3 +1,4 @@
+// src/modules/ai-providers/providers/kie.provider.ts
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import {
@@ -11,6 +12,7 @@ import {
   StreamChunk,
   TaskStatusResult,
 } from './base-provider.abstract';
+
 
 const KIE_MODEL_PARAMS: Record<string, {
   aspectRatios: string[];
@@ -99,6 +101,7 @@ const KIE_MODEL_PARAMS: Record<string, {
   },
 };
 
+
 // ═══════════════════════════════════════════════════════
 // VIDEO MODEL CONFIG
 // ═══════════════════════════════════════════════════════
@@ -118,8 +121,9 @@ interface VideoModelConfig {
   aspectRatios: string[];
 }
 
+
 const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
-  // ── Sora 2 (modelId from providerMappings) ──
+  // ── Sora 2 ──
   'sora-2-text-to-video': {
     kieModel: 'sora-2-text-to-video',
     apiType: 'jobs',
@@ -181,7 +185,6 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
-  // Hailuo Standard — image to video
   'hailuo/2-3-image-to-video-standard': {
     kieModel: 'hailuo/2-3-image-to-video-standard',
     apiType: 'jobs',
@@ -191,7 +194,6 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
-  // Hailuo Pro — image to video
   'hailuo/2-3-image-to-video-pro': {
     kieModel: 'hailuo/2-3-image-to-video-pro',
     apiType: 'jobs',
@@ -201,7 +203,6 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
-  // Hailuo Pro — text to video
   'hailuo/02-text-to-video-pro': {
     kieModel: 'hailuo/02-text-to-video-pro',
     apiType: 'jobs',
@@ -213,10 +214,12 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
   },
 };
 
+
 @Injectable()
 export class KieProvider extends BaseProvider {
   private client: AxiosInstance;
   private readonly logger = new Logger(KieProvider.name);
+
 
   constructor(config: ProviderConfig) {
     super('kie', config);
@@ -230,8 +233,9 @@ export class KieProvider extends BaseProvider {
     });
   }
 
+
   // ═══════════════════════════════════════════════════════
-  // IMAGE GENERATION (existing — unchanged)
+  // IMAGE GENERATION
   // ═══════════════════════════════════════════════════════
   async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
@@ -243,7 +247,7 @@ export class KieProvider extends BaseProvider {
         `KIE generateImage: model=${modelId}, prompt="${request.prompt?.substring(0, 60)}"`,
       );
 
-            const input: Record<string, any> = {
+      const input: Record<string, any> = {
         prompt: request.prompt,
       };
 
@@ -256,12 +260,10 @@ export class KieProvider extends BaseProvider {
         input.resolution = (request as any).resolution || '1K';
       }
 
-      // 🆕 Midjourney mode: turbo / fast / relax
       if (modelId === 'mj_txt2img' || modelId === 'mj_img2img') {
         input.mode = (request as any).mode || 'fast';
       }
 
-      // 🆕 Flux version (на случай, если KIE поддерживает версию через input)
       if ((request as any).version) {
         input.version = (request as any).version;
       }
@@ -298,11 +300,11 @@ export class KieProvider extends BaseProvider {
       const data = response.data;
 
       this.logger.debug(
-        `KIE ElevenLabs FULL RESPONSE: code=${data.code}, msg="${data.msg}", ` +
+        `KIE image FULL RESPONSE: code=${data.code}, msg="${data.msg}", ` +
         `data=${JSON.stringify(data).substring(0, 800)}`
       );
 
-      if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs task creation failed');
+      if (data.code !== 200) throw new Error(data.msg || 'KIE image task creation failed');
 
       const taskId = data.data?.taskId;
       if (!taskId) {
@@ -323,8 +325,9 @@ export class KieProvider extends BaseProvider {
     }
   }
 
+
   // ═══════════════════════════════════════════════════════
-  // VIDEO GENERATION — NEW
+  // VIDEO GENERATION
   // ═══════════════════════════════════════════════════════
   async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
@@ -341,10 +344,8 @@ export class KieProvider extends BaseProvider {
       };
     }
 
-    // === Динамическое переключение txt2vid ↔ img2vid ===
     const hasImage = !!(request as any).imageUrl || !!((request as any).imageUrls?.length);
 
-    // Hailuo Standard
     if (modelSlug === 'hailuo/02-text-to-video-standard' && hasImage && VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-standard']) {
       config = VIDEO_MODEL_MAP['hailuo/2-3-image-to-video-standard'];
       this.logger.debug(`Hailuo Standard: switched to img2vid (has image)`);
@@ -354,7 +355,6 @@ export class KieProvider extends BaseProvider {
       this.logger.debug(`Hailuo Standard: switched to txt2vid (no image)`);
     }
 
-    // Hailuo Pro
     if (modelSlug === 'hailuo/2-3-image-to-video-pro' && !hasImage && VIDEO_MODEL_MAP['hailuo/02-text-to-video-pro']) {
       config = VIDEO_MODEL_MAP['hailuo/02-text-to-video-pro'];
       this.logger.debug(`Hailuo Pro: switched to txt2vid (no image)`);
@@ -364,7 +364,6 @@ export class KieProvider extends BaseProvider {
       this.logger.debug(`Hailuo Pro: switched to img2vid (has image)`);
     }
 
-    // Sora 2: txt2vid ↔ img2vid
     if (modelSlug === 'sora-2-text-to-video' && hasImage && VIDEO_MODEL_MAP['sora-2-image-to-video']) {
       config = VIDEO_MODEL_MAP['sora-2-image-to-video'];
       this.logger.debug(`Sora 2: switched to img2vid (has image)`);
@@ -387,7 +386,7 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-  // ── Jobs API video (Sora, Kling, Hailuo) ──
+
   private async generateJobsVideo(
     request: VideoGenerationRequest,
     config: VideoModelConfig,
@@ -398,26 +397,21 @@ export class KieProvider extends BaseProvider {
       prompt: request.prompt,
     };
 
-    // Aspect ratio
     if (config.aspectRatios.length > 0) {
       let ar = r.aspectRatio || config.aspectRatios[0];
-      // Sora uses portrait/landscape
       if (config.aspectRatios.includes('portrait') && !config.aspectRatios.includes(ar)) {
         ar = ar === '9:16' ? 'portrait' : 'landscape';
       }
       input.aspect_ratio = ar;
     }
 
-    // Duration / n_frames
     if (config.nFrames) {
-      // Sora: n_frames = '10' or '15' (seconds → closest frame option)
       const dur = r.duration || 10;
       input.n_frames = dur >= 13 ? '15' : '10';
     } else if (config.durations) {
       input.duration = String(r.duration || config.durations[0]);
     }
 
-       // Image input
     if (config.hasImageInput && r.imageUrl) {
       input.image_urls = [r.imageUrl];
     }
@@ -425,43 +419,35 @@ export class KieProvider extends BaseProvider {
       input.image_urls = r.imageUrls;
     }
 
-    // 🆕 Video input (Kling motion-control)
     if (r.videoUrls?.length > 0) {
       input.video_urls = r.videoUrls;
     }
 
-    // Kling-specific
     if (config.hasSound) {
       input.sound = r.sound !== undefined ? r.sound : false;
     }
     if (config.hasMode) {
       input.mode = r.mode || 'std';
-      // Kling requires these fields
       input.multi_shots = false;
       input.multi_prompt = [];
     }
 
-    // 🆕 Sora stable mode (reserved for future use)
     if (r.stable !== undefined) {
       input.stable = r.stable;
     }
 
-    // Sora Pro size
     if (config.hasSize) {
       input.size = r.quality || 'standard';
     }
 
-    // Remove watermark (Sora)
     if (config.hasRemoveWatermark) {
       input.remove_watermark = r.removeWatermark !== false;
     }
 
-    // Hailuo prompt optimizer
     if (config.hasPromptOptimizer) {
       input.prompt_optimizer = r.promptOptimizer !== false;
     }
 
-    // Hailuo resolution
     if (config.hasResolution) {
       input.resolution = r.resolution || '768P';
     }
@@ -497,7 +483,7 @@ export class KieProvider extends BaseProvider {
     };
   }
 
-  // ── Runway API video ──
+
   private async generateRunwayVideo(
     request: VideoGenerationRequest,
     config: VideoModelConfig,
@@ -512,7 +498,6 @@ export class KieProvider extends BaseProvider {
       waterMark: r.waterMark || '',
     };
 
-    // Image input
     if (r.imageUrl) {
       body.imageUrl = r.imageUrl;
     }
@@ -545,12 +530,11 @@ export class KieProvider extends BaseProvider {
     };
   }
 
-  // ═══════════════════════════════════════════════════════
-  // TASK STATUS CHECK — handles both Jobs and Runway APIs
-  // ═══════════════════════════════════════════════════════
 
+  // ═══════════════════════════════════════════════════════
+  // TASK STATUS CHECK
+  // ═══════════════════════════════════════════════════════
   async checkTaskStatus(taskId: string): Promise<TaskStatusResult> {
-    // Runway tasks — UUID format
     const isRunway = taskId.includes('runway') ||
       /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(taskId);
 
@@ -558,21 +542,17 @@ export class KieProvider extends BaseProvider {
       return await this.checkRunwayTaskStatus(taskId);
     }
 
-    // ElevenLabs tasks
     if (taskId.startsWith('task_elevenlabs_')) {
       return await this.checkElevenLabsTaskStatus(taskId);
     }
 
-    // Сначала пробуем Jobs API
     const jobsResult = await this.checkJobsTaskStatus(taskId);
 
-    // Если Jobs вернул ошибку "recordInfo is null" — это Suno задача
     if (jobsResult.status === 'failed' && jobsResult.error?.includes('recordInfo is null')) {
       this.logger.debug(`Jobs API returned null for ${taskId}, trying Suno endpoint...`);
       return await this.checkSunoTaskStatus(taskId);
     }
 
-    // Если Jobs вернул completed но без URL — тоже пробуем Suno
     if (jobsResult.status === 'completed' && (!jobsResult.resultUrls || jobsResult.resultUrls.length === 0)) {
       this.logger.debug(`Jobs returned completed but no URLs for ${taskId}, trying Suno endpoint...`);
       const sunoResult = await this.checkSunoTaskStatus(taskId);
@@ -583,6 +563,7 @@ export class KieProvider extends BaseProvider {
 
     return jobsResult;
   }
+
 
   private async checkElevenLabsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
@@ -602,15 +583,7 @@ export class KieProvider extends BaseProvider {
 
       this.logger.debug(`ElevenLabs task ${taskId} state: ${task.state}, progress: ${task.progress}`);
 
-      const stateMap: Record<string, TaskStatusResult['status']> = {
-        waiting: 'pending',
-        queuing: 'pending',
-        generating: 'processing',
-        success: 'completed',
-        fail: 'failed',
-      };
-
-      const status = stateMap[task.state] || 'pending';
+            const status = stateMap[task.state] || 'pending';
 
       if (status === 'failed') {
         return {
@@ -642,7 +615,7 @@ export class KieProvider extends BaseProvider {
         status,
         progress: task.progress || 0,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`ElevenLabs check task status error: ${error.message}`);
       return {
         status: 'failed',
@@ -650,6 +623,7 @@ export class KieProvider extends BaseProvider {
       };
     }
   }
+
 
   private async checkSunoTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
@@ -693,7 +667,6 @@ export class KieProvider extends BaseProvider {
       if (status === 'completed') {
         let resultUrls: string[] = [];
 
-        // Реальная структура: task.response.sunoData[].audioUrl
         const sunoData = task.response?.sunoData;
         if (Array.isArray(sunoData) && sunoData.length > 0) {
           resultUrls = sunoData
@@ -702,7 +675,6 @@ export class KieProvider extends BaseProvider {
           this.logger.log(`Suno task ${taskId}: found ${resultUrls.length} tracks`);
         }
 
-        // Fallback: task.data array
         if (resultUrls.length === 0 && Array.isArray(task.data)) {
           resultUrls = task.data
             .map((track: any) => track.audio_url || track.audioUrl || track.url)
@@ -722,195 +694,16 @@ export class KieProvider extends BaseProvider {
         status,
         progress: 0,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.warn(`Suno check error for ${taskId}: ${error.message}`);
       return { status: 'pending' };
     }
   }
 
+
   // ═══════════════════════════════════════════════════════
-  // AUDIO GENERATION — extended to support ElevenLabs models
+  // AUDIO GENERATION
   // ═══════════════════════════════════════════════════════
-
-  //   async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
-  //   const start = Date.now();
-  //   try {
-  //     const modelId = request.model;
-  //     const r = request as any;
-
-  //     this.logger.log(`KIE generateAudio: received modelId="${modelId}"`);
-
-  //     const elevenLabsModels = new Set([
-  //       'elevenlabs/audio-isolation',
-  //       'elevenlabs/sound-effect-v2',
-  //       'elevenlabs/speech-to-text',
-  //       'elevenlabs/text-to-dialogue-v3',
-  //       'elevenlabs/text-to-speech-multilingual-v2',
-  //       'elevenlabs/text-to-speech-turbo-2-5',
-  //     ]);
-
-  //     const sunoModels = new Set([
-  //       'suno-v3',
-  //       'suno-v4',
-  //       'suno-v4_5',
-  //       'suno-v4_5plus',
-  //       'suno-v4_5all',
-  //       'suno-v5',
-  //       'ai-music-api/generate',
-  //       'ai-music-api/generate/v4',
-  //       'ai-music-api/generate/v4.5',
-  //     ]);
-
-  //     const sunoModelMap: Record<string, string> = {
-  //       'ai-music-api/generate': 'V4',
-  //       'ai-music-api/generate/v4': 'V4',
-  //       'ai-music-api/generate/v4.5': 'V4_5',
-  //       'suno-v3': 'V3_5',
-  //       'suno-v4': 'V4',
-  //       'suno-v4_5': 'V4_5',
-  //       'suno-v4_5plus': 'V4_5PLUS',
-  //       'suno-v4_5all': 'V4_5ALL',
-  //       'suno-v5': 'V5',
-  //     };
-
-  //     if (elevenLabsModels.has(modelId)) {
-  //       this.logger.debug(`KIE generateAudio: using ElevenLabs model=${modelId}`);
-
-  //       const input: Record<string, any> = {};
-
-  //       // Берём текст из любого доступного поля
-  //       const textValue = r.text || r.prompt || request.prompt || '';
-  //       const audioUrl = r.audio_url || r.audioUrl || '';
-  //       const voiceValue = r.voice || r.voiceId || 'Rachel';
-  //       const langValue = r.language_code || r.language || '';
-  //       const stabilityValue = r.stability ?? 0.5;
-  //       const similarityValue = r.similarity_boost ?? r.similarity ?? 0.75;
-
-  //       switch (modelId) {
-  //         case 'elevenlabs/audio-isolation':
-  //           if (!audioUrl) throw new Error('audio_url is required for audio-isolation');
-  //           input.audio_url = audioUrl;
-  //           break;
-
-  //         case 'elevenlabs/speech-to-text':
-  //           if (!audioUrl) throw new Error('audio_url is required for speech-to-text');
-  //           input.audio_url = audioUrl;
-  //           if (langValue) input.language_code = langValue;
-  //           if (typeof r.tag_audio_events === 'boolean') input.tag_audio_events = r.tag_audio_events;
-  //           if (typeof r.diarize === 'boolean') input.diarize = r.diarize;
-  //           break;
-
-  //         case 'elevenlabs/sound-effect-v2':
-  //           if (!textValue) throw new Error('text is required for sound-effect-v2');
-  //           input.text = textValue;
-  //           input.loop = r.loop ?? false;
-  //           input.duration_seconds = r.duration_seconds ?? r.duration ?? 5;
-  //           input.prompt_influence = r.prompt_influence ?? 0.3;
-  //           input.output_format = r.output_format ?? 'mp3_44100_128';
-  //           break;
-
-  //         case 'elevenlabs/text-to-dialogue-v3':
-  //           if (!Array.isArray(r.dialogue)) throw new Error('dialogue array is required for text-to-dialogue-v3');
-  //           input.dialogue = r.dialogue;
-  //           input.stability = stabilityValue;
-  //           break;
-
-  //         case 'elevenlabs/text-to-speech-multilingual-v2':
-  //         case 'elevenlabs/text-to-speech-turbo-2-5':
-  //           if (!textValue) throw new Error('text is required for text-to-speech models');
-  //           input.text = textValue;
-  //           input.voice = voiceValue;
-  //           input.stability = stabilityValue;
-  //           input.similarity_boost = similarityValue;
-  //           input.style = r.style ?? 0;
-  //           input.speed = r.speed ?? 1;
-  //           input.timestamps = r.timestamps ?? false;
-  //           input.previous_text = r.previous_text ?? '';
-  //           input.next_text = r.next_text ?? '';
-  //           input.language_code = langValue;
-  //           break;
-
-  //         default:
-  //           throw new Error(`Model ${modelId} not supported`);
-  //       }
-
-  //       const requestBody: any = { model: modelId, input };
-  //       if (r.callBackUrl) requestBody.callBackUrl = r.callBackUrl;
-
-  //       this.logger.debug(`Sending request to KIE ElevenLabs: ${JSON.stringify(requestBody).substring(0, 300)}`);
-
-  //       const response = await this.client.post('/api/v1/jobs/createTask', requestBody);
-  //       const data = response.data;
-
-  //       if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs task creation failed');
-
-  //       const taskId = data.data?.taskId;
-  //       if (!taskId) throw new Error('No taskId in KIE ElevenLabs response');
-
-  //       this.logger.log(`KIE ElevenLabs task created: ${taskId} (model: ${modelId})`);
-
-  //       return {
-  //         success: true,
-  //         data: { taskId, urls: [], metadata: { model: modelId } },
-  //         responseTimeMs: Date.now() - start,
-  //         providerSlug: this.slug,
-  //       };
-
-  //     } else if (sunoModels.has(modelId)) {
-  //       const sunoModel = sunoModelMap[modelId] || modelId;
-  //       this.logger.debug(`KIE generateAudio: using Suno model=${modelId} → mapped to ${sunoModel}`);
-
-  //       const body: any = {
-  //         prompt: r.prompt || request.prompt,
-  //         customMode: r.customMode || false,
-  //         instrumental: r.instrumental || false,
-  //         model: sunoModel,
-  //         callBackUrl: r.callBackUrl || 'https://spichki.tw1.ru/api/v1/webhooks/kie-callback',
-  //         style: r.style,
-  //         title: r.title,
-  //         negativeTags: r.negativeTags,
-  //         vocalGender: r.vocalGender,
-  //         styleWeight: r.styleWeight,
-  //         weirdnessConstraint: r.weirdnessConstraint,
-  //         audioWeight: r.audioWeight,
-  //         personaId: r.personaId,
-  //         uploadUrl: r.uploadUrl,
-  //         duration: r.duration,
-  //       };
-
-  //       this.logger.debug(`Sending request to KIE Suno: ${JSON.stringify(body).substring(0, 300)}`);
-
-  //       const response = await this.client.post('/api/v1/generate', body);
-  //       const data = response.data;
-
-  //       if (data.code !== 200) throw new Error(data.msg || 'KIE Suno task creation failed');
-
-  //       const taskId = data.data?.taskId;
-  //       if (!taskId) throw new Error('No taskId in KIE Suno response');
-
-  //       this.logger.log(`KIE Suno task created: ${taskId} (model: ${sunoModel})`);
-
-  //       return {
-  //         success: true,
-  //         data: { taskId, urls: [], metadata: { model: sunoModel, apiType: 'suno' } },
-  //         responseTimeMs: Date.now() - start,
-  //         providerSlug: this.slug,
-  //       };
-  //     }
-
-  //     this.logger.error(`KIE generateAudio: unknown model "${modelId}"`);
-  //     return {
-  //       success: false,
-  //       error: { code: 'NOT_IMPLEMENTED', message: `Audio model ${modelId} not implemented`, retryable: false },
-  //       responseTimeMs: 0,
-  //       providerSlug: this.slug,
-  //     };
-  //   } catch (error) {
-  //     this.logger.error(`KIE generateAudio error: ${error.message}`);
-  //     return this.handleError(error, start);
-  //   }
-  // }
-
   async generateAudio(request: AudioGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
@@ -957,7 +750,6 @@ export class KieProvider extends BaseProvider {
 
         const input: Record<string, any> = {};
 
-        // Берём текст из любого доступного поля
         const textValue = r.text || r.prompt || request.prompt || '';
         const audioUrl = r.audio_url || r.audioUrl || '';
         const voiceValue = r.voice || r.voiceId || 'Rachel';
@@ -988,45 +780,18 @@ export class KieProvider extends BaseProvider {
             input.output_format = r.output_format ?? 'mp3_44100_128';
             break;
 
-          // case 'elevenlabs/text-to-dialogue-v3':
-          //   // ═══ ИСПРАВЛЕНО: API принимает ТОЛЬКО stability и language_code ═══
-          //   // Диалог описывается в промпте текстом, а не массивом реплик.
-          //   // Модель сама генерирует голоса и озвучивает диалог.
-          //   input.stability = stabilityValue;
-          //   input.language_code = langValue || 'auto';
-
-          //   // Если пришёл массив dialogue — конвертируем в текстовый промпт
-          //   // и передаём как часть prompt (KIE использует prompt из task context)
-          //   if (Array.isArray(r.dialogue) && r.dialogue.length > 0) {
-          //     // Формируем текстовый скрипт диалога из реплик
-          //     const dialogueScript = r.dialogue
-          //       .map((line: any) => {
-          //         const speaker = line.voice || 'Speaker';
-          //         const text = line.text || '';
-          //         return `${speaker}: ${text}`;
-          //       })
-          //       .join('\n');
-          //     input.text = dialogueScript;
-          //   } else if (textValue) {
-          //     input.text = textValue;
-          //   }
-          //   break;
           case 'elevenlabs/text-to-dialogue-v3': {
             input.stability = stabilityValue;
             if (langValue) input.language_code = langValue;
 
-            // Собираем массив dialogue из разных источников
             let dialogueArray: Array<{ text: string; voice: string }> = [];
 
-            // 1. Если пришёл готовый массив dialogue
             if (Array.isArray(r.dialogue) && r.dialogue.length > 0) {
               dialogueArray = r.dialogue.map((line: any) => ({
                 text: String(line.text || ''),
                 voice: String(line.voice || 'Adam'),
               }));
-            }
-            // 2. Парсим из prompt в формате "Voice: текст"
-            else {
+            } else {
               const promptText = r.text || r.prompt || request.prompt || '';
               const lines = promptText.split('\n').filter((l: string) => l.trim());
 
@@ -1039,7 +804,6 @@ export class KieProvider extends BaseProvider {
                     dialogueArray.push({ text, voice: voice || 'Adam' });
                   }
                 } else if (line.trim()) {
-                  // Строка без "Голос:" — используем дефолтный голос
                   dialogueArray.push({ text: line.trim(), voice: 'Adam' });
                 }
               }
@@ -1051,7 +815,6 @@ export class KieProvider extends BaseProvider {
               );
             }
 
-            // Проверяем лимит 5000 символов
             const totalChars = dialogueArray.reduce((sum, d) => sum + d.text.length, 0);
             if (totalChars > 5000) {
               throw new Error(
@@ -1130,16 +893,13 @@ export class KieProvider extends BaseProvider {
           providerSlug: this.slug,
         };
 
-            } else if (sunoModels.has(modelId)) {
+      } else if (sunoModels.has(modelId)) {
         const sunoModel = sunoModelMap[modelId] || modelId;
         this.logger.debug(
           `KIE generateAudio: using Suno model=${modelId} → mapped to ${sunoModel}, ` +
           `operation=${r.operation || 'generate'}`,
         );
 
-        // 🆕 operation — пока логируем; в будущем будет менять endpoint
-        // ('extend', 'cover', 'stems', 'lyrics' и т.д.)
-        // По умолчанию 'generate' использует /api/v1/generate
         const operation = r.operation || 'generate';
 
         const body: any = {
@@ -1160,7 +920,7 @@ export class KieProvider extends BaseProvider {
           personaId: r.personaId,
           uploadUrl: r.uploadUrl,
           duration: r.duration,
-          operation, // 🆕 проброс в body (Suno API игнорирует, если не нужно)
+          operation,
         };
 
         this.logger.debug(`Sending request to KIE Suno: ${JSON.stringify(body).substring(0, 300)}`);
@@ -1192,7 +952,6 @@ export class KieProvider extends BaseProvider {
       };
     } catch (error: any) {
       this.logger.error(`KIE generateAudio error: ${error.message}`);
-      // Подробный лог ответа API
       if (error?.response) {
         this.logger.error(
           `KIE API response: status=${error.response.status}, ` +
@@ -1202,6 +961,7 @@ export class KieProvider extends BaseProvider {
       return this.handleError(error, start);
     }
   }
+
 
   async generateLyrics(prompt: string, callBackUrl: string): Promise<string> {
     try {
@@ -1214,11 +974,12 @@ export class KieProvider extends BaseProvider {
         throw new Error(data.msg || 'Lyrics generation failed');
       }
       return data.data.taskId;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`KIE generateLyrics error: ${error.message}`);
       throw error;
     }
   }
+
 
   async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
@@ -1246,26 +1007,64 @@ export class KieProvider extends BaseProvider {
       if (status === 'completed') {
         return {
           status: 'completed',
-          resultUrls: [], // optionally lyrics data can be fetched separately
+          resultUrls: [],
           progress: 100,
         };
       }
       return { status, progress: task.progress || 0 };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`KIE getLyricsTaskStatus error: ${error.message}`);
       return { status: 'failed', error: error.message };
     }
   }
 
-  // ═══════════════════════════════════════════════════════
-  // TEXT GENERATION — KIE Gemini models
-  // ═══════════════════════════════════════════════════════
 
-  // Модели, для которых KIE использует отдельный baseURL path
+  // ═══════════════════════════════════════════════════════
+  // TEXT GENERATION — KIE Gemini models (with VISION support)
+  // ═══════════════════════════════════════════════════════
   private static readonly KIE_TEXT_MODELS: Record<string, string> = {
     'gemini-3.1-pro': '/gemini-3.1-pro/v1/chat/completions',
     'gemini-3-flash': '/gemini-3-flash/v1/chat/completions',
   };
+
+
+  // 🆕 VISION HELPERS — OpenAI-compatible multimodal content
+  private buildOpenAIContent(
+    text: string,
+    imageUrls?: string[],
+  ): string | any[] {
+    if (!imageUrls || imageUrls.length === 0) {
+      return text;
+    }
+
+    const parts: any[] = [];
+
+    if (text && text.trim().length > 0) {
+      parts.push({ type: 'text', text });
+    }
+
+    for (const url of imageUrls) {
+      parts.push({
+        type: 'image_url',
+        image_url: { url },
+      });
+    }
+
+    return parts;
+  }
+
+  private prepareMessages(messages: any[]): any[] {
+    return messages.map((msg: any) => {
+      if (msg.imageUrls && msg.imageUrls.length > 0) {
+        return {
+          role: msg.role,
+          content: this.buildOpenAIContent(msg.content, msg.imageUrls),
+        };
+      }
+      return { role: msg.role, content: msg.content };
+    });
+  }
+
 
   async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
@@ -1281,10 +1080,16 @@ export class KieProvider extends BaseProvider {
     }
 
     try {
-      this.logger.debug(`KIE generateText: model=${request.model}, endpoint=${endpoint}`);
+      // 🆕 Преобразуем messages с поддержкой vision
+      const messages = this.prepareMessages(request.messages as any[]);
+      const hasImages = messages.some((m: any) => Array.isArray(m.content));
+
+      this.logger.debug(
+        `KIE generateText: model=${request.model}, endpoint=${endpoint}, hasImages=${hasImages}`,
+      );
 
       const response = await this.client.post(endpoint, {
-        messages: request.messages,
+        messages,
         max_tokens: request.maxTokens || 4096,
         temperature: request.temperature ?? 0.7,
         stream: false,
@@ -1305,11 +1110,12 @@ export class KieProvider extends BaseProvider {
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`KIE generateText error: ${error?.response?.status} - ${error.message}`);
       return this.handleError(error, start);
     }
   }
+
 
   async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
     const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
@@ -1320,12 +1126,18 @@ export class KieProvider extends BaseProvider {
     }
 
     try {
-      this.logger.debug(`KIE generateTextStream: model=${request.model}, endpoint=${endpoint}`);
+      // 🆕 Преобразуем messages с поддержкой vision
+      const messages = this.prepareMessages(request.messages as any[]);
+      const hasImages = messages.some((m: any) => Array.isArray(m.content));
+
+      this.logger.debug(
+        `KIE generateTextStream: model=${request.model}, endpoint=${endpoint}, hasImages=${hasImages}`,
+      );
 
       const response = await this.client.post(
         endpoint,
         {
-          messages: request.messages,
+          messages,
           max_tokens: request.maxTokens || 4096,
           temperature: request.temperature ?? 0.7,
           stream: true,
@@ -1387,11 +1199,10 @@ export class KieProvider extends BaseProvider {
         }
       }
 
-      // Стрим закончился без [DONE]
       this.logger.warn(`KIE stream ended without [DONE] for model ${request.model}`);
       yield { content: '', done: true };
 
-    } catch (error) {
+    } catch (error: any) {
       const status = error?.response?.status;
       let errorMessage = error.message;
 
@@ -1420,7 +1231,7 @@ export class KieProvider extends BaseProvider {
         errorMessage = `HTTP ${status}: ${error.message}`;
       }
 
-      this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
+            this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
       yield { content: '', done: true, error: `KIE: ${status || 'NETWORK'} - ${errorMessage}` };
     }
   }
@@ -1437,7 +1248,7 @@ export class KieProvider extends BaseProvider {
       });
       this.logger.debug(`KIE health OK: status=${res.status}, code=${res.data?.code}`);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       const status = error?.response?.status;
       if (status) {
         this.logger.debug(`KIE health OK (error response): status=${status}`);
@@ -1447,6 +1258,7 @@ export class KieProvider extends BaseProvider {
       return false;
     }
   }
+
 
   // ═══════════════════════════════════════════════════════
   // HELPERS
@@ -1458,12 +1270,12 @@ export class KieProvider extends BaseProvider {
     return `${width / g}:${height / g}`;
   }
 
+
   private handleError(error: any, start: number): GenerationResult {
     const status = error?.response?.status;
     const responseData = error?.response?.data;
     const message = responseData?.msg || responseData?.message || error.message;
 
-    // ═══ ПОДРОБНЫЙ ЛОГ ОШИБКИ ═══
     this.logger.error(
       `KIE API Error Details: status=${status}, ` +
       `message="${message}", ` +
@@ -1482,6 +1294,7 @@ export class KieProvider extends BaseProvider {
     };
   }
 
+
   private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
@@ -1494,7 +1307,6 @@ export class KieProvider extends BaseProvider {
         return { status: 'pending' };
       }
 
-      // ═══ ПОЛНЫЙ ЛОГ ═══
       this.logger.debug(
         `Runway task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
       );
@@ -1516,7 +1328,6 @@ export class KieProvider extends BaseProvider {
         let resultUrls: string[] = task.resultUrls || [];
 
         if (resultUrls.length === 0) {
-          // Пробуем альтернативные поля
           if (task.output?.url) resultUrls = [task.output.url];
           else if (task.url) resultUrls = [task.url];
           else if (task.video_url) resultUrls = [task.video_url];
@@ -1530,11 +1341,12 @@ export class KieProvider extends BaseProvider {
       }
 
       return { status, progress: task.progress || 0 };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Runway check task status error: ${error.message}`);
       return { status: 'failed', error: `Status check failed: ${error.message}` };
     }
   }
+
 
   private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
@@ -1548,7 +1360,6 @@ export class KieProvider extends BaseProvider {
         return { status: 'pending' };
       }
 
-      // ═══ ДОБАВЛЕН ПОЛНЫЙ ЛОГ ОТВЕТА ═══
       this.logger.debug(
         `Jobs task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
       );
@@ -1572,15 +1383,11 @@ export class KieProvider extends BaseProvider {
       }
 
       if (status === 'completed') {
-        // ═══ РАСШИРЕННЫЙ ПОИСК URL-ов ═══
-        // KIE может возвращать результаты в разных полях
         let resultUrls: string[] = [];
 
-        // 1. task.resultUrls — стандартное поле
         if (task.resultUrls?.length > 0) {
           resultUrls = task.resultUrls;
         }
-        // 2. task.output — некоторые модели
         else if (task.output?.urls?.length > 0) {
           resultUrls = task.output.urls;
         }
@@ -1590,7 +1397,6 @@ export class KieProvider extends BaseProvider {
         else if (Array.isArray(task.output)) {
           resultUrls = task.output.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
         }
-        // 3. task.result — альтернативное поле
         else if (task.result?.urls?.length > 0) {
           resultUrls = task.result.urls;
         }
@@ -1600,18 +1406,15 @@ export class KieProvider extends BaseProvider {
         else if (Array.isArray(task.result)) {
           resultUrls = task.result.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
         }
-        // 4. task.images / task.videos / task.audio
         else if (task.images?.length > 0) {
           resultUrls = task.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
         }
         else if (task.videos?.length > 0) {
           resultUrls = task.videos.map((v: any) => typeof v === 'string' ? v : v.url).filter(Boolean);
         }
-        // 5. task.url — единичный результат
         else if (task.url) {
           resultUrls = [task.url];
         }
-        // 6. task.image_url / task.video_url / task.audio_url
         else if (task.image_url) {
           resultUrls = [task.image_url];
         }
@@ -1621,14 +1424,12 @@ export class KieProvider extends BaseProvider {
         else if (task.audio_url) {
           resultUrls = [task.audio_url];
         }
-        // 7. task.data — вложенный объект
         else if (task.data?.urls?.length > 0) {
           resultUrls = task.data.urls;
         }
         else if (task.data?.url) {
           resultUrls = [task.data.url];
         }
-        // 8. task.resultJson — строка JSON
         else if (task.resultJson) {
           try {
             const parsed = JSON.parse(task.resultJson);
@@ -1667,7 +1468,7 @@ export class KieProvider extends BaseProvider {
         status,
         progress: task.progress || 0,
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Jobs check task status error: ${error.message}`);
       return {
         status: 'failed',
