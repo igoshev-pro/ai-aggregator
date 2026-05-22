@@ -502,3 +502,288 @@ C) Только цифры в карточках (без графиков пок
 6. admin.module.ts
 
 📨 Скидывай — и я пишу полностью рабочий код в 6 сообщениях подряд 🚀
+
+🔥 Шикарно, скриншоты дали полную картину! Теперь я понимаю реальную модель. Зафиксирую:
+
+✅ Финальная архитектура (на основе скринов)
+
+Тарифы (Plans) — 4 штуки + Free
+
+Тариф	Цена/мес	Спички	Доступ к моделям
+Free	0 ₽	50 (при регистрации)	Ограниченный
+Basic	450 ₽	150	Ограниченный
+Plus	990 ₽	330 + бонусы	Полный + 3 безлимитные модели (10/час, 60/сутки)
+Max	2490 ₽	830 + 50 в подарок	Полный + 3 безлимитные модели
+Ultimate	5990 ₽	1997 + 220 в подарок	Полный + 6 безлимитных моделей
+Безлимитные модели в тарифах
+
+Это модели, доступные бесплатно (без списания спичек) с rate-limit (10 запросов/час, 60/сутки). У каждого тарифа свой список таких моделей.
+
+Курс
+
+1 спичка = 3 ₽ (или $X в USD) — хранится в Settings, редактируется админом.
+
+Пакеты спичек (отдельно от подписок)
+
+Юзер может докупать спички пачками — например, «500 спичек за 1500 ₽». Тоже редактируются админом.
+
+📐 Структура сущностей в БД (буду создавать)
+
+
+1. AIModel          — модели (gpt-oss-120b, DeepSeek и т.д.)
+2. Plan             — тарифы (Free, Basic, Plus, Max, Ultimate)
+3. TokenPackage     — пакеты спичек на докупку
+4. Settings         — глобальные настройки (курс, бонус регистрации)
+5. User             — уже есть (tokenBalance, bonusTokens, planId, planExpiresAt)
+❓ Финальные уточнения (последние, обещаю)
+
+1. Списание спичек — округление
+
+При запросе списываем inputTokens × priceIn + outputTokens × priceOut. Получается дробь, например 0.47 спички.
+
+Ты сказал «А — дробные». Уточню: сколько знаков после запятой показывать юзеру?
+
+A) Целое в UI, дробное в БД: баланс 19 (а в БД 19.347)
+B) 1 знак: баланс 19.3
+C) 2 знака: баланс 19.34
+На скрине у тебя написано «Баланс 19 🔥» — выглядит как целое. Подтверди вариант A?
+
+2. Безлимитные модели в тарифе — где хранить лимиты?
+
+Вариант, который вижу из скрина: «10/час, 60/сутки» — одинаковый для всех безлимитных моделей в тарифе.
+
+A) Лимит хранится в тарифе (Plan):
+
+Js
+
+Plan {
+  unlimitedModels: [
+    { modelId: 'gpt-oss-120b', requestsPerHour: 10, requestsPerDay: 60 },
+    { modelId: 'deepseek-v3.2', requestsPerHour: 10, requestsPerDay: 60 },
+  ]
+}
+B) Лимит общий на тариф:
+
+Js
+
+Plan {
+  unlimitedModels: ['gpt-oss-120b', 'deepseek-v3.2'],
+  unlimitedLimits: { requestsPerHour: 10, requestsPerDay: 60 }
+}
+B проще, A гибче (можно одной модели дать 10/час, другой 20/час). Что выбираешь?
+
+3. Что показывать в карточке тарифа (поля)
+
+Вижу на скрине: «Генерация 275 изображений», «Генерация 55 видео», «Генерация 82 песен». Это расчётные значения (спички ÷ цена), или захардкоженные числа, которые админ вводит вручную?
+
+A) Расчётные — у каждой генерации (текст/картинка/видео/песня) есть «средняя цена», числа считаются автоматом: 330 спичек ÷ 1.2 спички за картинку = 275
+
+B) Ручные — админ просто пишет в карточке тарифа: "275 изображений, 55 видео, 82 песни" как маркетинговый текст
+
+Что выбираешь?
+
+4. Подписка и докупка — как комбинируются?
+
+У юзера есть тариф Plus (330 спичек/мес). Спички закончились через 2 недели. Что дальше?
+
+A) Можно докупить пакет спичек, они добавятся к балансу. В конце месяца — обновляется до 330 (старые сгорают)
+B) Можно докупить, и купленные не сгорают (живут отдельно от подписочных)
+C) Купленные складываются и не сгорают, подписочные обновляются каждый месяц
+
+Какая модель ближе?
+
+Ответь на 1–4 (можно коротко: 1-A, 2-B, 3-A, 4-C) — и я сразу запрошу нужные файлы (схемы User, AIModel, существующие Plan/Subscription если есть, AdminController, AdminService). 🎯
+
+📋 КОНТЕКСТ ПРОЕКТА: SPICHKI AI — Админка
+
+🏗️ Архитектура проекта
+
+Монорепо:
+
+ai-aggregator/ — Backend (NestJS + MongoDB/Mongoose)
+ai-miniapp/ — Frontend (Next.js + React, Telegram Mini App + Web)
+Текущее состояние админки:
+
+✅ Backend: базовая AdminModule есть (controller + service + module)
+❌ Frontend: админки нет, нужно создавать с нуля
+💰 ЭКОНОМИКА (зафиксировано окончательно)
+
+Внутренняя валюта
+
+Спички 🔥 (в UI) = tokens (в коде)
+Хранятся в User.tokenBalance (купленные) + User.bonusTokens (бонусные) + User.cashbackBalance (реф. кэшбек 10%)
+В БД дробные (Number), в UI округляются до целых
+Не сгорают ни купленные, ни бонусные при обновлении подписки
+Курс
+
+1 спичка = 3 ₽ (захардкожен tokenPriceRub: 3 в BillingService)
+1 $ = 75 ₽ (захардкожено RUB_TO_USD_RATE = 75)
+⚠️ TODO в Части 4: вынести в коллекцию Settings, редактировать из админки
+Списание приоритет
+
+Сейчас в коде используется суммарно tokenBalance + bonusTokens. Логика списания внутри UsersService.deductTokens (нужно посмотреть отдельно при работе с балансом).
+
+🤖 МОДЕЛИ (AIModel)
+
+Схема уже сложная и продуманная:
+
+Поле	Назначение
+slug, name, displayName, description, icon	Базовая инфа
+type	text / image / video / audio
+isActive, isPremium, supportsVision	Флаги
+sortOrder	Порядок отображения
+costPerMillionInputTokens / costPerMillionOutputTokens	Цены в долларах за 1M токенов (для text)
+fixedCostPerGeneration	Цена в $ за 1 ген. (для media, fallback)
+tokensPerDollar	Курс конвертации $ → спички (по умолчанию 30, в text — 100 в коде)
+minTokenCost	Минимум 1 спичка
+providerMappings	Маппинг на провайдеров (Provider → providerSlug → modelId)
+pricingMatrix	🔥 Матрица цен для media — массив правил {conditions, costInTokens, costInDollars, label}
+uiParameters	Описание UI формы генерации (select/toggle/number, options, visibleWhen)
+inputCapabilities	Что принимает на вход (images, files, audio, video)
+defaultParams, limits, capabilities, stats	Прочее
+⚠️ Важный нюанс: pricingMatrix и uiParameters — это сердце media-генерации. Их редактирование в админке = главная задача Части 2.
+
+📦 ПОДПИСКИ (Subscription + SUBSCRIPTION_PLANS)
+
+Сейчас тарифы захардкожены в коде в BillingService:
+
+Basic 450₽ → 150 спичек, без бесплатных моделей
+Plus 990₽ → 330 спичек + 3 бесплатных text модели (10/час, 60/сутки)
+Max 2490₽ → 830 + 50 бонус + 3 безлимитных text
+Ultimate 5990₽ → 1997 + 220 бонус + 6 моделей (text безлимит, image с лимитами)
+⚠️ TODO в Части 3: перенести SUBSCRIPTION_PLANS из кода в БД (новая схема Plan), редактируемые из админки.
+
+Бесплатные модели в плане:
+
+Ts
+
+freeModels: [
+  { modelSlug, displayName, hourlyLimit, dailyLimit }  // null = безлимит
+]
+Deprecated planы (миграция):
+
+PRO → PLUS
+UNLIMITED → ULTIMATE
+💸 ПАКЕТЫ ТОКЕНОВ
+
+Тоже захардкожены в коде:
+
+100/300/700/1500/5000 спичек за 99/249/499/899/2499 ₽
+⚠️ TODO в Части 3: перенести в БД (новая схема TokenPackage).
+
+🎟️ ПРОМОКОДЫ (PromoCode)
+
+Уже есть, методы в BillingService:
+
+createPromoCode, applyPromoCode, getAllPromoCodes, deactivatePromoCode
+Поля: code, description, bonusTokens, discountPercent, maxUses, expiresAt, usedByUsers[]
+💳 ТРАНЗАКЦИИ (Transaction)
+
+Полная история операций. Типы (TransactionType):
+
+DEPOSIT — пополнение
+GENERATION — списание за генерацию
+SUBSCRIPTION — оплата подписки
+PROMO_CODE — бонус по промокоду
+REFERRAL_BONUS — кэшбек 10%
+REFUND — возврат
+ADMIN_ADJUSTMENT — ручная корректировка админом
+Поля включают: inputTokens, outputTokens, costInDollars, costInTokens, metadata.
+
+💸 ПЛАТЁЖНЫЕ ПРОВАЙДЕРЫ
+
+В коде уже подключены:
+
+YookassaProvider (RUB)
+CryptomusProvider (крипта)
+StarsProvider (Telegram Stars)
+FreedomPayProvider (RUB, KZT)
+TochkaProvider (RUB, банк Точка)
+HeleketProvider (крипта)
+Все обрабатываются webhook'ами в BillingService.
+
+👮 РОЛИ (UserRole)
+
+USER — обычный юзер
+ADMIN — может всё, кроме создания AI-моделей
+SUPER_ADMIN — может всё
+Защита: JwtAuthGuard + RolesGuard + @Roles(...) декоратор.
+
+✅ ЧТО УЖЕ ЕСТЬ В АДМИНКЕ (backend)
+
+AdminController (/admin/*) с эндпоинтами:
+
+GET /dashboard — статистика
+GET /users + PUT /users/:id/role + PUT /users/:id/ban + POST /users/:id/adjust-balance
+GET /providers + PUT /providers/:slug
+GET /models + PUT /models/:slug — ⚠️ только обновление, нет CREATE/DELETE!
+GET /promo-codes + POST /promo-codes + DELETE /promo-codes/:code
+GET /analytics/revenue + GET /analytics/generations + GET /analytics/models
+❌ ЧТО НУЖНО ДОБАВИТЬ (TODO по частям)
+
+Часть 2: CRUD моделей (текущая)
+
+✅ POST /admin/models — создать модель (только SUPER_ADMIN)
+✅ DELETE /admin/models/:slug — soft delete
+✅ Расширить PUT /admin/models/:slug — редактирование всех полей (pricingMatrix, uiParameters, цены, лимиты)
+✅ DTO с валидацией
+✅ Frontend: страница /admin/models со списком + формой создания/редактирования
+Часть 3: Тарифы и пакеты в БД
+
+Новая схема Plan + CRUD
+Новая схема TokenPackage + CRUD
+Миграция данных из захардкоженных констант
+Frontend: страницы /admin/plans, /admin/packages
+Часть 4: Settings (глобальные настройки)
+
+Новая схема Settings (курс рубля, курс спички, бонус регистрации)
+Frontend: страница /admin/settings
+Часть 5: Расширенная админка пользователей
+
+Просмотр транзакций юзера
+История генераций юзера
+Реферальное дерево
+Управление подпиской (выдать вручную)
+Часть 6: Аналитика и графики (фронт)
+
+Дашборд с графиками (revenue, генерации по дням, топ моделей)
+Использует уже готовые эндпоинты GET /admin/analytics/*
+Часть 7: Layout админки + навигация (фронт)
+
+Sidebar, header, защита роутов от не-админов
+Локация: предположительно ai-miniapp/src/app/admin/
+🎯 ПРИОРИТЕТ И ПОРЯДОК
+
+Предлагаю такой порядок выполнения:
+
+Часть 2 — Модели (CRUD на backend + UI) ← СТАРТУЕМ С НЕЁ
+Часть 7 — Layout админки (чтобы было куда встроить страницу моделей)
+Часть 3 — Тарифы + пакеты в БД
+Часть 4 — Settings
+Часть 5 — Пользователи (детальный просмотр)
+Часть 6 — Графики/аналитика
+❓ ВОПРОСЫ ПЕРЕД СТАРТОМ ЧАСТИ 2
+
+Прежде чем писать код, 3 финальных уточнения:
+
+1. Куда класть админку на фронте?
+
+Вижу структуру ai-miniapp/src/app/ (Next.js App Router). Создавать ai-miniapp/src/app/admin/... как отдельный раздел? Или будет отдельное приложение (например ai-admin/)?
+
+Рекомендую: в том же ai-miniapp под /admin/* — проще авторизация, общий API-клиент, общие компоненты UI. Согласен?
+
+2. UI библиотека
+
+Вижу папку components/ui — это shadcn/ui? Какой подход к стилизации (Tailwind?)? Какие компоненты уже есть (Button, Input, Modal, Table)?
+
+Кинь скрин содержимого components/ui или просто скажи «shadcn, всё стандартное».
+
+3. Перед стартом части 2 — начать с layout (Часть 7) или сразу страница моделей?
+
+A) Сначала Часть 7 (layout админки, sidebar, защита роутов) — потом Часть 2 встроится красиво
+B) Сразу Часть 2 (модели) — layout сделаем минималистичный, добьём позже
+
+Я бы шёл по A — иначе будем переделывать. Что выбираешь?
+
+После твоих ответов на 1-3 — стартуем код. 🚀
+

@@ -27,6 +27,31 @@ import { UserRole } from '@/common/interfaces';
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
+  // ─── Access check ───────────────────────────────────────────────
+
+  /**
+   * Быстрая проверка доступа к админке.
+   * Возвращает 200 + данные админа, если есть доступ.
+   * Возвращает 401/403, если нет.
+   * Используется фронтом в useAdminAuth.
+   */
+  @Get('check')
+  @ApiOperation({ summary: 'Check admin access' })
+  async checkAccess(
+    @CurrentUser('sub') adminId: string,
+    @CurrentUser('role') role: UserRole,
+    @CurrentUser('telegramId') telegramId: number,
+    @CurrentUser('username') username: string,
+  ) {
+    return {
+      ok: true,
+      role,
+      telegramId,
+      username,
+      userId: adminId,
+    };
+  }
+
   // ─── Dashboard ──────────────────────────────────────────────────
 
   @Get('dashboard')
