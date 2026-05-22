@@ -18,6 +18,7 @@ import { RolesGuard } from '@/common/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { UserRole } from '@/common/interfaces';
+import { CreateModelDto, ModelsFilterDto, UpdateModelDto } from './dto/model.dto';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -25,7 +26,7 @@ import { UserRole } from '@/common/interfaces';
 @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(private readonly adminService: AdminService) { }
 
   // ─── Access check ───────────────────────────────────────────────
 
@@ -135,24 +136,54 @@ export class AdminController {
   // ─── Models ─────────────────────────────────────────────────────
 
   @Get('models')
-  @ApiOperation({ summary: 'List all AI models' })
-  async getModels() {
-    const data = await this.adminService.getModels();
+  @ApiOperation({ summary: 'List models with filters' })
+  async getModels(@Query() filters: ModelsFilterDto) {
+    const data = await this.adminService.getModelsFiltered(filters);
+    return { success: true, data };
+  }
+
+  @Get('models/:slug')
+  @ApiOperation({ summary: 'Get model by slug' })
+  async getModel(@Param('slug') slug: string) {
+    const data = await this.adminService.getModelBySlug(slug);
+    return { success: true, data };
+  }
+
+  @Post('models')
+  @Roles(UserRole.SUPER_ADMIN)
+  @HttpCode(201)
+  @ApiOperation({ summary: 'Create new model' })
+  async createModel(@Body() body: CreateModelDto) {
+    const data = await this.adminService.createModel(body);
     return { success: true, data };
   }
 
   @Put('models/:slug')
-  @ApiOperation({ summary: 'Update model settings' })
+  @ApiOperation({ summary: 'Update model' })
   async updateModel(
     @Param('slug') slug: string,
-    @Body() body: {
-      isActive?: boolean;
-      tokenCost?: number;
-      isPremium?: boolean;
-      sortOrder?: number;
-    },
+    @Body() body: UpdateModelDto,
   ) {
     const data = await this.adminService.updateModel(slug, body);
+    return { success: true, data };
+  }
+
+  @Post('models/:slug/toggle')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Toggle isActive flag' })
+  async toggleModel(@Param('slug') slug: string) {
+    const data = await this.adminService.toggleModelActive(slug);
+    return { success: true, data };
+  }
+
+  @Delete('models/:slug')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Delete model (soft by default, ?hard=true for hard)' })
+  async deleteModel(
+    @Param('slug') slug: string,
+    @Query('hard') hard?: string,
+  ) {
+    const data = await this.adminService.deleteModel(slug, hard === 'true');
     return { success: true, data };
   }
 

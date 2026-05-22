@@ -9,6 +9,7 @@ import { Transaction, TransactionSchema } from '../billing/schemas/transaction.s
 import { UsersModule } from '../users/users.module';
 import { AiProvidersModule } from '../ai-providers/ai-providers.module';
 import { BillingModule } from '../billing/billing.module';
+import { AIModel, AIModelSchema } from '../ai-providers/schemas/model.schema';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { BillingModule } from '../billing/billing.module';
       { name: User.name, schema: UserSchema },
       { name: Generation.name, schema: GenerationSchema },
       { name: Transaction.name, schema: TransactionSchema },
+      { name: AIModel.name, schema: AIModelSchema },
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AiProvidersModule),

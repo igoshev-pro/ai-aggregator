@@ -8,6 +8,7 @@ import { BillingService } from '../billing/billing.service';
 import { Generation, GenerationDocument } from '../generation/schemas/generation.schema';
 import { Transaction, TransactionDocument } from '../billing/schemas/transaction.schema';
 import { UserRole, TransactionType, PaymentStatus, GenerationStatus } from '@/common/interfaces';
+import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
 
 @Injectable()
 export class AdminService {
@@ -17,6 +18,7 @@ export class AdminService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Generation.name) private generationModel: Model<GenerationDocument>,
     @InjectModel(Transaction.name) private transactionModel: Model<TransactionDocument>,
+    @InjectModel(AIModel.name) private aiModelModel: Model<ModelDocument>,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
     @Inject(forwardRef(() => AiProvidersService))
@@ -166,13 +168,80 @@ export class AdminService {
 
   // ─── Models ─────────────────────────────────────────────────────
 
-  async getModels() {
-    return this.aiProvidersService.getAllModels();
+async getModelsFiltered(filters: {
+  search?: string;
+  type?: string;
+  isActive?: string;
+  isPremium?: string;
+}) {
+  const q: any = {};
+
+  if (filters.type) q.type = filters.type;
+  if (filters.isActive === 'true') q.isActive = true;
+  if (filters.isActive === 'false') q.isActive = false;
+  if (filters.isPremium === 'true') q.isPremium = true;
+  if (filters.isPremium === 'false') q.isPremium = false;
+
+  if (filters.search) {
+    const rx = new RegExp(filters.search.trim(), 'i');
+    q.$or = [{ slug: rx }, { name: rx }, { displayName: rx }];
   }
 
-  async updateModel(slug: string, updates: any) {
-    return this.aiProvidersService.updateModel(slug, updates);
+  const items = await this.aiModelModel
+    .find(q)
+    .sort({ type: 1, sortOrder: 1, displayName: 1 })
+    .lean()
+    .exec();
+
+  return { items, total: items.length };
+}
+
+async getModelBySlug(slug: string) {
+  const model = await this.aiModelModel.findOne({ slug }).lean().exec();
+  if (!model) throw new Error(`Model "${slug}" not found`);
+  return model;
+}
+
+async updateModel(slug: string, updates: any) {
+  const updated = await this.aiModelModel
+    .findOneAndUpdate({ slug }, { $set: updates }, { new: true })
+    .lean()
+    .exec();
+  if (!updated) throw new Error(`Model "${slug}" not found`);
+  this.logger.log(`Model "${slug}" updated: ${Object.keys(updates).join(', ')}`);
+  return updated;
+}
+
+async toggleModelActive(slug: string) {
+  const model = await this.aiModelModel.findOne({ slug }).exec();
+  if (!model) throw new Error(`Model "${slug}" not found`);
+  model.isActive = !model.isActive;
+  await model.save();
+  return model.toObject();
+}
+
+async createModel(data: any) {
+  const exists = await this.aiModelModel.findOne({ slug: data.slug }).lean();
+  if (exists) throw new Error(`Model with slug "${data.slug}" already exists`);
+  const created = await this.aiModelModel.create(data);
+  this.logger.log(`Model "${data.slug}" created`);
+  return created.toObject();
+}
+
+async deleteModel(slug: string, hard = false) {
+  if (hard) {
+    const res = await this.aiModelModel.deleteOne({ slug }).exec();
+    if (!res.deletedCount) throw new Error(`Model "${slug}" not found`);
+    this.logger.warn(`Model "${slug}" HARD-deleted`);
+    return { deleted: true, hard: true };
   }
+  const updated = await this.aiModelModel
+    .findOneAndUpdate({ slug }, { $set: { isActive: false } }, { new: true })
+    .lean();
+  if (!updated) throw new Error(`Model "${slug}" not found`);
+  this.logger.log(`Model "${slug}" soft-deleted (isActive=false)`);
+  return { deleted: true, hard: false, model: updated };
+}
 
   // ─── Promo codes ────────────────────────────────────────────────
 
