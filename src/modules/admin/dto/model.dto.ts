@@ -39,6 +39,26 @@ export class UpdateModelDto {
   @IsOptional() @IsNumber() @Min(0) tokenCost?: number;
 
   @IsOptional() @IsArray() @IsString({ each: true }) capabilities?: string[];
+
+  @IsOptional()
+  @IsArray()
+  uiParameters?: any[]
+
+  @IsOptional()
+  @IsArray()
+  pricingMatrix?: any[]
+
+  @IsOptional()
+  @IsObject()
+  inputCapabilities?: Record<string, any>
+
+  @IsOptional()
+  @IsObject()
+  defaultParams?: Record<string, any>
+
+  @IsOptional()
+  @IsArray()
+  capabilities?: string[]
 }
 
 export class CreateModelDto extends UpdateModelDto {
