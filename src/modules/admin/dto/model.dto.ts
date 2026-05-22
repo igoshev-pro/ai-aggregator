@@ -5,6 +5,7 @@ import {
   IsEnum,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   Min,
@@ -55,10 +56,6 @@ export class UpdateModelDto {
   @IsOptional()
   @IsObject()
   defaultParams?: Record<string, any>
-
-  @IsOptional()
-  @IsArray()
-  capabilities?: string[]
 }
 
 export class CreateModelDto extends UpdateModelDto {
