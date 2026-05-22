@@ -1,4 +1,9 @@
-import { forwardRef, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  forwardRef,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
@@ -25,7 +30,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       if (!user || !user.isActive || user.isBanned) {
         throw new UnauthorizedException();
       }
-      return payload;
+
+      // 🆕 Возвращаем расширенный объект:
+      // - всё из payload (sub, iat, exp)
+      // - + актуальные поля юзера из БД (role, telegramId, username)
+      // - + удобный alias userId
+      return {
+        ...payload,
+        userId: payload.sub,
+        role: user.role,
+        telegramId: user.telegramId,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      };
     } catch {
       throw new UnauthorizedException();
     }

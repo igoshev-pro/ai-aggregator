@@ -38,7 +38,7 @@ export class AdminController {
   @Get('check')
   @ApiOperation({ summary: 'Check admin access' })
   async checkAccess(
-    @CurrentUser('sub') adminId: string,
+    @CurrentUser('userId') userId: string,
     @CurrentUser('role') role: UserRole,
     @CurrentUser('telegramId') telegramId: number,
     @CurrentUser('username') username: string,
@@ -48,7 +48,7 @@ export class AdminController {
       role,
       telegramId,
       username,
-      userId: adminId,
+      userId,
     };
   }
 
