@@ -10,6 +10,11 @@ import { UsersModule } from '../users/users.module';
 import { AiProvidersModule } from '../ai-providers/ai-providers.module';
 import { BillingModule } from '../billing/billing.module';
 import { AIModel, AIModelSchema } from '../ai-providers/schemas/model.schema';
+import {
+  TokenomicsSettings,
+  TokenomicsSettingsSchema,
+} from './schemas/tokenomics-settings.schema';
+
 
 @Module({
   imports: [
@@ -18,6 +23,7 @@ import { AIModel, AIModelSchema } from '../ai-providers/schemas/model.schema';
       { name: Generation.name, schema: GenerationSchema },
       { name: Transaction.name, schema: TransactionSchema },
       { name: AIModel.name, schema: AIModelSchema },
+      { name: TokenomicsSettings.name, schema: TokenomicsSettingsSchema },
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AiProvidersModule),

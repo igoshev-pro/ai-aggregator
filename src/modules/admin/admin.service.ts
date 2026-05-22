@@ -9,6 +9,10 @@ import { Generation, GenerationDocument } from '../generation/schemas/generation
 import { Transaction, TransactionDocument } from '../billing/schemas/transaction.schema';
 import { UserRole, TransactionType, PaymentStatus, GenerationStatus } from '@/common/interfaces';
 import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
+import {
+  TokenomicsSettings,
+  TokenomicsSettingsDocument,
+} from './schemas/tokenomics-settings.schema';
 
 @Injectable()
 export class AdminService {
@@ -25,6 +29,8 @@ export class AdminService {
     private aiProvidersService: AiProvidersService,
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
+    @InjectModel(TokenomicsSettings.name)
+private tokenomicsModel: Model<TokenomicsSettingsDocument>,
   ) {}
 
   // ─── Dashboard ──────────────────────────────────────────────────
@@ -351,4 +357,41 @@ async deleteModel(slug: string, hard = false) {
       { $sort: { totalRequests: -1 } },
     ]);
   }
+
+  // ─── Tokenomics ─────────────────────────────────────────────────
+
+async getTokenomics() {
+  const doc = await this.tokenomicsModel.findOne().lean().exec();
+  if (doc) return doc;
+
+  const created = await this.tokenomicsModel.create({
+    tokenToDollarRate: 0.01,
+    freeTokensOnSignup: 50,
+    minPurchaseTokens: 100,
+    refundOnError: true,
+    purchasePacks: [
+      { tokens: 100, priceRub: 99, bonusTokens: 0, label: 'Старт' },
+      { tokens: 500, priceRub: 449, bonusTokens: 50, label: 'Популярная', highlight: true },
+      { tokens: 1000, priceRub: 849, bonusTokens: 150 },
+      { tokens: 5000, priceRub: 3990, bonusTokens: 1000, label: 'Выгодная' },
+    ],
+  });
+
+  return created.toObject();
+}
+
+async updateTokenomics(adminId: string, updates: any) {
+  const existing = await this.tokenomicsModel.findOne().exec();
+
+  if (!existing) {
+    const created = await this.tokenomicsModel.create({ ...updates, updatedBy: adminId });
+    this.logger.log(`Tokenomics created by ${adminId}`);
+    return created.toObject();
+  }
+
+  Object.assign(existing, updates, { updatedBy: adminId });
+  await existing.save();
+  this.logger.log(`Tokenomics updated by ${adminId}`);
+  return existing.toObject();
+}
 }

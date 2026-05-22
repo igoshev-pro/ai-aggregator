@@ -19,6 +19,7 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { UserRole } from '@/common/interfaces';
 import { CreateModelDto, ModelsFilterDto, UpdateModelDto } from './dto/model.dto';
+import { UpdateTokenomicsDto } from './dto/tokenomics.dto';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -243,4 +244,24 @@ export class AdminController {
     const data = await this.adminService.getModelUsageAnalytics();
     return { success: true, data };
   }
+
+  // ─── Tokenomics settings ────────────────────────────────────────
+
+@Get('settings/tokenomics')
+@ApiOperation({ summary: 'Get tokenomics settings' })
+async getTokenomics() {
+  const data = await this.adminService.getTokenomics();
+  return { success: true, data };
+}
+
+@Put('settings/tokenomics')
+@Roles(UserRole.SUPER_ADMIN)
+@ApiOperation({ summary: 'Update tokenomics settings' })
+async updateTokenomics(
+  @CurrentUser('sub') adminId: string,
+  @Body() body: UpdateTokenomicsDto,
+) {
+  const data = await this.adminService.updateTokenomics(adminId, body);
+  return { success: true, data };
+}
 }
