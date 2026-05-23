@@ -41,6 +41,7 @@ export class PromoCode {
   description: string;
 
   @Prop({
+    type: String,
     required: true,
     enum: Object.values(PromoCodeType),
     default: PromoCodeType.BONUS_TOKENS,
@@ -49,6 +50,7 @@ export class PromoCode {
   type: PromoCodeType;
 
   @Prop({
+    type: String,
     required: true,
     enum: Object.values(PromoApplyTo),
     default: PromoApplyTo.ANY,
@@ -56,68 +58,54 @@ export class PromoCode {
   applyTo: PromoApplyTo;
 
   // ─── Значения (зависят от type) ───────────────────────────────
-  /** Для type=BONUS_TOKENS — сколько токенов начислить. */
-  @Prop({ default: 0, min: 0 })
+  @Prop({ type: Number, default: 0, min: 0 })
   bonusTokens: number;
 
-  /** Для type=DISCOUNT_PERCENT — процент скидки (1-100). */
-  @Prop({ default: 0, min: 0, max: 100 })
+  @Prop({ type: Number, default: 0, min: 0, max: 100 })
   discountPercent: number;
 
-  /** Для type=DISCOUNT_RUB — фиксированная скидка в рублях. */
-  @Prop({ default: 0, min: 0 })
+  @Prop({ type: Number, default: 0, min: 0 })
   discountRub: number;
 
-  /** Для type=SUBSCRIPTION_DAYS — сколько дней подписки. */
-  @Prop({ default: 0, min: 0 })
+  @Prop({ type: Number, default: 0, min: 0 })
   subscriptionDays: number;
 
-  /** Для type=SUBSCRIPTION_DAYS — какой план активировать. */
   @Prop({ type: String, enum: ['pro', 'premium'], default: null })
   subscriptionPlan?: 'pro' | 'premium' | null;
 
   // ─── Ограничения применения ───────────────────────────────────
-  /** Применим только к этим плановым ключам. null/[] = к любому. */
   @Prop({ type: [String], default: [] })
   applicablePlans: string[];
 
-  /** Применим только к этим packageId. null/[] = к любому. */
   @Prop({ type: [String], default: [] })
   applicablePackages: string[];
 
-  /** Минимальная сумма покупки в рублях для применения скидки. */
-  @Prop({ default: 0, min: 0 })
+  @Prop({ type: Number, default: 0, min: 0 })
   minPurchaseRub: number;
 
   // ─── Лимиты использования ─────────────────────────────────────
   /** null = без ограничения. */
-  @Prop({ default: null })
+  @Prop({ type: Number, default: null })
   maxUses: number | null;
 
-  @Prop({ default: 0 })
+  @Prop({ type: Number, default: 0 })
   currentUses: number;
 
-  /** Сколько раз один юзер может использовать. */
-  @Prop({ default: 1, min: 1 })
+  @Prop({ type: Number, default: 1, min: 1 })
   maxUsesPerUser: number;
 
   // ─── Сроки ────────────────────────────────────────────────────
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   startsAt: Date | null;
 
-  @Prop({ default: null, index: true })
+  @Prop({ type: Date, default: null, index: true })
   expiresAt: Date | null;
 
   // ─── Статусы ──────────────────────────────────────────────────
-  @Prop({ default: true, index: true })
+  @Prop({ type: Boolean, default: true, index: true })
   isActive: boolean;
 
-  // ─── Кто использовал (для maxUsesPerUser) ─────────────────────
-  /**
-   * Массив { userId, usesCount, lastUsedAt } — компактнее чем дублировать строки.
-   * Поскольку maxUsesPerUser обычно = 1, можно держать как массив userId.
-   * Для гибкости — храним подробнее.
-   */
+  // ─── Кто использовал ──────────────────────────────────────────
   @Prop({
     type: [
       {
@@ -135,20 +123,20 @@ export class PromoCode {
   }>;
 
   // ─── Статистика ───────────────────────────────────────────────
-  @Prop({ default: 0 })
+  @Prop({ type: Number, default: 0 })
   totalDiscountGivenRub: number;
 
-  @Prop({ default: 0 })
+  @Prop({ type: Number, default: 0 })
   totalBonusTokensGiven: number;
 
-  @Prop({ default: 0 })
+  @Prop({ type: Number, default: 0 })
   totalSubscriptionDaysGiven: number;
 
   // ─── Метаданные ───────────────────────────────────────────────
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   createdBy: string | null;
 
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   internalNote: string | null;
 }
 
