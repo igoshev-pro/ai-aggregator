@@ -14,7 +14,8 @@ import {
   TokenomicsSettings,
   TokenomicsSettingsSchema,
 } from './schemas/tokenomics-settings.schema';
-
+import { AdminBillingService } from './admin-billing.service';
+import { AdminBillingController } from './admin-billing.controller';
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import {
     forwardRef(() => AiProvidersModule),
     forwardRef(() => BillingModule),
   ],
-  controllers: [AdminController],
-  providers: [AdminService],
+  controllers: [AdminController, AdminBillingController],
+  providers: [AdminService, AdminBillingService],
 })
 export class AdminModule {}

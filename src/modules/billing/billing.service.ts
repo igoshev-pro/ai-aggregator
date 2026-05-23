@@ -31,57 +31,25 @@ import { TochkaProvider } from './providers/tochka/tochka.provider';
 import { TochkaAcquiringWebhookPayload } from './providers/tochka/tochka.types';
 import { HeleketProvider } from './providers/heleket.provider';
 import { ReferralService } from '../referral/referral.service';
-
+import {
+  SubscriptionPlanEntity,
+  SubscriptionPlanDocument,
+} from './schemas/subscription-plan.schema';
+import {
+  TokenPackageEntity,
+  TokenPackageDocument,
+} from './schemas/token-package.schema';
 
 // ─── Курс конвертации ────────────────────────────────────────────
 const RUB_TO_USD_RATE = 75; // 75₽ = $1
 
-
-// ─── Пакеты токенов ──────────────────────────────────────────────
-const TOKEN_PACKAGES = [
-  {
-    id: 'pack_100',
-    tokens: 100,
-    priceRub: 99,
-    label: '100 токенов',
-  },
-  {
-    id: 'pack_300',
-    tokens: 300,
-    priceRub: 249,
-    label: '300 токенов',
-    popular: true,
-  },
-  {
-    id: 'pack_700',
-    tokens: 700,
-    priceRub: 499,
-    label: '700 токенов',
-  },
-  {
-    id: 'pack_1500',
-    tokens: 1500,
-    priceRub: 899,
-    label: '1500 токенов',
-  },
-  {
-    id: 'pack_5000',
-    tokens: 5000,
-    priceRub: 2499,
-    label: '5000 токенов',
-    best: true,
-  },
-];
-
-
-// ─── Бесплатные модели по подпискам ──────────────────────────────
+// ─── Типы ───────────────────────────────────────────────────────
 interface FreeModelAccess {
   modelSlug: string;
   displayName: string;
   hourlyLimit: number | null;
   dailyLimit: number | null;
 }
-
 
 interface SubscriptionPlanConfig {
   name: string;
@@ -98,10 +66,32 @@ interface SubscriptionPlanConfig {
     maxContextMessages: number;
   };
   capabilities: string[];
+  description?: string;
+  color?: string;
+  icon?: string;
+  isPopular?: boolean;
 }
 
+interface TokenPackageConfig {
+  id: string;
+  tokens: number;
+  priceRub: number;
+  label: string;
+  bonusPercent?: number;
+  popular?: boolean;
+  best?: boolean;
+}
 
-const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
+// ─── Fallback константы (используются если БД пустая) ────────────
+const FALLBACK_TOKEN_PACKAGES: TokenPackageConfig[] = [
+  { id: 'pack_100',  tokens: 100,  priceRub: 99,   label: '100 токенов' },
+  { id: 'pack_300',  tokens: 300,  priceRub: 249,  label: '300 токенов', popular: true },
+  { id: 'pack_700',  tokens: 700,  priceRub: 499,  label: '700 токенов' },
+  { id: 'pack_1500', tokens: 1500, priceRub: 899,  label: '1500 токенов' },
+  { id: 'pack_5000', tokens: 5000, priceRub: 2499, label: '5000 токенов', best: true },
+];
+
+const FALLBACK_SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
   [SubscriptionPlan.BASIC]: {
     name: 'Basic',
     priceRub: 450,
@@ -130,24 +120,9 @@ const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
     bonusTokens: 0,
     modelsAccess: 'full',
     freeModels: [
-      {
-        modelSlug: 'gpt-oss-120b',
-        displayName: 'gpt-oss-120b',
-        hourlyLimit: 10,
-        dailyLimit: 60,
-      },
-      {
-        modelSlug: 'deepseek-v3.2',
-        displayName: 'DeepSeek V3.2',
-        hourlyLimit: 10,
-        dailyLimit: 60,
-      },
-      {
-        modelSlug: 'grok-4.1-fast',
-        displayName: 'xAI: Grok 4.1 Fast',
-        hourlyLimit: 10,
-        dailyLimit: 60,
-      },
+      { modelSlug: 'gpt-oss-120b', displayName: 'gpt-oss-120b', hourlyLimit: 10, dailyLimit: 60 },
+      { modelSlug: 'deepseek-v3.2', displayName: 'DeepSeek V3.2', hourlyLimit: 10, dailyLimit: 60 },
+      { modelSlug: 'grok-4.1-fast', displayName: 'xAI: Grok 4.1 Fast', hourlyLimit: 10, dailyLimit: 60 },
     ],
     features: {
       maxDailyGenerations: 200,
@@ -170,24 +145,9 @@ const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
     bonusTokens: 50,
     modelsAccess: 'full',
     freeModels: [
-      {
-        modelSlug: 'gpt-oss-120b',
-        displayName: 'gpt-oss-120b',
-        hourlyLimit: null,
-        dailyLimit: null,
-      },
-      {
-        modelSlug: 'deepseek-v3.2',
-        displayName: 'DeepSeek V3.2',
-        hourlyLimit: null,
-        dailyLimit: null,
-      },
-      {
-        modelSlug: 'grok-4.1-fast',
-        displayName: 'xAI: Grok 4.1 Fast',
-        hourlyLimit: null,
-        dailyLimit: null,
-      },
+      { modelSlug: 'gpt-oss-120b', displayName: 'gpt-oss-120b', hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'deepseek-v3.2', displayName: 'DeepSeek V3.2', hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'grok-4.1-fast', displayName: 'xAI: Grok 4.1 Fast', hourlyLimit: null, dailyLimit: null },
     ],
     features: {
       maxDailyGenerations: 999999,
@@ -210,42 +170,12 @@ const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
     bonusTokens: 220,
     modelsAccess: 'full',
     freeModels: [
-      {
-        modelSlug: 'gpt-image-1.5-lite',
-        displayName: 'GPT Image 1.5 Lite',
-        hourlyLimit: 10,
-        dailyLimit: 60,
-      },
-      {
-        modelSlug: 'imagen-4',
-        displayName: 'Imagen 4',
-        hourlyLimit: 10,
-        dailyLimit: 60,
-      },
-      {
-        modelSlug: 'midjourney',
-        displayName: 'Midjourney обычный',
-        hourlyLimit: 10,
-        dailyLimit: 60,
-      },
-      {
-        modelSlug: 'gpt-oss-120b',
-        displayName: 'gpt-oss-120b',
-        hourlyLimit: null,
-        dailyLimit: null,
-      },
-      {
-        modelSlug: 'deepseek-v3.2',
-        displayName: 'DeepSeek V3.2',
-        hourlyLimit: null,
-        dailyLimit: null,
-      },
-      {
-        modelSlug: 'grok-4.1-fast',
-        displayName: 'xAI: Grok 4.1 Fast',
-        hourlyLimit: null,
-        dailyLimit: null,
-      },
+      { modelSlug: 'gpt-image-1.5-lite', displayName: 'GPT Image 1.5 Lite', hourlyLimit: 10, dailyLimit: 60 },
+      { modelSlug: 'imagen-4', displayName: 'Imagen 4', hourlyLimit: 10, dailyLimit: 60 },
+      { modelSlug: 'midjourney', displayName: 'Midjourney обычный', hourlyLimit: 10, dailyLimit: 60 },
+      { modelSlug: 'gpt-oss-120b', displayName: 'gpt-oss-120b', hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'deepseek-v3.2', displayName: 'DeepSeek V3.2', hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'grok-4.1-fast', displayName: 'xAI: Grok 4.1 Fast', hourlyLimit: null, dailyLimit: null },
     ],
     features: {
       maxDailyGenerations: 999999,
@@ -264,17 +194,20 @@ const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
   },
 };
 
-
 // Маппинг deprecated планов на новые (для обратной совместимости)
 const PLAN_MIGRATION: Record<string, SubscriptionPlan> = {
   [SubscriptionPlan.PRO]: SubscriptionPlan.PLUS,
   [SubscriptionPlan.UNLIMITED]: SubscriptionPlan.ULTIMATE,
 };
 
-
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
+
+  // ─── In-memory кэш на 60 сек ───────────────────────────────────
+  private plansCache: { data: SubscriptionPlanDocument[]; ts: number } | null = null;
+  private packagesCache: { data: TokenPackageDocument[]; ts: number } | null = null;
+  private readonly CACHE_TTL_MS = 60_000;
 
   constructor(
     @InjectModel(Transaction.name)
@@ -285,6 +218,10 @@ export class BillingService {
     private promoCodeModel: Model<PromoCodeDocument>,
     @InjectModel(AIModel.name)
     private modelModel: Model<ModelDocument>,
+    @InjectModel(SubscriptionPlanEntity.name)
+    private planModel: Model<SubscriptionPlanDocument>,
+    @InjectModel(TokenPackageEntity.name)
+    private packageModel: Model<TokenPackageDocument>,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
     @Inject(forwardRef(() => ReferralService))
@@ -296,6 +233,80 @@ export class BillingService {
     private tochkaProvider: TochkaProvider,
     private heleketProvider: HeleketProvider,
   ) {}
+
+  // ═══════════════════════════════════════════════════════════════
+  // Кэш planов и пакетов из БД (с fallback на хардкод)
+  // ═══════════════════════════════════════════════════════════════
+
+  /** Сбросить кэш — вызывается из AdminBillingService после изменений */
+  invalidateBillingCache() {
+    this.plansCache = null;
+    this.packagesCache = null;
+    this.logger.log('🧹 Billing cache invalidated');
+  }
+
+  private async loadPlansFromDB(): Promise<SubscriptionPlanDocument[]> {
+    if (this.plansCache && Date.now() - this.plansCache.ts < this.CACHE_TTL_MS) {
+      return this.plansCache.data;
+    }
+    const docs = await this.planModel
+      .find({ isActive: true })
+      .sort({ sortOrder: 1, priceRub: 1 })
+      .lean<SubscriptionPlanDocument[]>();
+    this.plansCache = { data: docs, ts: Date.now() };
+    return docs;
+  }
+
+  private async loadPackagesFromDB(): Promise<TokenPackageDocument[]> {
+    if (this.packagesCache && Date.now() - this.packagesCache.ts < this.CACHE_TTL_MS) {
+      return this.packagesCache.data;
+    }
+    const docs = await this.packageModel
+      .find({ isActive: true })
+      .sort({ sortOrder: 1, priceRub: 1 })
+      .lean<TokenPackageDocument[]>();
+    this.packagesCache = { data: docs, ts: Date.now() };
+    return docs;
+  }
+
+  /**
+   * Получить конфиг плана (из БД, с fallback на хардкод).
+   * Учитывает миграцию deprecated → актуальных планов.
+   */
+  private async getPlanConfig(
+    plan: SubscriptionPlan | string,
+  ): Promise<SubscriptionPlanConfig | null> {
+    const effectivePlan = PLAN_MIGRATION[plan as SubscriptionPlan] || plan;
+    const key = String(effectivePlan).toLowerCase();
+
+    // 1) Пробуем из БД
+    const dbPlans = await this.loadPlansFromDB();
+    const dbPlan = dbPlans.find((p) => p.planKey === key);
+    if (dbPlan) {
+      return {
+        name: dbPlan.name,
+        priceRub: dbPlan.priceRub,
+        tokensPerMonth: dbPlan.tokensPerMonth,
+        bonusTokens: dbPlan.bonusTokens,
+        modelsAccess: dbPlan.modelsAccess,
+        freeModels: (dbPlan.freeModels || []).map((fm: any) => ({
+          modelSlug: fm.modelSlug,
+          displayName: fm.displayName,
+          hourlyLimit: fm.hourlyLimit,
+          dailyLimit: fm.dailyLimit,
+        })),
+        features: dbPlan.features as any,
+        capabilities: dbPlan.capabilities || [],
+        description: dbPlan.description,
+        color: dbPlan.color,
+        icon: dbPlan.icon,
+        isPopular: dbPlan.isPopular,
+      };
+    }
+
+    // 2) Fallback на хардкод
+    return FALLBACK_SUBSCRIPTION_PLANS[key] || null;
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // WEBHOOKS — без изменений
@@ -398,26 +409,99 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Пакеты токенов
+  // Пакеты токенов (из БД с fallback)
   // ═══════════════════════════════════════════════════════════════
 
-  getTokenPackages(currency: 'RUB' | 'USD' = 'RUB') {
-    return TOKEN_PACKAGES.map((pack) => ({
-      ...pack,
-      price: this.convertPrice(pack.priceRub, currency),
-      currency,
-      currencySymbol: this.getCurrencySymbol(currency),
-    }));
+  async getTokenPackages(currency: 'RUB' | 'USD' = 'RUB') {
+    const dbPacks = await this.loadPackagesFromDB();
+
+    // Если в БД ничего нет — берём fallback
+    const source: TokenPackageConfig[] =
+      dbPacks.length > 0
+        ? dbPacks.map((p) => ({
+            id: p.packageId,
+            tokens: p.tokens,
+            priceRub: p.priceRub,
+            label: p.label,
+            bonusPercent: p.bonusPercent,
+            popular: p.popular,
+            best: p.best,
+          }))
+        : FALLBACK_TOKEN_PACKAGES;
+
+    return source.map((pack) => {
+      const bonusTokens = Math.floor(
+        (pack.tokens * (pack.bonusPercent || 0)) / 100,
+      );
+      return {
+        id: pack.id,
+        label: pack.label,
+        tokens: pack.tokens,
+        bonusTokens,
+        totalTokens: pack.tokens + bonusTokens,
+        priceRub: pack.priceRub,
+        price: this.convertPrice(pack.priceRub, currency),
+        currency,
+        currencySymbol: this.getCurrencySymbol(currency),
+        popular: pack.popular || false,
+        best: pack.best || false,
+      };
+    });
+  }
+
+  /** Найти пакет по ID (из БД или fallback) */
+  private async findPackageById(
+    packageId: string,
+  ): Promise<TokenPackageConfig | null> {
+    const dbPack = await this.packageModel
+      .findOne({ packageId, isActive: true })
+      .lean();
+    if (dbPack) {
+      return {
+        id: dbPack.packageId,
+        tokens: dbPack.tokens,
+        priceRub: dbPack.priceRub,
+        label: dbPack.label,
+        bonusPercent: dbPack.bonusPercent,
+        popular: dbPack.popular,
+        best: dbPack.best,
+      };
+    }
+    return FALLBACK_TOKEN_PACKAGES.find((p) => p.id === packageId) || null;
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Планы подписки
+  // Планы подписки (из БД с fallback)
   // ═══════════════════════════════════════════════════════════════
 
-  getSubscriptionPlans(currency: 'RUB' | 'USD' = 'RUB') {
+  async getSubscriptionPlans(currency: 'RUB' | 'USD' = 'RUB') {
+    const dbPlans = await this.loadPlansFromDB();
     const result: any[] = [];
 
-    for (const [planId, config] of Object.entries(SUBSCRIPTION_PLANS)) {
+    // Источник: БД, либо fallback
+    const entries: Array<[string, SubscriptionPlanConfig]> =
+      dbPlans.length > 0
+        ? dbPlans.map((p) => [
+            p.planKey,
+            {
+              name: p.name,
+              priceRub: p.priceRub,
+              tokensPerMonth: p.tokensPerMonth,
+              bonusTokens: p.bonusTokens,
+              modelsAccess: p.modelsAccess,
+              freeModels: (p.freeModels || []) as FreeModelAccess[],
+              features: p.features as any,
+              capabilities: p.capabilities || [],
+              description: p.description,
+              color: p.color,
+              icon: p.icon,
+              isPopular: p.isPopular,
+            },
+          ])
+        : Object.entries(FALLBACK_SUBSCRIPTION_PLANS);
+
+    for (const [planId, config] of entries) {
+      // Скрываем deprecated планы
       if (
         planId === SubscriptionPlan.PRO ||
         planId === SubscriptionPlan.UNLIMITED
@@ -429,6 +513,7 @@ export class BillingService {
         id: planId,
         plan: planId,
         name: config.name,
+        description: config.description || '',
         price: this.convertPrice(config.priceRub, currency),
         priceRub: config.priceRub,
         currency,
@@ -449,17 +534,15 @@ export class BillingService {
         })),
         features: config.features,
         capabilities: config.capabilities,
+        color: config.color || '#60a5fa',
+        icon: config.icon || 'Zap',
+        isPopular: config.isPopular || false,
         tokenPriceRub: 3,
         tokenPriceUsd: Math.round((3 / RUB_TO_USD_RATE) * 1000) / 1000,
       });
     }
 
     return result;
-  }
-
-  private getPlanConfig(plan: SubscriptionPlan): SubscriptionPlanConfig | null {
-    const effectivePlan = PLAN_MIGRATION[plan] || plan;
-    return SUBSCRIPTION_PLANS[effectivePlan] || null;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -471,7 +554,7 @@ export class BillingService {
     modelSlug: string,
   ): Promise<{ isFree: boolean; reason?: string }> {
     const user = await this.usersService.findById(userId);
-    const planConfig = this.getPlanConfig(user.subscriptionPlan);
+    const planConfig = await this.getPlanConfig(user.subscriptionPlan);
 
     if (!planConfig) return { isFree: false };
 
@@ -480,6 +563,7 @@ export class BillingService {
     );
     if (!freeModel) return { isFree: false };
 
+    // Безлимит
     if (freeModel.hourlyLimit === null && freeModel.dailyLimit === null) {
       return { isFree: true };
     }
@@ -531,28 +615,38 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Оплата пакета токенов — без изменений
+  // Оплата пакета токенов (из БД)
   // ═══════════════════════════════════════════════════════════════
 
   async createTokenPayment(
     userId: string,
     packageId: string,
-    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay' | 'tochka' | 'heleket',
+    provider:
+      | 'yookassa'
+      | 'cryptomus'
+      | 'stars'
+      | 'freedompay'
+      | 'tochka'
+      | 'heleket',
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
   ) {
-    const pack = TOKEN_PACKAGES.find((p) => p.id === packageId);
+    const pack = await this.findPackageById(packageId);
     if (!pack) throw new BadRequestException('Invalid package');
 
     const user = await this.usersService.findById(userId);
     const paymentProvider = this.getPaymentProvider(provider);
 
     const paymentAmount = this.convertPrice(pack.priceRub, currency);
+    const bonusTokens = Math.floor(
+      (pack.tokens * (pack.bonusPercent || 0)) / 100,
+    );
+    const totalTokens = pack.tokens + bonusTokens;
 
     const result = await paymentProvider.createPayment({
       amount: paymentAmount,
       currency,
-      tokens: pack.tokens,
+      tokens: totalTokens,
       userId,
       description: `Пополнение: ${pack.label}`,
       returnUrl,
@@ -564,22 +658,33 @@ export class BillingService {
 
     await this.createTransaction(userId, {
       type: TransactionType.DEPOSIT,
-      amount: pack.tokens,
-      description: `Пополнение: ${pack.label}`,
+      amount: totalTokens,
+      description: `Пополнение: ${pack.label}${
+        bonusTokens > 0 ? ` (+${bonusTokens} бонус)` : ''
+      }`,
       paymentStatus: PaymentStatus.PENDING,
       externalPaymentId: result.paymentId,
       paymentProvider: provider,
       paymentAmountRub: pack.priceRub,
       balanceBefore: user.tokenBalance,
       balanceAfter: user.tokenBalance,
-      metadata: { currency, paymentAmount },
+      metadata: {
+        currency,
+        paymentAmount,
+        baseTokens: pack.tokens,
+        bonusTokens,
+      },
     });
 
     return {
       paymentId: result.paymentId,
       paymentUrl: result.paymentUrl,
       package: {
-        ...pack,
+        id: pack.id,
+        label: pack.label,
+        tokens: pack.tokens,
+        bonusTokens,
+        totalTokens,
         price: paymentAmount,
         currency,
       },
@@ -587,11 +692,17 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Webhook обработка — без изменений
+  // Webhook обработка
   // ═══════════════════════════════════════════════════════════════
 
-    async handlePaymentWebhook(
-    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay' | 'tochka' | 'heleket',
+  async handlePaymentWebhook(
+    provider:
+      | 'yookassa'
+      | 'cryptomus'
+      | 'stars'
+      | 'freedompay'
+      | 'tochka'
+      | 'heleket',
     body: any,
     headers: any,
   ) {
@@ -654,7 +765,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Реферальный бонус (кэшбек 10% от покупок) — без изменений
+  // Реферальный бонус (кэшбек 10% от покупок)
   // ═══════════════════════════════════════════════════════════════
 
   private async processReferralBonus(transaction: TransactionDocument) {
@@ -694,7 +805,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 🔥 СПИСАНИЕ ЗА ГЕНЕРАЦИЮ — обновлён (добавлен params)
+  // 🔥 СПИСАНИЕ ЗА ГЕНЕРАЦИЮ
   // ═══════════════════════════════════════════════════════════════
 
   /**
@@ -702,9 +813,6 @@ export class BillingService {
    *
    * Для text-моделей передавай inputTokens/outputTokens.
    * Для media-моделей передавай params (для матричного pricing).
-   *
-   * @param params - параметры генерации (quality, resolution, duration, mode, sound и т.п.)
-   *                 используются для выбора правильной цены из pricingMatrix
    */
   async chargeForGeneration(
     userId: string,
@@ -715,7 +823,6 @@ export class BillingService {
     outputTokens?: number,
     params?: Record<string, any>,
   ) {
-    // Проверяем бесплатный доступ по подписке
     const freeAccess = await this.checkFreeModelAccess(userId, modelSlug);
 
     if (freeAccess.isFree) {
@@ -751,7 +858,6 @@ export class BillingService {
         params,
       );
 
-    // Списываем токены
     await this.usersService.deductTokens(userId, costInTokens, 'generation');
 
     await this.createTransaction(userId, {
@@ -778,22 +884,9 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 🆕 NEW: ЗАПИСЬ МЕДИА-ГЕНЕРАЦИИ С ГОТОВОЙ ЦЕНОЙ
+  // Запись медиа-генерации с готовой ценой (async режим)
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Альтернатива chargeForGeneration для async-генераций (image/video/audio),
-   * где цена уже была рассчитана заранее (до постановки задачи в очередь),
-   * списана с баланса в начале, а здесь нужно только зафиксировать транзакцию
-   * после получения результата от провайдера.
-   *
-   * Используется в:
-   *   - ImageService.generateImage (после получения готовой картинки)
-   *   - VideoService.generateVideo (после coverage задачи провайдером)
-   *   - AudioService.generateAudio
-   *
-   * Если генерация провалилась — используй recordRefund для возврата.
-   */
   async recordMediaGeneration(
     userId: string,
     params: {
@@ -839,14 +932,7 @@ export class BillingService {
   }
 
   /**
-   * 🆕 NEW: Списание токенов для async-генераций ДО постановки в очередь.
-   * Возвращает baseline баланса для последующего rollback в случае ошибки.
-   *
-   * Flow:
-   *   1) preChargeMediaGeneration(userId, modelSlug, params) → списали токены
-   *   2) Поставили задачу в очередь провайдера
-   *   3a) Успех → recordMediaGeneration (фиксируем транзакцию)
-   *   3b) Ошибка → recordRefund (возвращаем токены + транзакция-возврат)
+   * Списание токенов для async-генераций ДО постановки в очередь.
    */
   async preChargeMediaGeneration(
     userId: string,
@@ -860,7 +946,6 @@ export class BillingService {
     balanceBefore: number;
     balanceAfter: number;
   }> {
-    // Проверяем бесплатный доступ
     const freeAccess = await this.checkFreeModelAccess(userId, modelSlug);
 
     if (freeAccess.isFree) {
@@ -891,7 +976,6 @@ export class BillingService {
       );
     }
 
-    // Списываем токены
     await this.usersService.deductTokens(userId, costInTokens, 'generation');
 
     return {
@@ -904,25 +988,10 @@ export class BillingService {
     };
   }
 
-    // ═══════════════════════════════════════════════════════════════
-  // Рефанд — ОБНОВЛЁНО: НЕ начисляет токены (это делает caller)
+  // ═══════════════════════════════════════════════════════════════
+  // Рефанд — записывает транзакцию (не начисляет токены!)
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Записывает транзакцию возврата токенов.
-   *
-   * ⚠️ ВАЖНО: этот метод НЕ начисляет токены на баланс!
-   * Возврат токенов — ответственность вызывающего кода
-   * (GenerationService.refundGeneration вызывает usersService.refundTokens
-   * ДО вызова этого метода).
-   *
-   * Это сделано чтобы избежать двойного начисления.
-   *
-   * @param userId        - кому возврат
-   * @param amount        - сколько токенов (положительное число)
-   * @param description   - причина возврата
-   * @param generationId  - связанная генерация
-   */
   async recordRefund(
     userId: string,
     amount: number,
@@ -950,7 +1019,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Промокоды — без изменений
+  // Промокоды
   // ═══════════════════════════════════════════════════════════════
 
   async applyPromoCode(userId: string, code: string) {
@@ -997,13 +1066,19 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Подписки — без изменений
+  // Подписки
   // ═══════════════════════════════════════════════════════════════
 
   async createSubscription(
     userId: string,
     plan: SubscriptionPlan,
-    provider: 'yookassa' | 'cryptomus' | 'stars' | 'freedompay' | 'tochka' | 'heleket',
+    provider:
+      | 'yookassa'
+      | 'cryptomus'
+      | 'stars'
+      | 'freedompay'
+      | 'tochka'
+      | 'heleket',
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
   ) {
@@ -1011,10 +1086,10 @@ export class BillingService {
       throw new BadRequestException('Cannot subscribe to free plan');
     }
 
-    const planConfig = this.getPlanConfig(plan);
+    const planConfig = await this.getPlanConfig(plan);
     if (!planConfig) throw new BadRequestException('Invalid plan');
 
-    const effectivePlan = PLAN_MIGRATION[plan] || plan;
+    const effectivePlan = (PLAN_MIGRATION[plan] || plan) as SubscriptionPlan;
 
     const paymentProvider = this.getPaymentProvider(provider);
     const paymentAmount = this.convertPrice(planConfig.priceRub, currency);
@@ -1042,7 +1117,6 @@ export class BillingService {
       paymentAmountRub: planConfig.priceRub,
       metadata: {
         plan: effectivePlan,
-        planConfig,
         currency,
         paymentAmount,
       },
@@ -1062,10 +1136,11 @@ export class BillingService {
     };
   }
 
-    async activateSubscription(userId: string, plan: SubscriptionPlan) {
-    const effectivePlan = PLAN_MIGRATION[plan] || plan;
-    const planConfig = SUBSCRIPTION_PLANS[effectivePlan];
+  async activateSubscription(userId: string, plan: SubscriptionPlan) {
+    const planConfig = await this.getPlanConfig(plan);
     if (!planConfig) return;
+
+    const effectivePlan = (PLAN_MIGRATION[plan] || plan) as SubscriptionPlan;
 
     const now = new Date();
     const endDate = new Date(now);
@@ -1088,16 +1163,13 @@ export class BillingService {
     });
     await subscription.save();
 
-    // Обновляем поля пользователя
     const user = await this.usersService.findById(userId);
     user.subscriptionPlan = effectivePlan;
     user.subscriptionExpiresAt = endDate;
     await user.save();
 
-    // Начисляем основные токены
     await this.usersService.addTokens(userId, planConfig.tokensPerMonth);
 
-    // Начисляем бонусные токены (если есть)
     if (planConfig.bonusTokens > 0) {
       await this.usersService.addBonusTokens(userId, planConfig.bonusTokens);
 
@@ -1116,7 +1188,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Баланс — без изменений
+  // Баланс
   // ═══════════════════════════════════════════════════════════════
 
   async getBalance(userId: string) {
@@ -1147,9 +1219,9 @@ export class BillingService {
       },
     ]);
 
-    let subscriptionData: any = null;
+        let subscriptionData: any = null;
     if (activeSubscription) {
-      const planConfig = this.getPlanConfig(
+      const planConfig = await this.getPlanConfig(
         activeSubscription.plan as SubscriptionPlan,
       );
       subscriptionData = {
@@ -1182,7 +1254,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Транзакции — без изменений
+  // Транзакции
   // ═══════════════════════════════════════════════════════════════
 
   async getTransactionHistory(
@@ -1218,7 +1290,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Cron — без изменений
+  // Cron — проверка истёкших подписок
   // ═══════════════════════════════════════════════════════════════
 
   @Cron(CronExpression.EVERY_HOUR)
@@ -1248,7 +1320,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Миграция старых подписок — без изменений
+  // Миграция старых подписок (PRO → PLUS, UNLIMITED → ULTIMATE)
   // ═══════════════════════════════════════════════════════════════
 
   async migrateDeprecatedSubscriptions() {
@@ -1261,6 +1333,7 @@ export class BillingService {
       const newPlan = PLAN_MIGRATION[sub.plan];
       if (!newPlan) continue;
 
+      const oldPlan = sub.plan;
       sub.plan = newPlan;
       await sub.save();
 
@@ -1269,7 +1342,7 @@ export class BillingService {
       await user.save();
 
       this.logger.log(
-        `Migrated subscription for user ${sub.userId}: ${sub.plan} → ${newPlan}`,
+        `Migrated subscription for user ${sub.userId}: ${oldPlan} → ${newPlan}`,
       );
     }
 
@@ -1281,7 +1354,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Админ: промокоды — без изменений
+  // Админ: промокоды
   // ═══════════════════════════════════════════════════════════════
 
   async createPromoCode(data: {
@@ -1321,7 +1394,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Админ: корректировка баланса — без изменений
+  // Админ: корректировка баланса
   // ═══════════════════════════════════════════════════════════════
 
   async adminAdjustBalance(
@@ -1363,7 +1436,7 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Статистика — без изменений
+  // Статистика
   // ═══════════════════════════════════════════════════════════════
 
   async getRevenueStats(days = 30) {
@@ -1420,20 +1493,9 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 🆕 NEW: Pricing API для фронта
+  // Pricing API для фронта
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Возвращает полный pricing-объект модели для фронта:
-   *   - pricingMatrix (для вычисления цены по выбранным параметрам)
-   *   - uiParameters (для рендера формы)
-   *   - defaultCost (базовая стоимость)
-   *   - inputCapabilities (нужно ли загружать картинки)
-   *
-   * Использование на фронте:
-   *   GET /api/billing/models/midjourney/pricing
-   *   → { matrix: [...], parameters: [...], defaultCost: {...} }
-   */
   async getModelPricing(modelSlug: string) {
     const model = await this.modelModel.findOne({ slug: modelSlug }).lean();
     if (!model) throw new NotFoundException(`Model ${modelSlug} not found`);
@@ -1458,15 +1520,6 @@ export class BillingService {
     };
   }
 
-  /**
-   * 🆕 NEW: Расчёт стоимости генерации для конкретных параметров
-   * (без списания) — для preview на фронте.
-   *
-   * Использование:
-   *   POST /api/billing/models/midjourney/estimate
-   *   body: { params: { quality: 'high', mode: 'fast' } }
-   *   → { costInTokens: 12, costInDollars: 0.10, matchedTier: 'High Quality (Fast)' }
-   */
   async estimateGenerationCost(
     modelSlug: string,
     params?: Record<string, any>,
@@ -1519,26 +1572,18 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 🔥 ОБНОВЛЁННЫЙ РАСЧЁТ СТОИМОСТИ — с поддержкой pricingMatrix
+  // 🔥 РАСЧЁТ СТОИМОСТИ ГЕНЕРАЦИИ
   // ═══════════════════════════════════════════════════════════════
 
   /**
    * Единый метод расчёта стоимости генерации.
    *
    * Для text-моделей:
-   *   - costPerMillionInputTokens + costPerMillionOutputTokens (по факту использования)
+   *   - costPerMillionInputTokens + costPerMillionOutputTokens
    *
    * Для media-моделей (image/video/audio):
    *   - Если есть pricingMatrix → ищем подходящую строку по params
-   *   - Если нет матрицы или ничего не нашли → fixedCostPerGeneration (fallback)
-   *
-   * @param modelSlug - slug модели
-   * @param inputTokens - для text-моделей
-   * @param outputTokens - для text-моделей
-   * @param params - параметры генерации для матричной цены (для media)
-   *                 пример: { quality: 'high', mode: 'fast', sound: true }
-   *
-   * @returns costInDollars, costInTokens, matchedTier (label из матрицы, если совпало)
+   *   - Иначе → fixedCostPerGeneration (fallback)
    */
   async calculateGenerationCost(
     modelSlug: string,
@@ -1563,14 +1608,15 @@ export class BillingService {
         1_000_000;
       const costInDollars = inputCost + outputCost;
 
-      let costInTokens = Math.ceil(costInDollars * (model.tokensPerDollar || 100));
+      let costInTokens = Math.ceil(
+        costInDollars * (model.tokensPerDollar || 100),
+      );
       costInTokens = Math.max(costInTokens, model.minTokenCost || 1);
 
       return { costInDollars, costInTokens };
     }
 
     // ─── MEDIA MODELS (image/video/audio) ────────────────────────
-    // 1) Пробуем найти подходящую строку в pricingMatrix
     if (
       model.pricingMatrix &&
       Array.isArray(model.pricingMatrix) &&
@@ -1582,7 +1628,6 @@ export class BillingService {
         const costInDollars = matched.costInDollars;
         let costInTokens = matched.costInTokens;
 
-        // Защита: не меньше минимальной стоимости
         costInTokens = Math.max(costInTokens, model.minTokenCost || 1);
 
         return {
@@ -1593,7 +1638,7 @@ export class BillingService {
       }
     }
 
-    // 2) Fallback на фиксированную цену
+    // Fallback на фиксированную цену
     const costInDollars = model.fixedCostPerGeneration || 0;
     let costInTokens = Math.ceil(
       costInDollars * (model.tokensPerDollar || 100),
@@ -1607,21 +1652,10 @@ export class BillingService {
    * Ищет подходящую строку в pricingMatrix по переданным параметрам.
    *
    * Логика:
-   *   - Перебираем матрицу СВЕРХУ ВНИЗ (порядок важен — самые специфичные сверху)
+   *   - Перебираем матрицу СВЕРХУ ВНИЗ (порядок важен)
    *   - Для каждой строки сравниваем все ключи conditions с params
-   *   - Если все ключи conditions совпали с params → возвращаем эту строку
-   *   - Пустые conditions ({}) — это "wildcard", матчит всегда (запасной вариант)
-   *
-   * @example
-   *   matrix = [
-   *     { conditions: { quality: 'ultra', mode: 'fast' }, costInTokens: 20 },
-   *     { conditions: { quality: 'ultra' }, costInTokens: 15 },
-   *     { conditions: {}, costInTokens: 10 },  // default fallback
-   *   ]
-   *
-   *   matchPricingTier(matrix, { quality: 'ultra', mode: 'fast' })  → 20
-   *   matchPricingTier(matrix, { quality: 'ultra', mode: 'slow' })  → 15
-   *   matchPricingTier(matrix, { quality: 'low' })                  → 10
+   *   - Если все ключи совпали → возвращаем эту строку
+   *   - Пустые conditions ({}) — wildcard (всегда матчит)
    */
   private matchPricingTier(
     matrix: Array<{
@@ -1640,7 +1674,7 @@ export class BillingService {
       const conditions = tier.conditions || {};
       const conditionKeys = Object.keys(conditions);
 
-      // Пустые conditions = wildcard, матчит всегда
+      // Пустые conditions = wildcard
       if (conditionKeys.length === 0) {
         return {
           costInTokens: tier.costInTokens,
@@ -1649,12 +1683,11 @@ export class BillingService {
         };
       }
 
-      // Проверяем что ВСЕ ключи conditions есть в params и совпадают по значению
+      // Проверяем что ВСЕ ключи conditions совпадают с params
       const allMatch = conditionKeys.every((key) => {
         const expected = conditions[key];
         const actual = params[key];
-
-        // Нестрогое сравнение для number vs string ('5' === 5)
+        // Нестрогое сравнение для number vs string ('5' == 5)
         // eslint-disable-next-line eqeqeq
         return expected == actual;
       });

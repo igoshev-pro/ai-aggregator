@@ -18,6 +18,14 @@ import { TochkaClient } from './providers/tochka/tochka.client';
 import { TochkaWebhookVerifier } from './providers/tochka/tochka-webhook.verifier';
 import { HeleketProvider } from './providers/heleket.provider'; // 👈 NEW
 import { ReferralModule } from '../referral/referral.module';
+import {
+  SubscriptionPlanEntity,
+  SubscriptionPlanSchema,
+} from './schemas/subscription-plan.schema';
+import {
+  TokenPackageEntity,
+  TokenPackageSchema,
+} from './schemas/token-package.schema';
 
 @Module({
   imports: [
@@ -26,6 +34,8 @@ import { ReferralModule } from '../referral/referral.module';
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: PromoCode.name, schema: PromoCodeSchema },
       { name: AIModel.name, schema: AIModelSchema },
+      { name: SubscriptionPlanEntity.name, schema: SubscriptionPlanSchema },
+      { name: TokenPackageEntity.name,     schema: TokenPackageSchema },
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => ReferralModule),
@@ -48,6 +58,7 @@ import { ReferralModule } from '../referral/referral.module';
   exports: [
     BillingService,
     PricingService, // 🆕 экспортируем для GenerationModule
+    MongooseModule
   ],
 })
 export class BillingModule {}
