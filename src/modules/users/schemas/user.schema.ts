@@ -115,6 +115,15 @@ export class User {
   @Prop({ type: Date, default: null })
   lastActiveAt: Date | null;
 
+  @Prop({ default: false, index: true })
+  isDeleted: boolean;
+
+  @Prop({ type: Date, default: null })
+  deletedAt: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  deletedBy: Types.ObjectId | null;
+
   // ─── Settings ─────────────────────────────────────────────
   @Prop({ type: Object, default: {} })
   settings: {
@@ -129,6 +138,7 @@ export class User {
   // ─── Timestamps (виртуальные, заполняются Mongoose) ───────
   createdAt: Date;
   updatedAt: Date;
+
 }
 
 export type UserDocument = HydratedDocument<User>;

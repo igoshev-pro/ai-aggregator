@@ -100,7 +100,7 @@ private tokenomicsModel: Model<TokenomicsSettingsDocument>,
     search?: string,
     role?: UserRole,
   ) {
-    const filter: any = {};
+    const filter: any = { isDeleted: { $ne: true } };
 
     if (search) {
       filter.$or = [
@@ -161,6 +161,46 @@ private tokenomicsModel: Model<TokenomicsSettingsDocument>,
   ) {
     return this.billingService.adminAdjustBalance(adminId, userId, amount, reason);
   }
+
+  async deleteUser(adminId: string, userId: string) {
+  const user = await this.userModel.findById(userId);
+  if (!user) throw new Error('User not found');
+
+  // Защита: нельзя удалить самого себя
+  if (user._id.toString() === adminId) {
+    throw new Error('Нельзя удалить собственный аккаунт');
+  }
+
+  // Защита: нельзя удалить другого админа/супер-админа
+  if (user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN) {
+    throw new Error('Нельзя удалить администратора. Сначала снимите роль.');
+  }
+
+  // Soft-delete + анонимизация (важно для отчётности и 152-ФЗ)
+  user.isDeleted = true;
+  user.deletedAt = new Date();
+  user.deletedBy = new Types.ObjectId(adminId);
+  user.isBanned = true;
+  user.isActive = false;
+  user.banReason = 'Аккаунт удалён администратором';
+
+  // Анонимизация PII
+  if (user.email) user.email = `deleted_${user._id}@deleted.local`;
+  user.telegramId = null as any;
+  user.googleId = null as any;
+  user.firstName = 'Deleted';
+  user.lastName = 'User';
+  user.username = '';
+  user.photoUrl = '';
+  user.passwordHash = null as any;
+  user.referralCode = `DEL_${user._id.toString().slice(-6)}`;
+
+  await user.save();
+
+  this.logger.warn(`User ${userId} deleted by admin ${adminId}`);
+
+  return { deleted: true, userId };
+}
 
   // ─── Providers ──────────────────────────────────────────────────
 

@@ -115,6 +115,17 @@ export class AdminController {
     return { success: true, data };
   }
 
+  @Delete('users/:id')
+@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+@ApiOperation({ summary: 'Delete user (soft delete + anonymize)' })
+async deleteUser(
+  @CurrentUser('sub') adminId: string,
+  @Param('id') userId: string,
+) {
+  const data = await this.adminService.deleteUser(adminId, userId);
+  return { success: true, data };
+}
+
   // ─── Providers ──────────────────────────────────────────────────
 
   @Get('providers')
