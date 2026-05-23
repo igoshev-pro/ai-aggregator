@@ -552,24 +552,6 @@ export class AdminService {
     return { deleted: true, hard: false, model: updated };
   }
 
-  // ─── Promo codes ────────────────────────────────────────────────
-
-  async getPromoCodes() {
-    return this.billingService.getAllPromoCodes();
-  }
-
-  async createPromoCode(adminId: string, data: any) {
-    return this.billingService.createPromoCode({
-      ...data,
-      expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
-      createdBy: adminId,
-    });
-  }
-
-  async deactivatePromo(code: string) {
-    return this.billingService.deactivatePromoCode(code);
-  }
-
   // ─── Analytics ──────────────────────────────────────────────────
 
   async getRevenueAnalytics(days: number) {

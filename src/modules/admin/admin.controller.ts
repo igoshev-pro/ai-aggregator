@@ -218,41 +218,6 @@ export class AdminController {
     return { success: true, data };
   }
 
-  // ─── Promo codes ────────────────────────────────────────────────
-
-  @Get('promo-codes')
-  @ApiOperation({ summary: 'List all promo codes' })
-  async getPromoCodes() {
-    const data = await this.adminService.getPromoCodes();
-    return { success: true, data };
-  }
-
-  @Post('promo-codes')
-  @HttpCode(201)
-  @ApiOperation({ summary: 'Create promo code' })
-  async createPromoCode(
-    @CurrentUser('sub') adminId: string,
-    @Body()
-    body: {
-      code: string;
-      description: string;
-      bonusTokens: number;
-      discountPercent?: number;
-      maxUses?: number;
-      expiresAt?: string;
-    },
-  ) {
-    const data = await this.adminService.createPromoCode(adminId, body);
-    return { success: true, data };
-  }
-
-  @Delete('promo-codes/:code')
-  @ApiOperation({ summary: 'Deactivate promo code' })
-  async deactivatePromo(@Param('code') code: string) {
-    const data = await this.adminService.deactivatePromo(code);
-    return { success: true, data };
-  }
-
   // ─── Analytics ──────────────────────────────────────────────────
 
   @Get('analytics/revenue')
