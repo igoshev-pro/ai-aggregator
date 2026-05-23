@@ -17,13 +17,17 @@ import {
 import { AdminBillingService } from './admin-billing.service';
 import { AdminBillingController } from './admin-billing.controller';
 
-// 🆕 Promo codes
+// Promo codes
 import {
   PromoCode,
   PromoCodeSchema,
 } from '../billing/schemas/promo-code.schema';
 import { AdminPromoCodesController } from './admin-promo-codes.controller';
 import { AdminPromoCodesService } from './admin-promo-codes.service';
+
+// 🆕 Transactions
+import { AdminTransactionsController } from './admin-transactions.controller';
+import { AdminTransactionsService } from './admin-transactions.service';
 
 @Module({
   imports: [
@@ -33,7 +37,7 @@ import { AdminPromoCodesService } from './admin-promo-codes.service';
       { name: Transaction.name, schema: TransactionSchema },
       { name: AIModel.name, schema: AIModelSchema },
       { name: TokenomicsSettings.name, schema: TokenomicsSettingsSchema },
-      { name: PromoCode.name, schema: PromoCodeSchema }, // 🆕
+      { name: PromoCode.name, schema: PromoCodeSchema },
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AiProvidersModule),
@@ -42,12 +46,14 @@ import { AdminPromoCodesService } from './admin-promo-codes.service';
   controllers: [
     AdminController,
     AdminBillingController,
-    AdminPromoCodesController, // 🆕
+    AdminPromoCodesController,
+    AdminTransactionsController, // 🆕
   ],
   providers: [
     AdminService,
     AdminBillingService,
-    AdminPromoCodesService, // 🆕
+    AdminPromoCodesService,
+    AdminTransactionsService, // 🆕
   ],
 })
 export class AdminModule {}
