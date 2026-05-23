@@ -27,16 +27,10 @@ import { UpdateTokenomicsDto } from './dto/tokenomics.dto';
 @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) { }
+  constructor(private readonly adminService: AdminService) {}
 
   // ─── Access check ───────────────────────────────────────────────
 
-  /**
-   * Быстрая проверка доступа к админке.
-   * Возвращает 200 + данные админа, если есть доступ.
-   * Возвращает 401/403, если нет.
-   * Используется фронтом в useAdminAuth.
-   */
   @Get('check')
   @ApiOperation({ summary: 'Check admin access' })
   async checkAccess(
@@ -45,13 +39,7 @@ export class AdminController {
     @CurrentUser('telegramId') telegramId: number,
     @CurrentUser('username') username: string,
   ) {
-    return {
-      ok: true,
-      role,
-      telegramId,
-      username,
-      userId,
-    };
+    return { ok: true, role, telegramId, username, userId };
   }
 
   // ─── Dashboard ──────────────────────────────────────────────────
@@ -66,49 +54,80 @@ export class AdminController {
   // ─── Users ──────────────────────────────────────────────────────
 
   @Get('users')
-  @ApiOperation({ summary: 'List all users' })
+  @ApiOperation({ summary: 'List users with filters' })
   async getUsers(
     @Query('page') page = 1,
-    @Query('limit') limit = 50,
+    @Query('limit') limit = 20,
     @Query('search') search?: string,
-    @Query('role') role?: UserRole,
+    @Query('role') role?: UserRole | 'all',
+    @Query('banned') banned?: 'all' | 'active' | 'banned',
+    @Query('sortBy') sortBy?: string,
+    @Query('order') order?: 'asc' | 'desc',
   ) {
-    const data = await this.adminService.getUsers(page, limit, search, role);
+    const data = await this.adminService.getUsers(
+      Number(page),
+      Number(limit),
+      search,
+      role,
+      banned,
+      sortBy,
+      order,
+    );
+    return { success: true, data };
+  }
+
+  @Get('users/:id')
+  @ApiOperation({ summary: 'Get user details with stats' })
+  async getUserById(@Param('id') userId: string) {
+    const data = await this.adminService.getUserById(userId);
     return { success: true, data };
   }
 
   @Put('users/:id/role')
   @Roles(UserRole.SUPER_ADMIN)
-  @ApiOperation({ summary: 'Change user role' })
+  @ApiOperation({ summary: 'Change user role (SUPER_ADMIN only)' })
   async changeRole(
+    @CurrentUser('sub') adminId: string,
     @Param('id') userId: string,
     @Body('role') role: UserRole,
   ) {
-    const data = await this.adminService.changeUserRole(userId, role);
+    const data = await this.adminService.changeUserRole(adminId, userId, role);
     return { success: true, data };
   }
 
   @Put('users/:id/ban')
   @ApiOperation({ summary: 'Ban/unban user' })
   async toggleBan(
+    @CurrentUser('sub') adminId: string,
     @Param('id') userId: string,
     @Body() body: { ban: boolean; reason?: string },
   ) {
-    const data = await this.adminService.toggleBan(userId, body.ban, body.reason);
+    const data = await this.adminService.toggleBan(
+      adminId,
+      userId,
+      body.ban,
+      body.reason,
+    );
     return { success: true, data };
   }
 
   @Post('users/:id/adjust-balance')
-  @ApiOperation({ summary: 'Adjust user balance' })
   @HttpCode(200)
+  @ApiOperation({ summary: 'Adjust user balance (tokens/bonus/cashback)' })
   async adjustBalance(
     @CurrentUser('sub') adminId: string,
     @Param('id') userId: string,
-    @Body() body: { amount: number; reason: string },
+    @Body()
+    body: {
+      balanceType: 'tokenBalance' | 'bonusTokens' | 'cashbackBalance';
+      amount: number;
+      reason: string;
+    },
   ) {
-    const data = await this.adminService.adjustBalance(
+    const data = await this.adminService.adminAdjustBalanceV2(
       adminId,
       userId,
+      body.balanceType,
       body.amount,
       body.reason,
     );
@@ -116,15 +135,15 @@ export class AdminController {
   }
 
   @Delete('users/:id')
-@Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
-@ApiOperation({ summary: 'Delete user (soft delete + anonymize)' })
-async deleteUser(
-  @CurrentUser('sub') adminId: string,
-  @Param('id') userId: string,
-) {
-  const data = await this.adminService.deleteUser(adminId, userId);
-  return { success: true, data };
-}
+  @Roles(UserRole.SUPER_ADMIN, UserRole.ADMIN)
+  @ApiOperation({ summary: 'Delete user (soft delete + anonymize)' })
+  async deleteUser(
+    @CurrentUser('sub') adminId: string,
+    @Param('id') userId: string,
+  ) {
+    const data = await this.adminService.deleteUser(adminId, userId);
+    return { success: true, data };
+  }
 
   // ─── Providers ──────────────────────────────────────────────────
 
@@ -209,11 +228,12 @@ async deleteUser(
   }
 
   @Post('promo-codes')
-  @ApiOperation({ summary: 'Create promo code' })
   @HttpCode(201)
+  @ApiOperation({ summary: 'Create promo code' })
   async createPromoCode(
     @CurrentUser('sub') adminId: string,
-    @Body() body: {
+    @Body()
+    body: {
       code: string;
       description: string;
       bonusTokens: number;
@@ -238,14 +258,14 @@ async deleteUser(
   @Get('analytics/revenue')
   @ApiOperation({ summary: 'Revenue analytics' })
   async getRevenue(@Query('days') days = 30) {
-    const data = await this.adminService.getRevenueAnalytics(days);
+    const data = await this.adminService.getRevenueAnalytics(Number(days));
     return { success: true, data };
   }
 
   @Get('analytics/generations')
   @ApiOperation({ summary: 'Generation analytics' })
   async getGenerationAnalytics(@Query('days') days = 30) {
-    const data = await this.adminService.getGenerationAnalytics(days);
+    const data = await this.adminService.getGenerationAnalytics(Number(days));
     return { success: true, data };
   }
 
@@ -258,21 +278,21 @@ async deleteUser(
 
   // ─── Tokenomics settings ────────────────────────────────────────
 
-@Get('settings/tokenomics')
-@ApiOperation({ summary: 'Get tokenomics settings' })
-async getTokenomics() {
-  const data = await this.adminService.getTokenomics();
-  return { success: true, data };
-}
+  @Get('settings/tokenomics')
+  @ApiOperation({ summary: 'Get tokenomics settings' })
+  async getTokenomics() {
+    const data = await this.adminService.getTokenomics();
+    return { success: true, data };
+  }
 
-@Put('settings/tokenomics')
-@Roles(UserRole.SUPER_ADMIN)
-@ApiOperation({ summary: 'Update tokenomics settings' })
-async updateTokenomics(
-  @CurrentUser('sub') adminId: string,
-  @Body() body: UpdateTokenomicsDto,
-) {
-  const data = await this.adminService.updateTokenomics(adminId, body);
-  return { success: true, data };
-}
+  @Put('settings/tokenomics')
+  @Roles(UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Update tokenomics settings' })
+  async updateTokenomics(
+    @CurrentUser('sub') adminId: string,
+    @Body() body: UpdateTokenomicsDto,
+  ) {
+    const data = await this.adminService.updateTokenomics(adminId, body);
+    return { success: true, data };
+  }
 }
