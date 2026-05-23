@@ -73,8 +73,8 @@ export class PromoCode {
   subscriptionDays: number;
 
   /** Для type=SUBSCRIPTION_DAYS — какой план активировать. */
-  @Prop({ default: null })
-  subscriptionPlan: string | null;
+  @Prop({ type: String, enum: ['pro', 'premium'], default: null })
+  subscriptionPlan?: 'pro' | 'premium' | null;
 
   // ─── Ограничения применения ───────────────────────────────────
   /** Применим только к этим плановым ключам. null/[] = к любому. */
