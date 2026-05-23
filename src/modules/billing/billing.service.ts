@@ -15,7 +15,12 @@ import {
   Subscription,
   SubscriptionDocument,
 } from './schemas/subscription.schema';
-import { PromoCode, PromoCodeDocument } from './schemas/promo-code.schema';
+import {
+  PromoCode,
+  PromoCodeDocument,
+  PromoCodeType,
+} from './schemas/promo-code.schema';
+import { PromoCodeService, PromoApplyContext } from './promo-code.service';
 import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
 import { UsersService } from '../users/users.service';
 import { YookassaProvider } from './providers/yookassa.provider';
@@ -81,6 +86,14 @@ interface TokenPackageConfig {
   popular?: boolean;
   best?: boolean;
 }
+
+type ProviderName =
+  | 'yookassa'
+  | 'cryptomus'
+  | 'stars'
+  | 'freedompay'
+  | 'tochka'
+  | 'heleket';
 
 // ─── Fallback константы (используются если БД пустая) ────────────
 const FALLBACK_TOKEN_PACKAGES: TokenPackageConfig[] = [
@@ -226,6 +239,8 @@ export class BillingService {
     private usersService: UsersService,
     @Inject(forwardRef(() => ReferralService))
     private referralService: ReferralService,
+    // 🆕 Промокоды теперь рулит отдельный сервис
+    private promoCodeService: PromoCodeService,
     private yookassaProvider: YookassaProvider,
     private cryptomusProvider: CryptomusProvider,
     private starsProvider: StarsProvider,
@@ -269,17 +284,12 @@ export class BillingService {
     return docs;
   }
 
-  /**
-   * Получить конфиг плана (из БД, с fallback на хардкод).
-   * Учитывает миграцию deprecated → актуальных планов.
-   */
   private async getPlanConfig(
     plan: SubscriptionPlan | string,
   ): Promise<SubscriptionPlanConfig | null> {
     const effectivePlan = PLAN_MIGRATION[plan as SubscriptionPlan] || plan;
     const key = String(effectivePlan).toLowerCase();
 
-    // 1) Пробуем из БД
     const dbPlans = await this.loadPlansFromDB();
     const dbPlan = dbPlans.find((p) => p.planKey === key);
     if (dbPlan) {
@@ -304,12 +314,11 @@ export class BillingService {
       };
     }
 
-    // 2) Fallback на хардкод
     return FALLBACK_SUBSCRIPTION_PLANS[key] || null;
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // WEBHOOKS — без изменений
+  // WEBHOOKS
   // ═══════════════════════════════════════════════════════════════
 
   async handleFreedomPayWebhook(body: any): Promise<string> {
@@ -415,7 +424,6 @@ export class BillingService {
   async getTokenPackages(currency: 'RUB' | 'USD' = 'RUB') {
     const dbPacks = await this.loadPackagesFromDB();
 
-    // Если в БД ничего нет — берём fallback
     const source: TokenPackageConfig[] =
       dbPacks.length > 0
         ? dbPacks.map((p) => ({
@@ -449,7 +457,6 @@ export class BillingService {
     });
   }
 
-  /** Найти пакет по ID (из БД или fallback) */
   private async findPackageById(
     packageId: string,
   ): Promise<TokenPackageConfig | null> {
@@ -478,7 +485,6 @@ export class BillingService {
     const dbPlans = await this.loadPlansFromDB();
     const result: any[] = [];
 
-    // Источник: БД, либо fallback
     const entries: Array<[string, SubscriptionPlanConfig]> =
       dbPlans.length > 0
         ? dbPlans.map((p) => [
@@ -501,7 +507,6 @@ export class BillingService {
         : Object.entries(FALLBACK_SUBSCRIPTION_PLANS);
 
     for (const [planId, config] of entries) {
-      // Скрываем deprecated планы
       if (
         planId === SubscriptionPlan.PRO ||
         planId === SubscriptionPlan.UNLIMITED
@@ -545,7 +550,7 @@ export class BillingService {
     return result;
   }
 
-  // ═══════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
   // Проверка бесплатного доступа к модели
   // ═══════════════════════════════════════════════════════════════
 
@@ -615,21 +620,67 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Оплата пакета токенов (из БД)
+  // 🆕 Превью промокода — для UI до оплаты
+  // ═══════════════════════════════════════════════════════════════
+
+  async previewPromoCode(
+    userId: string,
+    code: string,
+    target:
+      | { type: 'token_package'; packageId: string }
+      | { type: 'subscription'; plan: SubscriptionPlan },
+  ) {
+    let context: PromoApplyContext;
+
+    if (target.type === 'token_package') {
+      const pack = await this.findPackageById(target.packageId);
+      if (!pack) throw new BadRequestException('Пакет не найден');
+      context = {
+        purchaseType: 'token_package',
+        amountRub: pack.priceRub,
+        packageId: pack.id,
+      };
+    } else {
+      const planConfig = await this.getPlanConfig(target.plan);
+      if (!planConfig) throw new BadRequestException('План не найден');
+      const effectivePlan = (PLAN_MIGRATION[target.plan] || target.plan) as string;
+      context = {
+        purchaseType: 'subscription',
+        amountRub: planConfig.priceRub,
+        planKey: String(effectivePlan).toLowerCase(),
+      };
+    }
+
+    const validation = await this.promoCodeService.validate(
+      code,
+      userId,
+      context,
+    );
+
+    return {
+      code: validation.promo.code,
+      type: validation.promo.type,
+      effectLabel: validation.effectLabel,
+      discountRub: validation.discountRub,
+      bonusTokens: validation.bonusTokens,
+      subscriptionDays: validation.subscriptionDays,
+      subscriptionPlan: validation.subscriptionPlan,
+      originalAmountRub: context.amountRub || 0,
+      finalAmountRub: validation.finalAmountRub,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Оплата пакета токенов (с поддержкой промокода)
   // ═══════════════════════════════════════════════════════════════
 
   async createTokenPayment(
     userId: string,
     packageId: string,
-    provider:
-      | 'yookassa'
-      | 'cryptomus'
-      | 'stars'
-      | 'freedompay'
-      | 'tochka'
-      | 'heleket',
+    provider: ProviderName,
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
+    promoCode?: string, // 🆕
   ) {
     const pack = await this.findPackageById(packageId);
     if (!pack) throw new BadRequestException('Invalid package');
@@ -637,11 +688,108 @@ export class BillingService {
     const user = await this.usersService.findById(userId);
     const paymentProvider = this.getPaymentProvider(provider);
 
-    const paymentAmount = this.convertPrice(pack.priceRub, currency);
-    const bonusTokens = Math.floor(
+    const bonusTokensFromPack = Math.floor(
       (pack.tokens * (pack.bonusPercent || 0)) / 100,
     );
-    const totalTokens = pack.tokens + bonusTokens;
+    const totalTokens = pack.tokens + bonusTokensFromPack;
+
+    // ── Применяем промокод ──────────────────────────────────────
+    let promoValidation: Awaited<
+      ReturnType<typeof this.promoCodeService.validate>
+    > | null = null;
+    let finalPriceRub = pack.priceRub;
+    let promoBonusTokens = 0;
+
+    if (promoCode) {
+      promoValidation = await this.promoCodeService.validate(
+        promoCode,
+        userId,
+        {
+          purchaseType: 'token_package',
+          amountRub: pack.priceRub,
+          packageId: pack.id,
+        },
+      );
+
+      if (promoValidation.promo.type === PromoCodeType.SUBSCRIPTION_DAYS) {
+        throw new BadRequestException(
+          'Этот промокод применяется только к подпискам',
+        );
+      }
+
+      finalPriceRub = promoValidation.finalAmountRub;
+      promoBonusTokens = promoValidation.bonusTokens;
+
+      this.logger.log(
+        `🎟 Promo ${promoValidation.promo.code} applied to package ${pack.id}: ` +
+          `${pack.priceRub}₽ → ${finalPriceRub}₽ (+${promoBonusTokens}🔥)`,
+      );
+    }
+
+    // ── Полная скидка → активируем без платежа ───────────────────
+    if (finalPriceRub === 0 && promoValidation) {
+      const newUser = await this.usersService.addTokens(
+        userId,
+        pack.tokens,
+      );
+      // Бонусные токены (от пакета + от промокода)
+      const totalBonus = bonusTokensFromPack + promoBonusTokens;
+      if (totalBonus > 0) {
+        await this.usersService.addBonusTokens(userId, totalBonus);
+      }
+
+      await this.promoCodeService.markUsed(promoValidation.promo._id, userId, {
+        discountRub: pack.priceRub,
+        bonusTokens: promoBonusTokens,
+      });
+
+      const finalUser = await this.usersService.findById(userId);
+
+      await this.createTransaction(userId, {
+        type: TransactionType.DEPOSIT,
+        amount: pack.tokens + totalBonus,
+        description: `Пополнение (бесплатно по промокоду ${promoValidation.promo.code}): ${pack.label}`,
+        paymentStatus: PaymentStatus.COMPLETED,
+        paymentProvider: provider,
+        paymentAmountRub: 0,
+        promoCode: promoValidation.promo.code,
+        balanceBefore: user.tokenBalance + user.bonusTokens,
+        balanceAfter: finalUser.tokenBalance + finalUser.bonusTokens,
+        metadata: {
+          currency,
+          paymentAmount: 0,
+          baseTokens: pack.tokens,
+          bonusTokens: bonusTokensFromPack,
+          promoBonusTokens,
+          promoDiscountRub: pack.priceRub,
+          fullPrice: true,
+          freeByPromo: true,
+        },
+      });
+
+      return {
+        paymentId: null,
+        paymentUrl: null,
+        freeByPromo: true,
+        package: {
+          id: pack.id,
+          label: pack.label,
+          tokens: pack.tokens,
+          bonusTokens: totalBonus,
+          totalTokens: pack.tokens + totalBonus,
+          price: 0,
+          originalPrice: this.convertPrice(pack.priceRub, currency),
+          currency,
+        },
+        promo: {
+          code: promoValidation.promo.code,
+          effectLabel: promoValidation.effectLabel,
+        },
+      };
+    }
+
+    // ── Обычный поток с оплатой ─────────────────────────────────
+    const paymentAmount = this.convertPrice(finalPriceRub, currency);
 
     const result = await paymentProvider.createPayment({
       amount: paymentAmount,
@@ -660,19 +808,32 @@ export class BillingService {
       type: TransactionType.DEPOSIT,
       amount: totalTokens,
       description: `Пополнение: ${pack.label}${
-        bonusTokens > 0 ? ` (+${bonusTokens} бонус)` : ''
-      }`,
+        bonusTokensFromPack > 0 ? ` (+${bonusTokensFromPack} бонус)` : ''
+      }${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
       paymentStatus: PaymentStatus.PENDING,
       externalPaymentId: result.paymentId,
       paymentProvider: provider,
-      paymentAmountRub: pack.priceRub,
+      paymentAmountRub: finalPriceRub,
+      promoCode: promoValidation?.promo.code,
       balanceBefore: user.tokenBalance,
       balanceAfter: user.tokenBalance,
       metadata: {
         currency,
         paymentAmount,
+        originalPriceRub: pack.priceRub,
+        finalPriceRub,
         baseTokens: pack.tokens,
-        bonusTokens,
+        bonusTokens: bonusTokensFromPack,
+        // Сохраняем эффект промокода — применим после успешного webhook'а
+        promoCodeApplied: promoValidation
+          ? {
+              promoId: promoValidation.promo._id.toString(),
+              code: promoValidation.promo.code,
+              type: promoValidation.promo.type,
+              discountRub: promoValidation.discountRub,
+              bonusTokens: promoValidation.bonusTokens,
+            }
+          : null,
       },
     });
 
@@ -683,26 +844,30 @@ export class BillingService {
         id: pack.id,
         label: pack.label,
         tokens: pack.tokens,
-        bonusTokens,
+        bonusTokens: bonusTokensFromPack,
         totalTokens,
         price: paymentAmount,
+        originalPrice: this.convertPrice(pack.priceRub, currency),
+        discountApplied: promoValidation?.discountRub || 0,
         currency,
       },
+      promo: promoValidation
+        ? {
+            code: promoValidation.promo.code,
+            effectLabel: promoValidation.effectLabel,
+            discountRub: promoValidation.discountRub,
+            bonusTokens: promoValidation.bonusTokens,
+          }
+        : null,
     };
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Webhook обработка
+  // Webhook обработка (с применением промокода после оплаты)
   // ═══════════════════════════════════════════════════════════════
 
   async handlePaymentWebhook(
-    provider:
-      | 'yookassa'
-      | 'cryptomus'
-      | 'stars'
-      | 'freedompay'
-      | 'tochka'
-      | 'heleket',
+    provider: ProviderName,
     body: any,
     headers: any,
   ) {
@@ -736,6 +901,62 @@ export class BillingService {
       transaction.balanceAfter = user.tokenBalance;
       await transaction.save();
 
+      // ── Применяем промокод (если был сохранён в metadata) ──────
+      const promoApplied = transaction.metadata?.promoCodeApplied as
+        | {
+            promoId: string;
+            code: string;
+            type: string;
+            discountRub: number;
+            bonusTokens: number;
+          }
+        | null
+        | undefined;
+
+      if (promoApplied) {
+        try {
+          // Бонус-токены сверху (если промокод даёт)
+          if (promoApplied.bonusTokens > 0) {
+            await this.usersService.addBonusTokens(
+              transaction.userId.toString(),
+              promoApplied.bonusTokens,
+            );
+
+            await this.createTransaction(transaction.userId.toString(), {
+              type: TransactionType.PROMO_CODE,
+              amount: promoApplied.bonusTokens,
+              description: `Промокод ${promoApplied.code}: +${promoApplied.bonusTokens} 🔥 спичек`,
+              paymentStatus: PaymentStatus.COMPLETED,
+              promoCode: promoApplied.code,
+              metadata: {
+                relatedPaymentId: result.paymentId,
+                promoId: promoApplied.promoId,
+                promoType: promoApplied.type,
+              },
+            });
+          }
+
+          // Отмечаем использование промокода
+          await this.promoCodeService.markUsed(
+            promoApplied.promoId,
+            transaction.userId.toString(),
+            {
+              discountRub: promoApplied.discountRub,
+              bonusTokens: promoApplied.bonusTokens,
+            },
+          );
+
+          this.logger.log(
+            `🎟 Promo ${promoApplied.code} applied after webhook for user ${transaction.userId}`,
+          );
+        } catch (err: any) {
+          this.logger.error(
+            `Failed to apply promo ${promoApplied.code} after webhook: ${err.message}`,
+          );
+        }
+      }
+
+      // ── Активация подписки ─────────────────────────────────────
       if (
         transaction.type === TransactionType.SUBSCRIPTION &&
         transaction.metadata?.plan
@@ -746,6 +967,7 @@ export class BillingService {
         );
       }
 
+      // ── Реферальный бонус ──────────────────────────────────────
       await this.processReferralBonus(transaction);
 
       this.logger.log(
@@ -808,12 +1030,6 @@ export class BillingService {
   // 🔥 СПИСАНИЕ ЗА ГЕНЕРАЦИЮ
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Списание за генерацию (универсальный метод для text/image/video/audio).
-   *
-   * Для text-моделей передавай inputTokens/outputTokens.
-   * Для media-моделей передавай params (для матричного pricing).
-   */
   async chargeForGeneration(
     userId: string,
     modelSlug: string,
@@ -931,9 +1147,6 @@ export class BillingService {
     );
   }
 
-  /**
-   * Списание токенов для async-генераций ДО постановки в очередь.
-   */
   async preChargeMediaGeneration(
     userId: string,
     modelSlug: string,
@@ -988,8 +1201,8 @@ export class BillingService {
     };
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // Рефанд — записывает транзакцию (не начисляет токены!)
+    // ═══════════════════════════════════════════════════════════════
+  // Рефанд
   // ═══════════════════════════════════════════════════════════════
 
   async recordRefund(
@@ -1019,68 +1232,71 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Промокоды
+  // 🆕 Промокоды — standalone применение (для bonus_tokens)
   // ═══════════════════════════════════════════════════════════════
 
+  /**
+   * Применение промокода ОТДЕЛЬНО (не при оплате).
+   * Работает только для type=BONUS_TOKENS.
+   * Для скидок и subscription_days промокод применяется через
+   * createTokenPayment / createSubscription (передаётся параметром promoCode).
+   */
   async applyPromoCode(userId: string, code: string) {
-    const promo = await this.promoCodeModel.findOne({
-      code: code.toUpperCase(),
-      isActive: true,
+    const validation = await this.promoCodeService.validate(code, userId, {
+      purchaseType: 'standalone',
     });
 
-    if (!promo) throw new BadRequestException('Промокод не найден');
-    if (promo.expiresAt && promo.expiresAt < new Date()) {
-      throw new BadRequestException('Промокод истёк');
-    }
-    if (promo.maxUses !== null && promo.currentUses >= promo.maxUses) {
-      throw new BadRequestException('Промокод исчерпан');
-    }
-    if (promo.usedByUsers.includes(userId)) {
-      throw new BadRequestException('Вы уже использовали этот промокод');
+    const promo = validation.promo;
+
+    if (promo.type !== PromoCodeType.BONUS_TOKENS) {
+      throw new BadRequestException(
+        'Этот промокод применяется при оплате. Введите его на странице покупки.',
+      );
     }
 
     const user = await this.usersService.addBonusTokens(
       userId,
-      promo.bonusTokens,
+      validation.bonusTokens,
     );
 
-    promo.currentUses += 1;
-    promo.usedByUsers.push(userId);
-    await promo.save();
+    await this.promoCodeService.markUsed(promo._id, userId, {
+      bonusTokens: validation.bonusTokens,
+    });
 
     await this.createTransaction(userId, {
       type: TransactionType.PROMO_CODE,
-      amount: promo.bonusTokens,
-      description: `Промокод ${promo.code}: +${promo.bonusTokens} токенов`,
+      amount: validation.bonusTokens,
+      description: `Промокод ${promo.code}: +${validation.bonusTokens} 🔥 спичек`,
       paymentStatus: PaymentStatus.COMPLETED,
       promoCode: promo.code,
       balanceBefore:
-        user.tokenBalance + user.bonusTokens - promo.bonusTokens,
+        user.tokenBalance + user.bonusTokens - validation.bonusTokens,
       balanceAfter: user.tokenBalance + user.bonusTokens,
+      metadata: {
+        promoId: promo._id.toString(),
+        promoType: promo.type,
+      },
     });
 
     return {
-      bonusTokens: promo.bonusTokens,
+      success: true,
+      effectLabel: validation.effectLabel,
+      bonusTokens: validation.bonusTokens,
       newBalance: user.tokenBalance + user.bonusTokens,
     };
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Подписки
+  // Подписки (с поддержкой промокода)
   // ═══════════════════════════════════════════════════════════════
 
   async createSubscription(
     userId: string,
     plan: SubscriptionPlan,
-    provider:
-      | 'yookassa'
-      | 'cryptomus'
-      | 'stars'
-      | 'freedompay'
-      | 'tochka'
-      | 'heleket',
+    provider: ProviderName,
     currency: 'RUB' | 'USD' = 'RUB',
     returnUrl?: string,
+    promoCode?: string, // 🆕
   ) {
     if (plan === SubscriptionPlan.FREE) {
       throw new BadRequestException('Cannot subscribe to free plan');
@@ -1090,9 +1306,140 @@ export class BillingService {
     if (!planConfig) throw new BadRequestException('Invalid plan');
 
     const effectivePlan = (PLAN_MIGRATION[plan] || plan) as SubscriptionPlan;
-
     const paymentProvider = this.getPaymentProvider(provider);
-    const paymentAmount = this.convertPrice(planConfig.priceRub, currency);
+
+    // ── Применяем промокод ─────────────────────────────────────
+    let promoValidation: Awaited<
+      ReturnType<typeof this.promoCodeService.validate>
+    > | null = null;
+    let finalPriceRub = planConfig.priceRub;
+
+    if (promoCode) {
+      promoValidation = await this.promoCodeService.validate(
+        promoCode,
+        userId,
+        {
+          purchaseType: 'subscription',
+          amountRub: planConfig.priceRub,
+          planKey: String(effectivePlan).toLowerCase(),
+        },
+      );
+
+      // SUBSCRIPTION_DAYS — даёт бесплатные дни без оплаты
+      if (promoValidation.promo.type === PromoCodeType.SUBSCRIPTION_DAYS) {
+        const promoPlan = promoValidation.subscriptionPlan?.toLowerCase();
+        const targetPlan = String(effectivePlan).toLowerCase();
+
+        if (promoPlan && promoPlan !== targetPlan) {
+          throw new BadRequestException(
+            `Промокод даёт бесплатные дни плана ${promoPlan.toUpperCase()}, а не ${targetPlan.toUpperCase()}`,
+          );
+        }
+
+        await this.activateSubscriptionForDays(
+          userId,
+          effectivePlan,
+          promoValidation.subscriptionDays,
+        );
+
+        await this.promoCodeService.markUsed(
+          promoValidation.promo._id,
+          userId,
+          {
+            subscriptionDays: promoValidation.subscriptionDays,
+          },
+        );
+
+        await this.createTransaction(userId, {
+          type: TransactionType.PROMO_CODE,
+          amount: 0,
+          description: `Промокод ${promoValidation.promo.code}: ${promoValidation.subscriptionDays} дней ${planConfig.name} бесплатно`,
+          paymentStatus: PaymentStatus.COMPLETED,
+          promoCode: promoValidation.promo.code,
+          metadata: {
+            promoId: promoValidation.promo._id.toString(),
+            promoType: promoValidation.promo.type,
+            subscriptionDays: promoValidation.subscriptionDays,
+            plan: effectivePlan,
+          },
+        });
+
+        return {
+          paymentId: null,
+          paymentUrl: null,
+          freeByPromo: true,
+          subscriptionDays: promoValidation.subscriptionDays,
+          plan: {
+            id: effectivePlan,
+            name: planConfig.name,
+            price: 0,
+            currency,
+            tokensPerMonth: 0,
+            bonusTokens: 0,
+          },
+          promo: {
+            code: promoValidation.promo.code,
+            effectLabel: promoValidation.effectLabel,
+          },
+        };
+      }
+
+      finalPriceRub = promoValidation.finalAmountRub;
+
+      this.logger.log(
+        `🎟 Promo ${promoValidation.promo.code} applied to plan ${effectivePlan}: ` +
+          `${planConfig.priceRub}₽ → ${finalPriceRub}₽`,
+      );
+    }
+
+    // ── Полная скидка → активируем без платежа ─────────────────
+    if (finalPriceRub === 0 && promoValidation) {
+      await this.activateSubscription(userId, effectivePlan);
+
+      await this.promoCodeService.markUsed(promoValidation.promo._id, userId, {
+        discountRub: planConfig.priceRub,
+      });
+
+      await this.createTransaction(userId, {
+        type: TransactionType.SUBSCRIPTION,
+        amount: planConfig.tokensPerMonth,
+        description: `Подписка ${planConfig.name} (бесплатно по промокоду ${promoValidation.promo.code})`,
+        paymentStatus: PaymentStatus.COMPLETED,
+        paymentProvider: provider,
+        paymentAmountRub: 0,
+        promoCode: promoValidation.promo.code,
+        metadata: {
+          plan: effectivePlan,
+          currency,
+          paymentAmount: 0,
+          originalPriceRub: planConfig.priceRub,
+          promoDiscountRub: planConfig.priceRub,
+          fullPrice: true,
+          freeByPromo: true,
+        },
+      });
+
+      return {
+        paymentId: null,
+        paymentUrl: null,
+        freeByPromo: true,
+        plan: {
+          id: effectivePlan,
+          name: planConfig.name,
+          price: 0,
+          currency,
+          tokensPerMonth: planConfig.tokensPerMonth,
+          bonusTokens: planConfig.bonusTokens,
+        },
+        promo: {
+          code: promoValidation.promo.code,
+          effectLabel: promoValidation.effectLabel,
+        },
+      };
+    }
+
+    // ── Обычный поток с оплатой ────────────────────────────────
+    const paymentAmount = this.convertPrice(finalPriceRub, currency);
 
     const result = await paymentProvider.createPayment({
       amount: paymentAmount,
@@ -1110,15 +1457,29 @@ export class BillingService {
     await this.createTransaction(userId, {
       type: TransactionType.SUBSCRIPTION,
       amount: planConfig.tokensPerMonth,
-      description: `Подписка ${planConfig.name}`,
+      description: `Подписка ${planConfig.name}${
+        promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''
+      }`,
       paymentStatus: PaymentStatus.PENDING,
       externalPaymentId: result.paymentId,
       paymentProvider: provider,
-      paymentAmountRub: planConfig.priceRub,
+      paymentAmountRub: finalPriceRub,
+      promoCode: promoValidation?.promo.code,
       metadata: {
         plan: effectivePlan,
         currency,
         paymentAmount,
+        originalPriceRub: planConfig.priceRub,
+        finalPriceRub,
+        promoCodeApplied: promoValidation
+          ? {
+              promoId: promoValidation.promo._id.toString(),
+              code: promoValidation.promo.code,
+              type: promoValidation.promo.type,
+              discountRub: promoValidation.discountRub,
+              bonusTokens: promoValidation.bonusTokens,
+            }
+          : null,
       },
     });
 
@@ -1129,10 +1490,19 @@ export class BillingService {
         id: effectivePlan,
         name: planConfig.name,
         price: paymentAmount,
+        originalPrice: this.convertPrice(planConfig.priceRub, currency),
+        discountApplied: promoValidation?.discountRub || 0,
         currency,
         tokensPerMonth: planConfig.tokensPerMonth,
         bonusTokens: planConfig.bonusTokens,
       },
+      promo: promoValidation
+        ? {
+            code: promoValidation.promo.code,
+            effectLabel: promoValidation.effectLabel,
+            discountRub: promoValidation.discountRub,
+          }
+        : null,
     };
   }
 
@@ -1187,6 +1557,71 @@ export class BillingService {
     );
   }
 
+  /**
+   * 🆕 Активация подписки на N дней (для промокодов SUBSCRIPTION_DAYS).
+   * Если уже есть активная подписка того же плана — продлеваем её на N дней.
+   * Иначе — создаём новую на N дней. Токены не начисляются.
+   */
+  async activateSubscriptionForDays(
+    userId: string,
+    plan: SubscriptionPlan,
+    days: number,
+  ) {
+    const planConfig = await this.getPlanConfig(plan);
+    if (!planConfig) return;
+
+    const effectivePlan = (PLAN_MIGRATION[plan] || plan) as SubscriptionPlan;
+    const now = new Date();
+
+    const existing = await this.subscriptionModel.findOne({
+      userId: new Types.ObjectId(userId),
+      isActive: true,
+      endDate: { $gt: now },
+    });
+
+    let endDate: Date;
+    let subscription: SubscriptionDocument;
+
+    if (existing && existing.plan === effectivePlan) {
+      // Продлеваем существующую подписку
+      endDate = new Date(existing.endDate);
+      endDate.setDate(endDate.getDate() + days);
+      existing.endDate = endDate;
+      await existing.save();
+      subscription = existing;
+    } else {
+      // Деактивируем старые подписки (если есть другой план)
+      if (existing) {
+        existing.isActive = false;
+        await existing.save();
+      }
+
+      endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + days);
+
+      subscription = new this.subscriptionModel({
+        userId: new Types.ObjectId(userId),
+        plan: effectivePlan,
+        startDate: now,
+        endDate,
+        isActive: true,
+        tokensPerMonth: 0, // токены не начисляем
+        priceRub: 0,
+        features: planConfig.features,
+      });
+      await subscription.save();
+    }
+
+    const user = await this.usersService.findById(userId);
+    user.subscriptionPlan = effectivePlan;
+    user.subscriptionExpiresAt = endDate;
+    await user.save();
+
+    this.logger.log(
+      `🎁 Free subscription ${effectivePlan} for ${days} days → user ${userId} (until ${endDate.toISOString()})`,
+    );
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // Баланс
   // ═══════════════════════════════════════════════════════════════
@@ -1219,7 +1654,7 @@ export class BillingService {
       },
     ]);
 
-        let subscriptionData: any = null;
+    let subscriptionData: any = null;
     if (activeSubscription) {
       const planConfig = await this.getPlanConfig(
         activeSubscription.plan as SubscriptionPlan,
@@ -1354,46 +1789,6 @@ export class BillingService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // Админ: промокоды
-  // ═══════════════════════════════════════════════════════════════
-
-  async createPromoCode(data: {
-    code: string;
-    description: string;
-    bonusTokens: number;
-    discountPercent?: number;
-    maxUses?: number;
-    maxUsesPerUser?: number;
-    expiresAt?: Date;
-    createdBy: string;
-  }) {
-    const existing = await this.promoCodeModel.findOne({
-      code: data.code.toUpperCase(),
-    });
-    if (existing) throw new BadRequestException('Promo code already exists');
-
-    const promo = new this.promoCodeModel({
-      ...data,
-      code: data.code.toUpperCase(),
-    });
-    return promo.save();
-  }
-
-  async getAllPromoCodes() {
-    return this.promoCodeModel.find().sort({ createdAt: -1 }).exec();
-  }
-
-  async deactivatePromoCode(code: string) {
-    const promo = await this.promoCodeModel.findOne({
-      code: code.toUpperCase(),
-    });
-    if (!promo) throw new NotFoundException('Promo code not found');
-    promo.isActive = false;
-    await promo.save();
-    return promo;
-  }
-
-  // ═══════════════════════════════════════════════════════════════
   // Админ: корректировка баланса
   // ═══════════════════════════════════════════════════════════════
 
@@ -1467,7 +1862,7 @@ export class BillingService {
         },
         { $sort: { _id: 1 } },
       ]),
-      this.transactionModel.aggregate([
+           this.transactionModel.aggregate([
         {
           $match: {
             type: TransactionType.GENERATION,

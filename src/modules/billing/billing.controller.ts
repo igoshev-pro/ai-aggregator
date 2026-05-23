@@ -1,3 +1,4 @@
+// src/modules/billing/billing.controller.ts
 import {
   Controller,
   Get,
@@ -10,6 +11,7 @@ import {
   Header,
   UseInterceptors,
   Req,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BillingService } from './billing.service';
@@ -30,7 +32,7 @@ type PaymentProviderName =
 @ApiTags('Billing')
 @Controller('billing')
 export class BillingController {
-  constructor(private readonly billingService: BillingService) { }
+  constructor(private readonly billingService: BillingService) {}
 
   @Get('packages')
   @ApiOperation({ summary: 'Get available token packages' })
@@ -59,6 +61,10 @@ export class BillingController {
     return { success: true, data: result };
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // Покупка токенов / подписки (с поддержкой промокода)
+  // ═══════════════════════════════════════════════════════════════
+
   @Post('pay/tokens')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
@@ -72,6 +78,7 @@ export class BillingController {
       provider: PaymentProviderName;
       currency?: 'RUB' | 'USD';
       returnUrl?: string;
+      promoCode?: string; // 🆕
     },
   ) {
     const result = await this.billingService.createTokenPayment(
@@ -80,6 +87,7 @@ export class BillingController {
       body.provider,
       body.currency || 'RUB',
       body.returnUrl,
+      body.promoCode, // 🆕
     );
     return { success: true, data: result };
   }
@@ -97,6 +105,7 @@ export class BillingController {
       provider: PaymentProviderName;
       currency?: 'RUB' | 'USD';
       returnUrl?: string;
+      promoCode?: string; // 🆕
     },
   ) {
     const result = await this.billingService.createSubscription(
@@ -105,14 +114,25 @@ export class BillingController {
       body.provider,
       body.currency || 'RUB',
       body.returnUrl,
+      body.promoCode, // 🆕
     );
     return { success: true, data: result };
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // Промокоды
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Применение промокода ОТДЕЛЬНО (без покупки).
+   * Работает только для type=BONUS_TOKENS — начисляет токены сразу.
+   * Для скидок/дней подписки нужно использовать /pay/tokens или /pay/subscription
+   * с параметром promoCode.
+   */
   @Post('promo')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Apply promo code' })
+  @ApiOperation({ summary: 'Apply standalone promo code (bonus tokens only)' })
   @HttpCode(200)
   async applyPromo(
     @CurrentUser('sub') userId: string,
@@ -121,6 +141,56 @@ export class BillingController {
     const result = await this.billingService.applyPromoCode(userId, body.code);
     return { success: true, data: result };
   }
+
+  /**
+   * 🆕 Предпросмотр промокода — рассчитывает эффект (скидку/бонусы) БЕЗ применения.
+   * Используется на странице оплаты, чтобы показать "−20%, итого 2400₽" до клика "Оплатить".
+   */
+    @Post('promo/preview')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Preview promo code effect (no apply)' })
+  @HttpCode(200)
+  async previewPromo(
+    @CurrentUser('sub') userId: string,
+    @Body()
+    body: {
+      code: string;
+      purchaseType: 'subscription' | 'token_package';
+      plan?: SubscriptionPlan; // для subscription
+      packageId?: string;       // для token_package
+    },
+  ) {
+    if (body.purchaseType === 'token_package') {
+      if (!body.packageId) {
+        throw new BadRequestException('packageId is required for token_package');
+      }
+      const result = await this.billingService.previewPromoCode(
+        userId,
+        body.code,
+        { type: 'token_package', packageId: body.packageId },
+      );
+      return { success: true, data: result };
+    }
+
+    if (body.purchaseType === 'subscription') {
+      if (!body.plan) {
+        throw new BadRequestException('plan is required for subscription');
+      }
+      const result = await this.billingService.previewPromoCode(
+        userId,
+        body.code,
+        { type: 'subscription', plan: body.plan },
+      );
+      return { success: true, data: result };
+    }
+
+    throw new BadRequestException('Invalid purchaseType');
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Транзакции
+  // ═══════════════════════════════════════════════════════════════
 
   @Get('transactions')
   @ApiBearerAuth()
@@ -141,30 +211,22 @@ export class BillingController {
     return { success: true, data: result };
   }
 
-  // === Webhooks (без авторизации JWT) ===
+  // ═══════════════════════════════════════════════════════════════
+  // Webhooks (без авторизации JWT)
+  // ═══════════════════════════════════════════════════════════════
 
   @Post('webhook/yookassa')
   @ApiOperation({ summary: 'YooKassa payment webhook' })
   @HttpCode(200)
   async yookassaWebhook(@Body() body: any, @Headers() headers: any) {
-    const result = await this.billingService.handlePaymentWebhook(
-      'yookassa',
-      body,
-      headers,
-    );
-    return result;
+    return this.billingService.handlePaymentWebhook('yookassa', body, headers);
   }
 
   @Post('webhook/cryptomus')
   @ApiOperation({ summary: 'Cryptomus payment webhook' })
   @HttpCode(200)
   async cryptomusWebhook(@Body() body: any, @Headers() headers: any) {
-    const result = await this.billingService.handlePaymentWebhook(
-      'cryptomus',
-      body,
-      headers,
-    );
-    return result;
+    return this.billingService.handlePaymentWebhook('cryptomus', body, headers);
   }
 
   @Post('webhook/freedompay')
@@ -176,14 +238,6 @@ export class BillingController {
     return this.billingService.handleFreedomPayWebhook(body);
   }
 
-  /**
-   * Точка шлёт webhook как text/plain с JWT в теле.
-   * В main.ts настроен bodyParser.text() для этого пути,
-   * поэтому здесь body будет строкой.
-   *
-   * Возвращаем 200 OK почти всегда (чтобы Точка не ретраила бесконечно).
-   * Если подпись невалидна — handleTochkaWebhook бросит UnauthorizedException → 401.
-   */
   @Post('webhook/tochka')
   @ApiOperation({ summary: 'Tochka Bank payment webhook (JWT text/plain)' })
   @HttpCode(200)
@@ -195,18 +249,13 @@ export class BillingController {
           ? req.body.toString('utf8')
           : String(req.body || '');
 
-    // Защита от падения при тестовых пустых запросах
     if (!raw || raw.length < 20) {
-      return { ok: true };  // возвращаем 200, чтобы Точка не ретраила
+      return { ok: true };
     }
 
     try {
       return await this.billingService.handleTochkaWebhook(raw);
     } catch (err) {
-      // Не пробрасываем 401/500 наверх — иначе Точка зальёт нас 30 повторами.
-      // Подпись невалидна = либо атака, либо сбой ключа. Логируем и отвечаем 200.
-      // (Безопасность не страдает: транзакцию мы НЕ начислили — handleTochkaWebhook
-      // бросил исключение до начисления.)
       return { ok: true };
     }
   }
@@ -215,11 +264,6 @@ export class BillingController {
   @ApiOperation({ summary: 'Heleket payment webhook' })
   @HttpCode(200)
   async heleketWebhook(@Body() body: any, @Headers() headers: any) {
-    const result = await this.billingService.handlePaymentWebhook(
-      'heleket',
-      body,
-      headers,
-    );
-    return result;
+    return this.billingService.handlePaymentWebhook('heleket', body, headers);
   }
 }

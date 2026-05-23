@@ -17,6 +17,14 @@ import {
 import { AdminBillingService } from './admin-billing.service';
 import { AdminBillingController } from './admin-billing.controller';
 
+// 🆕 Promo codes
+import {
+  PromoCode,
+  PromoCodeSchema,
+} from '../billing/schemas/promo-code.schema';
+import { AdminPromoCodesController } from './admin-promo-codes.controller';
+import { AdminPromoCodesService } from './admin-promo-codes.service';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -25,12 +33,21 @@ import { AdminBillingController } from './admin-billing.controller';
       { name: Transaction.name, schema: TransactionSchema },
       { name: AIModel.name, schema: AIModelSchema },
       { name: TokenomicsSettings.name, schema: TokenomicsSettingsSchema },
+      { name: PromoCode.name, schema: PromoCodeSchema }, // 🆕
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AiProvidersModule),
     forwardRef(() => BillingModule),
   ],
-  controllers: [AdminController, AdminBillingController],
-  providers: [AdminService, AdminBillingService],
+  controllers: [
+    AdminController,
+    AdminBillingController,
+    AdminPromoCodesController, // 🆕
+  ],
+  providers: [
+    AdminService,
+    AdminBillingService,
+    AdminPromoCodesService, // 🆕
+  ],
 })
 export class AdminModule {}
