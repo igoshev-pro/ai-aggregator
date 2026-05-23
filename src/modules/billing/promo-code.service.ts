@@ -223,7 +223,7 @@ export class PromoCodeService {
       discountRub,
       bonusTokens,
       subscriptionDays,
-      subscriptionPlan: promo.subscriptionPlan,
+      subscriptionPlan: promo.subscriptionPlan ?? null,
       finalAmountRub,
     };
   }
