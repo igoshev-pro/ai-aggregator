@@ -28,6 +28,7 @@ import { AdminPromoCodesService } from './admin-promo-codes.service';
 // 🆕 Transactions
 import { AdminTransactionsController } from './admin-transactions.controller';
 import { AdminTransactionsService } from './admin-transactions.service';
+import { ReferralAdminController } from './admin-referral.controller';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { AdminTransactionsService } from './admin-transactions.service';
     AdminBillingController,
     AdminPromoCodesController,
     AdminTransactionsController, // 🆕
+    ReferralAdminController
   ],
   providers: [
     AdminService,

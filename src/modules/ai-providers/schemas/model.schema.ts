@@ -1,12 +1,19 @@
+// src/modules/ai-providers/schemas/model.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, SchemaTypes, Types } from 'mongoose';
 import { GenerationType } from '@/common/interfaces';
 
 
+
+
 export type ModelDocument = AIModel & Document;
 
 
+
+
 // ─── ИНТЕРФЕЙСЫ ─────────────────────────────────────────
+
+
 
 
 export interface PricingRule {
@@ -17,26 +24,30 @@ export interface PricingRule {
 }
 
 
+
+
 export interface UIParameterOption {
   value: string | number | boolean;
   label: string;
 }
 
 
+
+
 export interface UIParameter {
   key: string;                       // 'mode', 'resolution', 'duration'
   label: string;                     // 'Режим', 'Разрешение'
   type:
-    | 'select'
-    | 'toggle'
-    | 'boolean'
-    | 'number'
-    | 'text'
-    | 'image-upload'
-    | 'audio-upload'
-    | 'video-upload';
+  | 'select'
+  | 'toggle'
+  | 'boolean'
+  | 'number'
+  | 'text'
+  | 'image-upload'
+  | 'audio-upload'
+  | 'video-upload';
   options?: UIParameterOption[];
-  defaultValue?: any;                // 👈 переименовано из `default` (избегаем конфликта с Mongoose)
+  defaultValue?: any;                // переименовано из `default` (избегаем конфликта с Mongoose)
   affectsPrice?: boolean;
   visibleWhen?: Record<string, any>; // { mode: ['fast', 'turbo'] }
   min?: number;
@@ -46,91 +57,184 @@ export interface UIParameter {
 }
 
 
+
+
 export interface InputCapabilities {
   acceptsImages?: boolean;
   acceptsFiles?: boolean;
   acceptsAudio?: boolean;
   acceptsVideo?: boolean;
-  acceptsVideos?: boolean;           // 👈 алиас, используется в сидере (kling-motion)
+  acceptsVideos?: boolean;           // алиас, используется в сидере (kling-motion)
   maxInputImages?: number;
   maxFileSize?: number;              // в MB
   acceptedMimeTypes?: string[];
 }
 
 
+
+
 // ─── СХЕМА ──────────────────────────────────────────────
+
+
 
 
 @Schema({ timestamps: true })
 export class AIModel {
   @Prop({ required: true, unique: true })
-  slug: string;
+  slug!: string;
+
+
 
 
   @Prop({ required: true })
-  name: string;
+  name!: string;
+
+
 
 
   @Prop({ required: true })
-  displayName: string;
+  displayName!: string;
+
+
 
 
   @Prop()
-  description: string;
+  description?: string;
+
+
 
 
   @Prop()
-  icon: string;
+  icon?: string;
+
+
 
 
   @Prop({ required: true, enum: GenerationType })
-  type: GenerationType;
+  type!: GenerationType;
+
+
 
 
   @Prop({ default: true })
-  isActive: boolean;
+  isActive!: boolean;
+
+
 
 
   @Prop({ default: false })
-  isPremium: boolean;
+  isPremium!: boolean;
 
 
-  // 🆕 Поддерживает ли модель vision (картинки на вход для чата)
+
+
+  // Поддерживает ли модель vision (картинки на вход для чата)
   @Prop({ default: false })
-  supportsVision: boolean;
+  supportsVision!: boolean;
+
+
 
 
   @Prop({ default: 0 })
-  sortOrder: number;
+  sortOrder!: number;
 
 
-  // Стоимость за миллион токенов
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 НОВАЯ СИСТЕМА ЦЕН (для text-моделей)
+  // Цены сразу в наших токенах (спичках 🔥) за 1 миллион токенов модели.
+  // Используется в BillingService для расчёта реальной стоимости запроса.
+  // ═══════════════════════════════════════════════════════════════
+
+
+
+
+  // 🔥 за 1 миллион ВХОДНЫХ токенов модели
   @Prop({ default: 0 })
-  costPerMillionInputTokens: number; // в долларах
+  pricePerMillionInputTokens!: number;
+
+
+
+
+  // 🔥 за 1 миллион ВЫХОДНЫХ токенов модели
+  @Prop({ default: 0 })
+  pricePerMillionOutputTokens!: number;
+
+
+
+
+  // Средняя длина запроса (input + output, в токенах модели)
+  // Используется для отображения "~X 🔥/запрос" в UI чата.
+  @Prop({ default: 1500 })
+  avgTokensPerRequest!: number;
+
+
+
+
+  // Себестоимость у провайдера (для аналитики маржи в админке).
+  // НЕ влияет на списание — справочные поля.
+  @Prop({ default: 0 })
+  providerCostPerMillionInput!: number;   // $ за 1M входных у провайдера
+
+
 
 
   @Prop({ default: 0 })
-  costPerMillionOutputTokens: number; // в долларах
+  providerCostPerMillionOutput!: number;  // $ за 1M выходных у провайдера
 
 
-  // Фиксированная стоимость за генерацию (для изображений/видео/аудио)
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // ⚠️ DEPRECATED — оставлены для обратной совместимости и миграции.
+  // BillingService использует их как fallback, если новые поля = 0.
+  // ═══════════════════════════════════════════════════════════════
+
+
+
+
+  /** @deprecated Используйте providerCostPerMillionInput + pricePerMillionInputTokens */
   @Prop({ default: 0 })
-  fixedCostPerGeneration: number; // в долларах
+  costPerMillionInputTokens!: number; // в долларах
 
 
-  // Курс конвертации долларов в наши внутренние токены
+
+
+  /** @deprecated Используйте providerCostPerMillionOutput + pricePerMillionOutputTokens */
+  @Prop({ default: 0 })
+  costPerMillionOutputTokens!: number; // в долларах
+
+
+
+
+  /** @deprecated Курс больше не используется в расчёте — цены задаются сразу в 🔥 */
   @Prop({ default: 30 })
-  tokensPerDollar: number;
+  tokensPerDollar!: number;
 
 
-  // Минимальная стоимость генерации в токенах
-  @Prop({ default: 1 })
-  minTokenCost: number;
 
 
-  // DEPRECATED - оставляем для обратной совместимости
+  /** @deprecated Минимум всегда 0.01 🔥, отдельно настраивать не нужно */
+  @Prop({ default: 0.01 })
+  minTokenCost!: number;
+
+
+
+
+  /** @deprecated Старое поле, не используется */
   @Prop({ required: false })
-  tokenCost: number;
+  tokenCost?: number;
+
+
+
+
+  // Фиксированная стоимость за генерацию (для media-моделей: image/video/audio).
+  // Используется как fallback, если в pricingMatrix не нашлось подходящего правила.
+  @Prop({ default: 0 })
+  fixedCostPerGeneration!: number; // в долларах
+
+
 
 
   @Prop({
@@ -145,7 +249,7 @@ export class AIModel {
     }],
     default: [],
   })
-  providerMappings: {
+  providerMappings!: {
     providerId: Types.ObjectId;
     providerSlug: string;
     modelId: string;
@@ -155,8 +259,10 @@ export class AIModel {
   }[];
 
 
+
+
   @Prop({ type: SchemaTypes.Mixed, default: {} })
-  defaultParams: {
+  defaultParams!: {
     maxTokens?: number;
     temperature?: number;
     topP?: number;
@@ -169,8 +275,10 @@ export class AIModel {
   };
 
 
+
+
   @Prop({ type: SchemaTypes.Mixed, default: {} })
-  limits: {
+  limits!: {
     maxInputTokens?: number;
     maxOutputTokens?: number;
     maxImagesPerRequest?: number;
@@ -183,13 +291,15 @@ export class AIModel {
   };
 
 
+
+
   @Prop({ type: [String], default: [] })
-  capabilities: string[];
+  capabilities!: string[];
 
 
-  // 🆕 МАТРИЦА ЦЕН — основа динамического ценообразования
-  // ⚠️ ВАЖНО: каждое поле обёрнуто в { type: ... } чтобы Mongoose не путал
-  // ключ `type` со спецификатором типа схемы
+
+
+  // МАТРИЦА ЦЕН — основа динамического ценообразования (для media-моделей)
   @Prop({
     type: [{
       conditions: { type: SchemaTypes.Mixed },
@@ -200,17 +310,17 @@ export class AIModel {
     }],
     default: [],
   })
-  pricingMatrix: PricingRule[];
+  pricingMatrix!: PricingRule[];
 
 
-  // 🆕 ПАРАМЕТРЫ ДЛЯ UI — описывают как фронт должен рисовать форму генерации
-  // ⚠️ ВАЖНО: каждое поле обёрнуто в { type: ... } — особенно поле `type`,
-  // иначе Mongoose интерпретирует его как тип всего объекта (CastError!)
+
+
+  // ПАРАМЕТРЫ ДЛЯ UI — описывают как фронт должен рисовать форму генерации
   @Prop({
     type: [{
       key: { type: String },
       label: { type: String },
-      type: { type: String },                                  // 👈 поле "type", а не указание типа
+      type: { type: String },
       options: {
         type: [{
           value: { type: SchemaTypes.Mixed },
@@ -219,7 +329,7 @@ export class AIModel {
         }],
         default: [],
       },
-      defaultValue: { type: SchemaTypes.Mixed },               // 👈 переименовано из `default`
+      defaultValue: { type: SchemaTypes.Mixed },
       affectsPrice: { type: Boolean },
       visibleWhen: { type: SchemaTypes.Mixed },
       min: { type: Number },
@@ -230,16 +340,20 @@ export class AIModel {
     }],
     default: [],
   })
-  uiParameters: UIParameter[];
+  uiParameters!: UIParameter[];
 
 
-  // 🆕 КАКОЙ КОНТЕНТ ПРИНИМАЕТ МОДЕЛЬ (для чата с мультимодальностью)
+
+
+  // КАКОЙ КОНТЕНТ ПРИНИМАЕТ МОДЕЛЬ (для чата с мультимодальностью)
   @Prop({ type: SchemaTypes.Mixed, default: {} })
-  inputCapabilities: InputCapabilities;
+  inputCapabilities!: InputCapabilities;
+
+
 
 
   @Prop({ type: SchemaTypes.Mixed, default: {} })
-  stats: {
+  stats!: {
     totalRequests: number;
     avgResponseTime: number;
     successRate: number;
@@ -247,9 +361,13 @@ export class AIModel {
 }
 
 
+
+
 export const AIModelSchema = SchemaFactory.createForClass(AIModel);
+
+
 
 
 // Составной индекс для поиска
 AIModelSchema.index({ type: 1, isActive: 1, sortOrder: 1 });
-// Удалён дублирующийся индекс для slug, так как он уже unique
+// slug уже unique → отдельный индекс не нужен

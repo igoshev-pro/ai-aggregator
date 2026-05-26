@@ -1,4 +1,11 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  forwardRef,
+  Inject,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AIModel, ModelDocument } from './schemas/model.schema';
@@ -15,24 +22,43 @@ import {
 } from './providers/base-provider.abstract';
 import { GenerationType, SubscriptionPlan } from '@/common/interfaces';
 import { ModelAccessResponseDto } from './dto/model-access.dto';
+import { BillingService } from '../billing/billing.service';
+
+
+
 
 @Injectable()
 export class AiProvidersService {
   private readonly logger = new Logger(AiProvidersService.name);
 
+
+
+
   constructor(
     @InjectModel(AIModel.name) private modelModel: Model<ModelDocument>,
     @InjectModel(Provider.name) private providerModel: Model<ProviderDocument>,
     private registry: ProviderRegistryService,
-  ) { }
+    // 🆕 BillingService для получения preview-цены модели
+    @Inject(forwardRef(() => BillingService))
+    private billingService: BillingService,
+  ) {}
+
+
+
 
   async getModelsByType(type: GenerationType): Promise<ModelDocument[]> {
     return this.modelModel.find({ type, isActive: true }).sort({ sortOrder: 1 }).exec();
   }
 
+
+
+
   async getAllModels(): Promise<ModelDocument[]> {
     return this.modelModel.find({ isActive: true }).sort({ type: 1, sortOrder: 1 }).exec();
   }
+
+
+
 
   async getModelBySlug(slug: string): Promise<ModelDocument> {
     const model = await this.modelModel.findOne({ slug, isActive: true });
@@ -40,10 +66,31 @@ export class AiProvidersService {
     return model;
   }
 
+
+
+
+  /**
+   * 🔄 Возвращает среднюю стоимость модели в 🔥 спичках.
+   *
+   * Используется для отображения в UI ("~X 🔥/запрос") и для
+   * приблизительной оценки до выполнения запроса.
+   *
+   * @deprecated Используйте billingService.getModelPreviewCost() напрямую
+   * для получения min/avg/max в новом формате.
+   */
   async getModelCost(slug: string): Promise<number> {
-    const model = await this.getModelBySlug(slug);
-    return model.tokenCost || model.minTokenCost;
+    try {
+      const preview = await this.billingService.getModelPreviewCost(slug);
+      return preview.avgCostInTokens;
+    } catch {
+      // Fallback на старые поля если preview не сработал
+      const model = await this.getModelBySlug(slug);
+      return Number(model.tokenCost) || Number(model.minTokenCost) || 0.01;
+    }
   }
+
+
+
 
   async generateText(
     modelSlug: string,
@@ -52,137 +99,192 @@ export class AiProvidersService {
     return this.executeWithFallback(modelSlug, 'generateText', request);
   }
 
-async *generateTextStream(
-  modelSlug: string,
-  request: Omit<TextGenerationRequest, 'model'>,
-): AsyncGenerator<StreamChunk> {
-  const providers = await this.registry.getProvidersForModel(modelSlug);
 
-  if (providers.length === 0) {
-    throw new BadRequestException(`No providers available for ${modelSlug}`);
-  }
 
-  let lastError: string | null = null;
 
-  for (const { provider, modelId } of providers) {
-    try {
-      this.logger.debug(`generateTextStream via ${provider.getSlug()} with model ${modelId}`);
+  async *generateTextStream(
+    modelSlug: string,
+    request: Omit<TextGenerationRequest, 'model'>,
+  ): AsyncGenerator<StreamChunk> {
+    const providers = await this.registry.getProvidersForModel(modelSlug);
 
-      const stream = provider.generateTextStream({
-        ...request,
-        model: modelId,
-      });
 
-      let hasContent = false;
-      let streamError: string | null = null;
 
-      for await (const chunk of stream) {
-        // Проверяем наличие ошибки в чанке
-        if ((chunk as any).error) {
-          streamError = (chunk as any).error;
-          this.logger.warn(
-            `Stream chunk error from ${provider.getSlug()}: ${streamError}`,
-          );
-          break;
-        }
 
-        if (chunk.content && !chunk.content.startsWith('Error:')) {
-          hasContent = true;
-        }
+    if (providers.length === 0) {
+      throw new BadRequestException(`No providers available for ${modelSlug}`);
+    }
 
-        if (chunk.done && !hasContent && chunk.content?.startsWith('Error:')) {
-          streamError = chunk.content;
-          this.logger.warn(
-            `Stream error from ${provider.getSlug()}: ${streamError}`,
-          );
-          break;
-        }
 
-        yield chunk;
 
-        if (chunk.done) {
-          return;
-        }
-      }
 
-      if (streamError) {
-        lastError = streamError;
-        this.logger.warn(
-          `Provider ${provider.getSlug()} failed for ${modelSlug}, trying next...`,
-        );
-        continue;
-      }
+    let lastError: string | null = null;
 
-      return;
 
-    } catch (error) {
-      // ═══ SAFE ERROR EXTRACTION — no circular JSON ═══
-      let errorMsg: string;
+
+
+    for (const { provider, modelId } of providers) {
       try {
-        // Пробуем получить сообщение из response body
-        if (error?.response?.status) {
-          const status = error.response.status;
-          let body = '';
-          
-          try {
-            // Если data — стрим, читаем его
-            if (error.response.data && typeof error.response.data.pipe === 'function') {
-              const chunks: Buffer[] = [];
-              for await (const chunk of error.response.data) {
-                chunks.push(Buffer.from(chunk));
-                if (chunks.length > 5) break;
-              }
-              body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
-            } 
-            // Если data — строка
-            else if (typeof error.response.data === 'string') {
-              body = error.response.data.substring(0, 500);
-            }
-            // Если data — объект с error.message
-            else if (error.response.data?.error?.message) {
-              body = error.response.data.error.message;
-            }
-          } catch {
-            body = '';
+        this.logger.debug(
+          `generateTextStream via ${provider.getSlug()} with model ${modelId}`,
+        );
+
+
+
+
+        const stream = provider.generateTextStream({
+          ...request,
+          model: modelId,
+        });
+
+
+
+
+        let hasContent = false;
+        let streamError: string | null = null;
+
+
+
+
+        for await (const chunk of stream) {
+          // Проверяем наличие ошибки в чанке
+          if ((chunk as any).error) {
+            streamError = (chunk as any).error;
+            this.logger.warn(
+              `Stream chunk error from ${provider.getSlug()}: ${streamError}`,
+            );
+            break;
           }
 
-          // Пробуем распарсить JSON из body
-          if (body) {
+
+
+
+          if (chunk.content && !chunk.content.startsWith('Error:')) {
+            hasContent = true;
+          }
+
+
+
+
+          if (chunk.done && !hasContent && chunk.content?.startsWith('Error:')) {
+            streamError = chunk.content;
+            this.logger.warn(
+              `Stream error from ${provider.getSlug()}: ${streamError}`,
+            );
+            break;
+          }
+
+
+
+
+          yield chunk;
+
+
+
+
+          if (chunk.done) {
+            return;
+          }
+        }
+
+
+
+
+        if (streamError) {
+          lastError = streamError;
+          this.logger.warn(
+            `Provider ${provider.getSlug()} failed for ${modelSlug}, trying next...`,
+          );
+          continue;
+        }
+
+
+
+
+        return;
+      } catch (error: any) {
+        // ═══ SAFE ERROR EXTRACTION — no circular JSON ═══
+        let errorMsg: string;
+        try {
+          if (error?.response?.status) {
+            const status = error.response.status;
+            let body = '';
+
+
+
+
             try {
-              const parsed = JSON.parse(body);
-              errorMsg = parsed?.error?.message 
-                || parsed?.error?.metadata?.raw?.substring(0, 200) 
-                || parsed?.message 
-                || parsed?.msg 
-                || body;
+              if (
+                error.response.data &&
+                typeof error.response.data.pipe === 'function'
+              ) {
+                const chunks: Buffer[] = [];
+                for await (const chunk of error.response.data) {
+                  chunks.push(Buffer.from(chunk));
+                  if (chunks.length > 5) break;
+                }
+                body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+              } else if (typeof error.response.data === 'string') {
+                body = error.response.data.substring(0, 500);
+              } else if (error.response.data?.error?.message) {
+                body = error.response.data.error.message;
+              }
             } catch {
-              // Может быть HTML — ищем <p> тег
-              const match = body.match(/<p>(.*?)<\/p>/);
-              errorMsg = match ? `${status}: ${match[1]}` : `${status}: ${body.substring(0, 200)}`;
+              body = '';
+            }
+
+
+
+
+            if (body) {
+              try {
+                const parsed = JSON.parse(body);
+                errorMsg =
+                  parsed?.error?.message ||
+                  parsed?.error?.metadata?.raw?.substring(0, 200) ||
+                  parsed?.message ||
+                  parsed?.msg ||
+                  body;
+              } catch {
+                const match = body.match(/<p>(.*?)<\/p>/);
+                errorMsg = match
+                  ? `${status}: ${match[1]}`
+                  : `${status}: ${body.substring(0, 200)}`;
+              }
+            } else {
+              errorMsg = `HTTP ${status}: ${error.message}`;
             }
           } else {
-            errorMsg = `HTTP ${status}: ${error.message}`;
+            errorMsg = error?.message || 'Unknown error';
           }
-        } else {
-          errorMsg = error?.message || 'Unknown error';
+        } catch {
+          errorMsg = 'Unknown provider error';
         }
-      } catch {
-        errorMsg = 'Unknown provider error';
-      }
 
-      this.logger.error(`${provider.getSlug()} generateTextStream error: ${errorMsg}`);
-      lastError = errorMsg;
-      continue;
+
+
+
+        this.logger.error(
+          `${provider.getSlug()} generateTextStream error: ${errorMsg}`,
+        );
+        lastError = errorMsg;
+        continue;
+      }
     }
+
+
+
+
+    this.logger.error(`All providers failed for ${modelSlug}: ${lastError}`);
+    yield {
+      content: '',
+      done: true,
+      error: lastError || 'All providers failed',
+    } as any;
   }
 
-  this.logger.error(`All providers failed for ${modelSlug}: ${lastError}`);
-  yield {
-    content: '',
-    done: true,
-    error: lastError || 'All providers failed',
-  } as any;
-}
+
+
 
   async generateImage(
     modelSlug: string,
@@ -191,12 +293,18 @@ async *generateTextStream(
     return this.executeWithFallback(modelSlug, 'generateImage', request);
   }
 
+
+
+
   async generateVideo(
     modelSlug: string,
     request: Omit<VideoGenerationRequest, 'model'>,
   ): Promise<GenerationResult> {
     return this.executeWithFallback(modelSlug, 'generateVideo', request);
   }
+
+
+
 
   async generateAudio(
     modelSlug: string,
@@ -205,20 +313,33 @@ async *generateTextStream(
     return this.executeWithFallback(modelSlug, 'generateAudio', request);
   }
 
+
+
+
   async checkTaskStatus(
     providerSlug: string,
     taskId: string,
   ): Promise<TaskStatusResult> {
     const provider = this.registry.getProvider(providerSlug);
-    if (!provider) return { status: 'failed', error: `Provider ${providerSlug} not found` };
+    if (!provider)
+      return { status: 'failed', error: `Provider ${providerSlug} not found` };
     return provider.checkTaskStatus(taskId);
   }
+
+
+
 
   async getAllProviders(): Promise<ProviderDocument[]> {
     return this.providerModel.find().sort({ priority: 1 }).exec();
   }
 
-  async updateProvider(slug: string, updates: Partial<Provider>): Promise<ProviderDocument> {
+
+
+
+  async updateProvider(
+    slug: string,
+    updates: Partial<Provider>,
+  ): Promise<ProviderDocument> {
     const provider = await this.providerModel.findOneAndUpdate(
       { slug },
       { $set: updates },
@@ -228,7 +349,13 @@ async *generateTextStream(
     return provider;
   }
 
-  async updateModel(slug: string, updates: Partial<AIModel>): Promise<ModelDocument> {
+
+
+
+  async updateModel(
+    slug: string,
+    updates: Partial<AIModel>,
+  ): Promise<ModelDocument> {
     const model = await this.modelModel.findOneAndUpdate(
       { slug },
       { $set: updates },
@@ -238,18 +365,35 @@ async *generateTextStream(
     return model;
   }
 
+
+
+
   private async executeWithFallback(
     modelSlug: string,
-    method: 'generateImage' | 'generateVideo' | 'generateAudio' | 'generateText' | 'generateLyrics',
+    method:
+      | 'generateImage'
+      | 'generateVideo'
+      | 'generateAudio'
+      | 'generateText'
+      | 'generateLyrics',
     request: any,
   ): Promise<GenerationResult> {
     const providers = await this.registry.getProvidersForModel(modelSlug);
+
+
+
 
     if (providers.length === 0) {
       throw new BadRequestException(`No providers available for ${modelSlug}`);
     }
 
+
+
+
     let lastError: GenerationResult | null = null;
+
+
+
 
     for (const { provider, modelId } of providers) {
       try {
@@ -257,10 +401,16 @@ async *generateTextStream(
           `${method} via ${provider.getSlug()} with model ${modelId}`,
         );
 
+
+
+
         const result = await provider[method]({
           ...request,
           model: modelId,
         });
+
+
+
 
         await this.registry.updateProviderStats(
           provider.getSlug(),
@@ -268,18 +418,27 @@ async *generateTextStream(
           result.success,
         );
 
+
+
+
         if (result.success) {
           await this.updateModelStats(modelSlug, result.responseTimeMs, true);
           return result;
         }
+
+
+
 
         if (result.error?.retryable) {
           lastError = result;
           continue;
         }
 
+
+
+
         return result;
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(
           `${method} error from ${provider.getSlug()}: ${error.message}`,
         );
@@ -296,18 +455,26 @@ async *generateTextStream(
       }
     }
 
+
+
+
     await this.updateModelStats(modelSlug, 0, false);
-    return lastError || {
-      success: false,
-      error: {
-        code: 'ALL_PROVIDERS_FAILED',
-        message: `All providers failed for ${modelSlug}`,
-        retryable: false,
-      },
-      responseTimeMs: 0,
-      providerSlug: 'none',
-    };
+    return (
+      lastError || {
+        success: false,
+        error: {
+          code: 'ALL_PROVIDERS_FAILED',
+          message: `All providers failed for ${modelSlug}`,
+          retryable: false,
+        },
+        responseTimeMs: 0,
+        providerSlug: 'none',
+      }
+    );
   }
+
+
+
 
   private async updateModelStats(
     modelSlug: string,
@@ -317,9 +484,21 @@ async *generateTextStream(
     const model = await this.modelModel.findOne({ slug: modelSlug });
     if (!model) return;
 
-    const stats = model.stats || { totalRequests: 0, avgResponseTime: 0, successRate: 100 };
+
+
+
+    const stats = model.stats || {
+      totalRequests: 0,
+      avgResponseTime: 0,
+      successRate: 100,
+    };
     const total = stats.totalRequests + 1;
-    const successCount = Math.round((stats.successRate / 100) * stats.totalRequests);
+    const successCount = Math.round(
+      (stats.successRate / 100) * stats.totalRequests,
+    );
+
+
+
 
     await this.modelModel.findOneAndUpdate(
       { slug: modelSlug },
@@ -327,7 +506,8 @@ async *generateTextStream(
         $set: {
           'stats.totalRequests': total,
           'stats.avgResponseTime':
-            (stats.avgResponseTime * stats.totalRequests + responseTimeMs) / total,
+            (stats.avgResponseTime * stats.totalRequests + responseTimeMs) /
+            total,
           'stats.successRate':
             ((successCount + (success ? 1 : 0)) / total) * 100,
         },
@@ -335,7 +515,15 @@ async *generateTextStream(
     );
   }
 
-  // Добавить в ai-providers.service.ts
+
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // Доступ к моделям по подписке
+  // ═══════════════════════════════════════════════════════════════
+
+
+
 
   async checkModelAccess(
     modelSlug: string,
@@ -343,31 +531,64 @@ async *generateTextStream(
   ): Promise<ModelAccessResponseDto> {
     const model = await this.getModelBySlug(modelSlug);
 
+
+
+
     // Если модель не премиум - доступна всем
     if (!model.isPremium) {
       return { hasAccess: true };
     }
 
+
+
+
     // Проверяем includedInPlans
     const includedPlans = model.limits?.includedInPlans || [];
 
+
+
+
     if (includedPlans.length === 0) {
       // Если не указаны планы - доступна всем премиум пользователям
-      if (userPlan === SubscriptionPlan.PRO || userPlan === SubscriptionPlan.UNLIMITED) {
+      // 🔄 С учётом PLUS/ULTIMATE
+      const premiumPlans = [
+        SubscriptionPlan.PRO,
+        SubscriptionPlan.UNLIMITED,
+        SubscriptionPlan.PLUS,
+        SubscriptionPlan.ULTIMATE,
+      ] as SubscriptionPlan[];
+
+
+
+
+      if (premiumPlans.includes(userPlan)) {
         return { hasAccess: true };
       }
     } else {
-      // Проверяем конкретные планы
       if (includedPlans.includes(userPlan)) {
         return { hasAccess: true };
       }
     }
 
+
+
+
     // Определяем минимально необходимый план
-    let requiredPlan = SubscriptionPlan.PRO;
-    if (includedPlans.includes(SubscriptionPlan.UNLIMITED) && !includedPlans.includes(SubscriptionPlan.PRO)) {
+    let requiredPlan: SubscriptionPlan = SubscriptionPlan.PLUS;
+    if (
+      includedPlans.includes(SubscriptionPlan.ULTIMATE) &&
+      !includedPlans.includes(SubscriptionPlan.PLUS)
+    ) {
+      requiredPlan = SubscriptionPlan.ULTIMATE;
+    } else if (
+      includedPlans.includes(SubscriptionPlan.UNLIMITED) &&
+      !includedPlans.includes(SubscriptionPlan.PRO)
+    ) {
       requiredPlan = SubscriptionPlan.UNLIMITED;
     }
+
+
+
 
     return {
       hasAccess: false,
@@ -376,7 +597,9 @@ async *generateTextStream(
     };
   }
 
-  // Добавить фильтрацию моделей по подписке
+
+
+
   async getAvailableModelsForUser(
     userPlan: SubscriptionPlan,
     type?: GenerationType,
@@ -384,12 +607,17 @@ async *generateTextStream(
     const query: any = { isActive: true };
     if (type) query.type = type;
 
+
+
+
     const models = await this.modelModel
       .find(query)
       .sort({ type: 1, sortOrder: 1 })
       .exec();
 
-    // Фильтруем по доступности
+
+
+
     const availableModels: ModelDocument[] = [];
     for (const model of models) {
       const access = await this.checkModelAccess(model.slug, userPlan);
@@ -397,6 +625,9 @@ async *generateTextStream(
         availableModels.push(model);
       }
     }
+
+
+
 
     return availableModels;
   }

@@ -1,3 +1,4 @@
+// src/modules/referral/referral.controller.ts
 import {
   Body,
   Controller,
@@ -7,15 +8,38 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiProperty } from '@nestjs/swagger';
+import {
+  IsEnum,
+  IsNumber,
+  IsString,
+  Min,
+  Max,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { ReferralService } from './referral.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { WithdrawalMethod } from './schemas/withdrawal.schema';
 
 class CreateWithdrawalDto {
+  @ApiProperty({ example: 100, minimum: 100, maximum: 100000 })
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(100)
+  @Max(100_000)
   amount: number;
+
+  @ApiProperty({ enum: WithdrawalMethod })
+  @IsEnum(WithdrawalMethod)
   method: WithdrawalMethod;
+
+  @ApiProperty({ example: '+79991234567' })
+  @IsString()
+  @MinLength(4)
+  @MaxLength(200)
   requisites: string;
 }
 
@@ -26,8 +50,6 @@ class CreateWithdrawalDto {
 export class ReferralController {
   constructor(private readonly referralService: ReferralService) {}
 
-  // ─── Старый эндпоинт (обратная совместимость) ──────────────
-
   @Get('stats')
   @ApiOperation({ summary: 'Get referral stats (legacy)' })
   async getStats(@CurrentUser('sub') userId: string) {
@@ -35,16 +57,12 @@ export class ReferralController {
     return { success: true, data };
   }
 
-  // ─── Новый эндпоинт для фронта ─────────────────────────────
-
   @Get('info')
-  @ApiOperation({ summary: 'Get referral info (used by frontend ReferralPage)' })
+  @ApiOperation({ summary: 'Get referral info (ReferralPage)' })
   async getInfo(@CurrentUser('sub') userId: string) {
     const data = await this.referralService.getReferralInfo(userId);
     return { success: true, data };
   }
-
-  // ─── Вывод средств ──────────────────────────────────────────
 
   @Post('withdraw')
   @HttpCode(HttpStatus.OK)
@@ -55,7 +73,7 @@ export class ReferralController {
   ) {
     const data = await this.referralService.createWithdrawal(
       userId,
-      Number(dto.amount),
+      dto.amount,
       dto.method,
       dto.requisites,
     );

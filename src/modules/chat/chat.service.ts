@@ -1,5 +1,8 @@
 // src/modules/chat/chat.service.ts
 
+
+
+
 import {
   Injectable,
   Logger,
@@ -20,6 +23,8 @@ import { BillingService } from '../billing/billing.service';
 import { ProviderRegistryService } from '../ai-providers/providers/provider-registry.service';
 
 
+
+
 export interface SendMessageDto {
   conversationId?: string;
   modelSlug: string;
@@ -31,7 +36,9 @@ export interface SendMessageDto {
 }
 
 
-// 🆕 Тип для сообщения с поддержкой vision (imageUrls)
+
+
+// Тип для сообщения с поддержкой vision (imageUrls)
 interface ContextMessage {
   role: string;
   content: string;
@@ -39,9 +46,19 @@ interface ContextMessage {
 }
 
 
+
+
+// 🆕 Глобальный минимум для работы с чатом — берём из BillingService
+const MIN_REQUIRED_BALANCE = 0.01; // минимум 0.01 🔥 чтобы вообще начать запрос
+
+
+
+
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
+
+
 
 
   constructor(
@@ -59,8 +76,13 @@ export class ChatService {
   ) {}
 
 
+
+
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
+
+
+
 
     const [conversations, total] = await Promise.all([
       this.conversationModel
@@ -75,11 +97,16 @@ export class ChatService {
       }),
     ]);
 
+
+
+
     return {
       conversations,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
+
+
 
 
   async getMessages(
@@ -89,6 +116,9 @@ export class ChatService {
     limit = 50,
   ) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
+
+
+
 
     const skip = (page - 1) * limit;
     const [messages, total] = await Promise.all([
@@ -101,11 +131,71 @@ export class ChatService {
       this.messageModel.countDocuments({ conversationId: conversation._id }),
     ]);
 
+
+
+
     return {
       messages: messages.reverse(),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
+
+
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 Helper: проверка достаточности баланса по preview-цене
+  // ═══════════════════════════════════════════════════════════════
+
+
+
+
+  /**
+   * Проверяем, что у пользователя есть хотя бы минимум для отправки.
+   * Берём preview-цену модели и сравниваем с `minCostInTokens`.
+   *
+   * Не блокируем по avgCostInTokens — пользователь может задать короткий
+   * вопрос за меньше, чем средняя цена. Главное — чтобы было хоть что-то.
+   */
+  private async checkSufficientBalance(
+    userId: string,
+    modelSlug: string,
+  ): Promise<{ ok: true; balance: number } | { ok: false; balance: number; required: number }> {
+    const user = await this.usersService.findById(userId);
+    const totalBalance = user.tokenBalance + user.bonusTokens;
+
+
+
+
+    try {
+      const preview = await this.billingService.getModelPreviewCost(modelSlug);
+      // Требуем минимум = min цены модели (или 0.01 если меньше)
+      const required = Math.max(preview.minCostInTokens, MIN_REQUIRED_BALANCE);
+
+
+
+
+      if (totalBalance < required) {
+        return { ok: false, balance: totalBalance, required };
+      }
+      return { ok: true, balance: totalBalance };
+    } catch {
+      // Если preview не получили — используем глобальный минимум
+      if (totalBalance < MIN_REQUIRED_BALANCE) {
+        return { ok: false, balance: totalBalance, required: MIN_REQUIRED_BALANCE };
+      }
+      return { ok: true, balance: totalBalance };
+    }
+  }
+
+
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // sendMessage (non-stream)
+  // ═══════════════════════════════════════════════════════════════
+
+
 
 
   async sendMessage(userId: string, dto: SendMessageDto) {
@@ -116,6 +206,9 @@ export class ChatService {
       hasImages: !!(dto.imageUrls && dto.imageUrls.length > 0),
     });
 
+
+
+
     // Проверка существования модели
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
     if (!model) {
@@ -123,9 +216,15 @@ export class ChatService {
       throw new NotFoundException(`Model ${dto.modelSlug} not found`);
     }
 
+
+
+
     this.logger.log(`✅ Model found: ${model.displayName || model.name}`);
 
-    // ═══ 🆕 VISION VALIDATION ═══
+
+
+
+    // ═══ VISION VALIDATION ═══
     if (dto.imageUrls && dto.imageUrls.length > 0) {
       if (!(model as any).supportsVision) {
         this.logger.warn(
@@ -136,6 +235,9 @@ export class ChatService {
         );
       }
 
+
+
+
       const maxImages = (model as any).inputCapabilities?.maxInputImages || 4;
       if (dto.imageUrls.length > maxImages) {
         throw new BadRequestException(
@@ -143,18 +245,25 @@ export class ChatService {
         );
       }
 
+
+
+
       this.logger.log(`✅ Vision allowed: ${dto.imageUrls.length} image(s) for ${dto.modelSlug}`);
     }
 
-    const user = await this.usersService.findById(userId);
-    const totalBalance = user.tokenBalance + user.bonusTokens;
 
-    // Проверяем минимальный баланс
-    if (totalBalance < model.minTokenCost) {
+
+
+    // 🆕 Проверка баланса по preview-цене (а не minTokenCost)
+    const balanceCheck = await this.checkSufficientBalance(userId, dto.modelSlug);
+    if (!balanceCheck.ok) {
       throw new BadRequestException(
-        `Insufficient tokens. Need at least ${model.minTokenCost}, have ${totalBalance}`,
+        `Недостаточно спичек. Минимум для этой модели: ${balanceCheck.required}🔥, у вас: ${balanceCheck.balance}🔥`,
       );
     }
+
+
+
 
     let conversation: ConversationDocument;
     if (dto.conversationId) {
@@ -162,6 +271,9 @@ export class ChatService {
     } else {
       conversation = await this.createConversation(userId, dto);
     }
+
+
+
 
     const userMessage = new this.messageModel({
       conversationId: conversation._id,
@@ -172,7 +284,13 @@ export class ChatService {
     });
     await userMessage.save();
 
+
+
+
     const contextMessages = await this.buildContext(conversation, dto);
+
+
+
 
     try {
       const result = await this.aiProvidersService.generateText(dto.modelSlug, {
@@ -180,6 +298,9 @@ export class ChatService {
         maxTokens: dto.maxTokens || model.defaultParams?.maxTokens || 4096,
         temperature: dto.temperature ?? model.defaultParams?.temperature ?? 0.7,
       });
+
+
+
 
       if (!result.success) {
         const errorMessage = new this.messageModel({
@@ -194,10 +315,17 @@ export class ChatService {
         });
         await errorMessage.save();
 
+
+
+
         throw new BadRequestException(result.error?.message || 'Generation failed');
       }
 
-      // Списываем токены на основе реального использования
+
+
+
+      // 🆕 Списываем по новой формуле — BillingService сам всё посчитает
+      // с округлением до 2 знаков и минимумом 0.01🔥
       const { costInTokens, costInDollars } = await this.billingService.chargeForGeneration(
         userId,
         dto.modelSlug,
@@ -206,6 +334,16 @@ export class ChatService {
         result.usage?.inputTokens,
         result.usage?.outputTokens,
       );
+
+
+
+
+      this.logger.log(
+        `💸 Charged: ${costInTokens}🔥 (in=${result.usage?.inputTokens}, out=${result.usage?.outputTokens}, providerCost=$${costInDollars})`,
+      );
+
+
+
 
       // Сохраняем ответ
       const assistantMessage = new this.messageModel({
@@ -223,16 +361,28 @@ export class ChatService {
       });
       await assistantMessage.save();
 
+
+
+
       conversation.messageCount += 2;
       conversation.totalTokensUsed += result.usage?.totalTokens || 0;
       conversation.lastMessageAt = new Date();
+
+
+
 
       if (conversation.messageCount <= 2) {
         conversation.title = this.generateTitle(dto.content);
       }
       await conversation.save();
 
+
+
+
       await this.usersService.incrementDailyGenerations(userId);
+
+
+
 
       return {
         message: assistantMessage,
@@ -249,54 +399,49 @@ export class ChatService {
   }
 
 
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // streamMessage
+  // ═══════════════════════════════════════════════════════════════
+
+
+
+
   async *streamMessage(
     userId: string,
     dto: SendMessageDto,
   ): AsyncGenerator<{ type: string; data: any }> {
-    console.log('=== STREAM MESSAGE DEBUG ===');
-    console.log('1. UserID:', userId);
-    console.log('2. DTO:', JSON.stringify(dto));
-    console.log('3. Model slug received:', dto.modelSlug);
+    this.logger.debug(`=== STREAM MESSAGE: user=${userId}, model=${dto.modelSlug} ===`);
+
+
+
 
     try {
       // 1. Проверка пользователя
-      console.log('4. Checking user...');
       const user = await this.usersService.findById(userId);
       if (!user) {
-        console.log('ERROR: User not found');
         yield { type: 'error', data: { message: 'User not found' } };
         return;
       }
-      console.log('5. User found:', user.telegramId, 'Balance:', user.tokenBalance + user.bonusTokens);
+
+
+
 
       // 2. Проверка модели
-      console.log('6. Checking model...');
       const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
       if (!model) {
-        console.log('ERROR: Model not found:', dto.modelSlug);
-
-        // Показать доступные модели
-        const available = await this.modelModel.find({}, { slug: 1 }).limit(10);
-        console.log('Available models in DB:', available.map(m => m.slug));
-
+        this.logger.warn(`Model not found: ${dto.modelSlug}`);
         yield { type: 'error', data: { message: `Model ${dto.modelSlug} not found` } };
         return;
       }
-      console.log('7. Model found:', model.name, '/', model.slug, '/', model.displayName);
-      console.log('   Model details:', {
-        type: model.type,
-        isActive: model.isActive,
-        isPremium: model.isPremium,
-        minTokenCost: model.minTokenCost,
-        providerMappings: model.providerMappings?.length || 0,
-      });
 
-      // ═══ 🆕 VISION VALIDATION (stream version) ═══
+
+
+
+      // ═══ VISION VALIDATION ═══
       if (dto.imageUrls && dto.imageUrls.length > 0) {
         if (!(model as any).supportsVision) {
-          console.log(
-            `ERROR: Model ${dto.modelSlug} does NOT support vision, but ${dto.imageUrls.length} images sent`,
-          );
           yield {
             type: 'error',
             data: {
@@ -305,6 +450,9 @@ export class ChatService {
           };
           return;
         }
+
+
+
 
         const maxImages = (model as any).inputCapabilities?.maxInputImages || 4;
         if (dto.imageUrls.length > maxImages) {
@@ -316,44 +464,46 @@ export class ChatService {
           };
           return;
         }
-
-        console.log(`7.5. Vision OK: ${dto.imageUrls.length} image(s) approved for ${dto.modelSlug}`);
       }
 
-      // 3. Проверка баланса
-      console.log('8. Checking balance...');
-      const totalBalance = user.tokenBalance + user.bonusTokens;
-      const requiredTokens = model.minTokenCost || 1;
-      console.log(`   Balance: ${totalBalance}, Required: ${requiredTokens}`);
 
-      if (totalBalance < requiredTokens) {
-        console.log('ERROR: Insufficient balance');
+
+
+      // 3. 🆕 Проверка баланса по preview-цене
+      const balanceCheck = await this.checkSufficientBalance(userId, dto.modelSlug);
+      if (!balanceCheck.ok) {
         yield {
           type: 'error',
-          data: { message: `Недостаточно спичек. Нужно ${requiredTokens}, у вас ${totalBalance}` }
+          data: {
+            message: `Недостаточно спичек. Минимум для этой модели: ${balanceCheck.required}🔥, у вас: ${balanceCheck.balance}🔥`,
+          },
         };
         return;
       }
 
+
+
+
       // 4. Создание/получение conversation
-      console.log('9. Managing conversation...');
       let conversation: ConversationDocument;
       if (dto.conversationId) {
-        console.log('   Loading existing conversation:', dto.conversationId);
         conversation = await this.getConversationWithAccess(userId, dto.conversationId);
       } else {
-        console.log('   Creating new conversation');
         conversation = await this.createConversation(userId, dto);
       }
-      console.log('10. Conversation ready:', conversation._id);
+
+
+
 
       yield {
         type: 'conversation',
         data: { id: conversation._id.toString(), title: conversation.title },
       };
 
+
+
+
       // 5. Сохранение сообщения пользователя
-      console.log('11. Saving user message...');
       const userMessage = new this.messageModel({
         conversationId: conversation._id,
         userId: new Types.ObjectId(userId),
@@ -362,15 +512,17 @@ export class ChatService {
         imageUrls: dto.imageUrls || [],
       });
       await userMessage.save();
-      console.log('12. User message saved:', userMessage._id, 'images:', dto.imageUrls?.length || 0);
 
-      // 6. Построение контекста (🆕 теперь с imageUrls)
-      console.log('13. Building context...');
+
+
+
+      // 6. Построение контекста
       const contextMessages = await this.buildContext(conversation, dto);
-      console.log('14. Context ready, messages count:', contextMessages.length);
+
+
+
 
       // 7. Создание сообщения ассистента
-      console.log('15. Creating assistant message placeholder...');
       const assistantMessage = new this.messageModel({
         conversationId: conversation._id,
         userId: new Types.ObjectId(userId),
@@ -380,22 +532,28 @@ export class ChatService {
         isStreaming: true,
       });
       await assistantMessage.save();
-      console.log('16. Assistant message created:', assistantMessage._id);
+
+
+
 
       yield {
         type: 'message_start',
         data: { messageId: assistantMessage._id.toString() },
       };
 
+
+
+
       // 8. Начало стриминга
-      console.log('17. Starting stream generation...');
       let fullContent = '';
       let lastUsage: any = null;
       let success = false;
       let costInTokens = 0;
 
+
+
+
       try {
-        console.log('18. Calling aiProvidersService.generateTextStream...');
         const stream = this.aiProvidersService.generateTextStream(dto.modelSlug, {
           messages: contextMessages,
           maxTokens: dto.maxTokens || model.defaultParams?.maxTokens || 4096,
@@ -403,19 +561,14 @@ export class ChatService {
           stream: true,
         });
 
-        console.log('19. Stream created, starting iteration...');
-        let chunkCount = 0;
+
+
 
         for await (const chunk of stream) {
-          chunkCount++;
-          if (chunkCount === 1) {
-            console.log('20. First chunk received, done:', chunk.done, 'hasError:', !!(chunk as any).error, 'contentLen:', chunk.content?.length);
-          }
-
           // Проверяем ошибку в чанке (новый формат)
           const chunkError = (chunk as any).error;
           if (chunkError) {
-            console.error('Stream error in chunk:', chunkError);
+            this.logger.error(`Stream error in chunk: ${chunkError}`);
             yield {
               type: 'error',
               data: { message: chunkError },
@@ -424,11 +577,14 @@ export class ChatService {
             break;
           }
 
-          // Обрабатываем content ПЕРЕД проверкой done
+
+
+
+          // Обрабатываем content
           if (chunk.content) {
-            // Проверяем legacy формат ошибки (content начинается с "Error:")
+            // Legacy формат ошибки
             if (chunk.content.startsWith('Error:') && chunk.done) {
-              console.error('Stream returned legacy error:', chunk.content);
+              this.logger.error(`Stream returned legacy error: ${chunk.content}`);
               yield {
                 type: 'error',
                 data: { message: chunk.content },
@@ -437,6 +593,9 @@ export class ChatService {
               break;
             }
 
+
+
+
             fullContent += chunk.content;
             yield {
               type: 'text_delta',
@@ -444,12 +603,14 @@ export class ChatService {
             };
           }
 
+
+
+
           if (chunk.done) {
-            console.log('21. Stream completed, total chunks:', chunkCount, 'contentLen:', fullContent.length);
             if (chunk.usage) lastUsage = chunk.usage;
             success = fullContent.length > 0;
             if (!success) {
-              console.error('Stream ended with empty content — likely a provider error');
+              this.logger.error('Stream ended with empty content — likely a provider error');
               yield {
                 type: 'error',
                 data: { message: 'Model returned empty response. Please try again.' },
@@ -458,12 +619,8 @@ export class ChatService {
             break;
           }
         }
-
-        console.log('22. Stream iteration finished, success:', success);
-        console.log('    Content length:', fullContent.length);
-
       } catch (error: any) {
-        console.error('ERROR in stream:', error);
+        this.logger.error(`Stream error: ${error.message}`);
         yield {
           type: 'error',
           data: { message: error.message || 'Stream generation failed' },
@@ -471,44 +628,54 @@ export class ChatService {
         success = false;
       }
 
+
+
+
       // 9. Сохранение результата
       if (success && fullContent) {
-        console.log('23. Saving successful response...');
+        // 🆕 Списываем по новой формуле
+        const { costInTokens: billedTokens, costInDollars } =
+          await this.billingService.chargeForGeneration(
+            userId,
+            dto.modelSlug,
+            'text',
+            conversation._id.toString(),
+            lastUsage?.inputTokens,
+            lastUsage?.outputTokens,
+          );
 
-        // Списываем токены
-        const { costInTokens: billedTokens } = await this.billingService.chargeForGeneration(
-          userId,
-          dto.modelSlug,
-          'text',
-          conversation._id.toString(),
-          lastUsage?.inputTokens,
-          lastUsage?.outputTokens,
-        );
+
+
 
         costInTokens = billedTokens;
 
-        assistantMessage.content = fullContent;
-        assistantMessage.isStreaming = false;
-        assistantMessage.usage = lastUsage || {};
-        assistantMessage.tokensCost = costInTokens;
-        assistantMessage.inputTokens = lastUsage?.inputTokens;
-        assistantMessage.outputTokens = lastUsage?.outputTokens;
-        await assistantMessage.save();
 
-        conversation.messageCount += 2;
-        conversation.lastMessageAt = new Date();
-        if (conversation.messageCount <= 2) {
+
+
+        this.logger.log(
+          `💸 [stream] Charged: ${costInTokens}🔥 (in=${lastUsage?.inputTokens}, out=${lastUsage?.outputTokens}, providerCost=$${costInDollars})`,
+        );
+
+
+
+
+        assistantMessage.content = fullContent;
+        assation.messageCount <= 2) {
           conversation.title = this.generateTitle(dto.content);
         }
         await conversation.save();
 
-        await this.usersService.incrementDailyGenerations(userId);
 
-        console.log('24. Response saved successfully');
+
+
+        await this.usersService.incrementDailyGenerations(userId);
       } else if (!success) {
-        console.log('25. Cleaning up failed message');
+        // Чистим плейсхолдер если ничего не вышло
         await this.messageModel.findByIdAndDelete(assistantMessage._id);
       }
+
+
+
 
       yield {
         type: 'message_end',
@@ -519,17 +686,24 @@ export class ChatService {
         },
       };
 
-      console.log('26. Stream completed');
-      console.log('=== END STREAM MESSAGE ===');
 
-    } catch (error) {
-      console.error('FATAL ERROR in streamMessage:', error);
+
+
+      this.logger.debug('=== END STREAM MESSAGE ===');
+
+
+
+
+    } catch (error: any) {
+      this.logger.error(`FATAL ERROR in streamMessage: ${error.message}`, error.stack);
       yield {
         type: 'error',
         data: { message: 'Internal server error' },
       };
     }
   }
+
+
 
 
   async createConversation(
@@ -550,12 +724,16 @@ export class ChatService {
   }
 
 
+
+
   async deleteConversation(userId: string, conversationId: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
     await this.messageModel.deleteMany({ conversationId: conversation._id });
     await this.conversationModel.findByIdAndDelete(conversation._id);
     return { deleted: true };
   }
+
+
 
 
   async renameConversation(userId: string, conversationId: string, title: string) {
@@ -566,6 +744,8 @@ export class ChatService {
   }
 
 
+
+
   async togglePin(userId: string, conversationId: string) {
     const conversation = await this.getConversationWithAccess(userId, conversationId);
     conversation.isPinned = !conversation.isPinned;
@@ -574,13 +754,10 @@ export class ChatService {
   }
 
 
+
+
   /**
-   * 🆕 Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
-   *
-   * Что меняется:
-   * - В историю включаем imageUrls из сохранённых сообщений
-   *   → модель видит ВСЕ картинки чата, не только последнюю
-   * - Последнее user-сообщение использует imageUrls из dto (свежие)
+   * Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
    */
   private async buildContext(
     conversation: ConversationDocument,
@@ -588,12 +765,18 @@ export class ChatService {
   ): Promise<ContextMessage[]> {
     const messages: ContextMessage[] = [];
 
+
+
+
     const systemPrompt = dto.systemPrompt || conversation.systemPrompt;
     if (systemPrompt) {
       messages.push({ role: 'system', content: systemPrompt });
     }
 
-    const maxContextMessages = 20;
+
+
+
+        const maxContextMessages = 20;
     const history = await this.messageModel
       .find({
         conversationId: conversation._id,
@@ -604,7 +787,13 @@ export class ChatService {
       .limit(maxContextMessages)
       .exec();
 
+
+
+
     const orderedHistory = history.reverse();
+
+
+
 
     for (const msg of orderedHistory) {
       const contextMsg: ContextMessage = {
@@ -612,16 +801,25 @@ export class ChatService {
         content: msg.content,
       };
 
-      // 🆕 Прокидываем картинки из истории (если есть)
+
+
+
+      // Прокидываем картинки из истории (если есть)
       const msgImages = (msg as any).imageUrls;
       if (Array.isArray(msgImages) && msgImages.length > 0) {
         contextMsg.imageUrls = msgImages;
       }
 
+
+
+
       messages.push(contextMsg);
     }
 
-    // 🆕 Последнее user-сообщение с свежими imageUrls из dto
+
+
+
+    // Последнее user-сообщение с свежими imageUrls из dto
     const lastUserMsg: ContextMessage = {
       role: 'user',
       content: dto.content,
@@ -631,8 +829,13 @@ export class ChatService {
     }
     messages.push(lastUserMsg);
 
+
+
+
     return messages;
   }
+
+
 
 
   private async getConversationWithAccess(
@@ -648,6 +851,8 @@ export class ChatService {
     }
     return conversation;
   }
+
+
 
 
   private generateTitle(content: string): string {

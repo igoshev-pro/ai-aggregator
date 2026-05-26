@@ -21,13 +21,15 @@ export class Withdrawal {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
   userId: Types.ObjectId;
 
-  /** Сумма в спичках (= рублях, 1:1) */
-  @Prop({ required: true, min: 1 })
+  /** Сумма в рублях для выплаты */
+  @Prop({ required: true, min: 100 })  // 🆕 синхронизация с MIN_WITHDRAWAL_AMOUNT
   amount: number;
 
-  /** Сумма в рублях для выплаты */
-  @Prop({ required: true, min: 1 })
+  @Prop({ required: true, min: 100 })  // 🆕
   amountRub: number;
+
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  processedBy: Types.ObjectId;
 
   @Prop({ required: true, type: String, enum: WithdrawalMethod })
   method: WithdrawalMethod;
@@ -51,8 +53,7 @@ export class Withdrawal {
   @Prop({ type: Date })
   processedAt: Date;
 
-  @Prop({ type: Types.ObjectId, ref: 'User' })
-  processedBy: Types.ObjectId;
+
 
   createdAt: Date;
   updatedAt: Date;

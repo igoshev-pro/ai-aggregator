@@ -31,22 +31,24 @@ export class Subscription {
   externalSubscriptionId: string;
 
   @Prop({ default: 0 })
-  tokensPerMonth: number; // Кол-во токенов в месяц
+  tokensPerMonth: number;
 
   @Prop({ default: 0 })
   priceRub: number;
 
+  // 🆕 Расширяемая структура — фичи разных планов могут отличаться,
+  // конкретный тип в схеме обманывал TS
   @Prop({ type: Object, default: {} })
-  features: {
-    maxDailyGenerations: number;
-    priorityQueue: boolean;
-    exclusiveModels: boolean;
-    noWatermark: boolean;
-    maxContextMessages: number;
-  };
+  features: Record<string, any>;
 }
 
 export const SubscriptionSchema = SchemaFactory.createForClass(Subscription);
 
-SubscriptionSchema.index({ userId: 1, isActive: 1 });
-SubscriptionSchema.index({ endDate: 1 });
+// 🆕 Для cron checkExpiredSubscriptions (каждый час)
+SubscriptionSchema.index({ isActive: 1, endDate: 1 });
+
+// 🆕 Для поиска активной подписки юзера (getBalance, и т.д.)
+SubscriptionSchema.index({ userId: 1, isActive: 1, endDate: -1 });
+
+// 🆕 Для миграции deprecated планов
+SubscriptionSchema.index({ isActive: 1, plan: 1 });
