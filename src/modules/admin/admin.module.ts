@@ -29,6 +29,7 @@ import { AdminPromoCodesService } from './admin-promo-codes.service';
 import { AdminTransactionsController } from './admin-transactions.controller';
 import { AdminTransactionsService } from './admin-transactions.service';
 import { ReferralAdminController } from './admin-referral.controller';
+import { ReferralModule } from '../referral/referral.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ReferralAdminController } from './admin-referral.controller';
     forwardRef(() => UsersModule),
     forwardRef(() => AiProvidersModule),
     forwardRef(() => BillingModule),
+    forwardRef(() => ReferralModule),
   ],
   controllers: [
     AdminController,
