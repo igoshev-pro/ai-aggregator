@@ -15,15 +15,15 @@ import { INestApplicationContext } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
-import { AppModule } from '../app.module';
+import { AppModule } from '../src/app.module';
 import {
   SubscriptionPlanEntity,
   SubscriptionPlanDocument,
-} from '../modules/billing/schemas/subscription-plan.schema';
+} from '../src/modules/billing/schemas/subscription-plan.schema';
 import {
   TokenPackageEntity,
   TokenPackageDocument,
-} from '../modules/billing/schemas/token-package.schema';
+} from '../src/modules/billing/schemas/token-package.schema';
 
 // ---------------------------------------------------------------------------
 //  DATA
