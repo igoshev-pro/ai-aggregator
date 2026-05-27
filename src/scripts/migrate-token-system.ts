@@ -111,7 +111,7 @@ async function migrate() {
     logger.log('✅ Migration completed successfully!');
     
     await app.close();
-  } catch (error) {
+  } catch (error: any) {
     logger.error(`❌ Migration failed: ${error.message}`);
     process.exit(1);
   }
