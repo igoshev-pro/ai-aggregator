@@ -6,6 +6,8 @@ import { Model } from 'mongoose';
 import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
 import { GenerationType, SubscriptionPlan } from '@/common/interfaces';
 
+const MIN_TOKENS_ESTIMATE = 50;
+
 export interface ModelDto {
   slug: string;
   name: string;
@@ -30,6 +32,7 @@ export interface ModelDto {
     width?: number;
     height?: number;
   };
+  hasVariants: boolean;
 }
 
 @Injectable()
@@ -38,7 +41,7 @@ export class ModelsService {
 
   constructor(
     @InjectModel(AIModel.name) private modelModel: Model<ModelDocument>,
-  ) {}
+  ) { }
 
   async getAvailableModels(
     userPlan: SubscriptionPlan,
@@ -55,13 +58,13 @@ export class ModelsService {
     // Фильтруем по доступности для плана пользователя
     const availableModels = models.filter((model) => {
       if (!model.isPremium) return true;
-      
+
       const includedPlans = model.limits?.includedInPlans || [];
       if (includedPlans.length === 0) {
         // Если не указаны планы - доступна всем премиум пользователям
         return userPlan === SubscriptionPlan.PRO || userPlan === SubscriptionPlan.UNLIMITED;
       }
-      
+
       return includedPlans.includes(userPlan);
     });
 
@@ -75,7 +78,7 @@ export class ModelsService {
     // Проверяем доступность для пользователя
     if (model.isPremium) {
       const includedPlans = model.limits?.includedInPlans || [];
-      
+
       if (includedPlans.length > 0) {
         if (!includedPlans.includes(userPlan)) {
           return null;
@@ -89,20 +92,10 @@ export class ModelsService {
   }
 
   private mapToDto(model: ModelDocument): ModelDto {
-    // Определяем провайдера из маппингов или по имени
     const provider = this.getProviderName(model);
-    
-    // Рассчитываем cost для фронтенда
-    let cost = model.minTokenCost;
-    
-    if (model.type === GenerationType.TEXT) {
-      // Для текстовых моделей показываем среднюю стоимость за ~1000 токенов
-      const avgCostPerMillion = (model.costPerMillionInputTokens + model.costPerMillionOutputTokens) / 2;
-      cost = Math.max(model.minTokenCost, Math.ceil(avgCostPerMillion));
-    } else {
-      // Для медиа моделей конвертируем фиксированную стоимость
-      cost = Math.max(model.minTokenCost, Math.ceil(model.fixedCostPerGeneration * model.tokensPerDollar));
-    }
+
+    // Рассчитываем cost для отображения в UI
+    const cost = this.computeDisplayCost(model);
 
     return {
       slug: model.slug,
@@ -111,8 +104,11 @@ export class ModelsService {
       type: model.type,
       provider,
       description: model.description || '',
-      cost: cost || model.tokenCost || 1,
-      minCost: model.minTokenCost,
+      cost,
+      hasVariants:
+        model.type === GenerationType.TEXT ||
+        (Array.isArray((model as any).pricingMatrix) && (model as any).pricingMatrix.length > 0),
+      minCost: model.minTokenCost ?? cost,
       isActive: model.isActive,
       isPremium: model.isPremium,
       capabilities: model.capabilities || [],
@@ -129,6 +125,55 @@ export class ModelsService {
         height: model.defaultParams.height,
       } : undefined,
     };
+  }
+
+  /**
+   * Минимальная стоимость одного запроса для отображения в UI ("от X 🔥")
+   * - text: цена короткого запроса ~50 токенов
+   * - media: фиксированная цена за генерацию (минимум из pricingMatrix если есть)
+   */
+  private computeDisplayCost(model: ModelDocument): number {
+    // === TEXT (LLM) ===
+    if (model.type === GenerationType.TEXT) {
+      const inputPrice = model.costPerMillionInputTokens ?? 0;
+      const outputPrice = model.costPerMillionOutputTokens ?? 0;
+      const avgPrice = (inputPrice + outputPrice) / 2;
+
+      if (avgPrice > 0) {
+        // Цена короткого запроса: (avg цена за 1M) × MIN_TOKENS / 1_000_000
+        // Для GPT-5.4: 14 × 50 / 1000 = 0.7
+        // (формула делит на 1000, а не 1_000_000, потому что 
+        //  costPerMillionInputTokens у вас уже в спичках за 1M токенов)
+        const minCost = (avgPrice * MIN_TOKENS_ESTIMATE) / 1000;
+        // Округление до 2 знаков
+        return Math.round(minCost * 100) / 100;
+      }
+
+      return model.minTokenCost ?? model.tokenCost ?? 1;
+    }
+
+    // === MEDIA (image/video/audio) ===
+    // Если есть pricingMatrix — берём минимум
+    if (Array.isArray((model as any).pricingMatrix) && (model as any).pricingMatrix.length > 0) {
+      const matrix = (model as any).pricingMatrix as Array<{ costInTokens?: number }>;
+      const costs = matrix
+        .map(r => r.costInTokens)
+        .filter((c): c is number => typeof c === 'number' && c > 0);
+      if (costs.length > 0) {
+        return Math.min(...costs);
+      }
+    }
+
+    // Фиксированная цена за генерацию
+    if (model.fixedCostPerGeneration && model.fixedCostPerGeneration > 0) {
+      const tokensPerDollar = model.tokensPerDollar || 100;
+      return Math.max(
+        model.minTokenCost ?? 1,
+        Math.ceil(model.fixedCostPerGeneration * tokensPerDollar),
+      );
+    }
+
+    return model.minTokenCost ?? model.tokenCost ?? 1;
   }
 
   private getProviderName(model: ModelDocument): string {
@@ -149,7 +194,7 @@ export class ModelsService {
       kie: 'KIE',
       replicate: 'Replicate',
     };
-    
+
     return mapping[providerSlug] || this.guessProviderBySlug(providerSlug);
   }
 
