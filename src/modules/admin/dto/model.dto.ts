@@ -36,7 +36,7 @@ export class UpdateModelDto {
   @IsOptional() @IsNumber() @Min(0) costPerMillionOutputTokens?: number;
   @IsOptional() @IsNumber() @Min(0) fixedCostPerGeneration?: number;
   @IsOptional() @IsNumber() @Min(0) tokensPerDollar?: number;
-  @IsOptional() @IsInt() @Min(0) minTokenCost?: number;
+  @IsOptional() @IsNumber() @Min(0) minTokenCost?: number;
   @IsOptional() @IsNumber() @Min(0) tokenCost?: number;
 
   @IsOptional() @IsArray() @IsString({ each: true }) capabilities?: string[];
