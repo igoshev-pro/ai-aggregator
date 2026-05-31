@@ -610,7 +610,7 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 10,
         capabilities: ['streaming', 'reasoning', 'function_calling'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'deepseek-chat', priority: 1, isActive: false },
+          { providerSlug: 'evolink', modelId: 'deepseek-v4-pro', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 164000, maxOutputTokens: 8192 },
