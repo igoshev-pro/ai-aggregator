@@ -478,9 +478,9 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxInputTokens: 164000, maxOutputTokens: 8192 },
       },
       {
-        slug: 'grok-4.1-fast',
-        name: 'Grok 4.1 Fast',
-        displayName: 'Grok 4.1 Fast',
+        slug: 'grok-4.20',
+        name: 'Grok 4.20',
+        displayName: 'Grok 4.20',
         description: 'Быстрая версия Grok от xAI',
         type: 'text',
         // 🆕 цена: от 0.3 🔥 (не было в твоём списке, оставил умеренную)
@@ -491,15 +491,15 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 4,
         capabilities: ['streaming', 'reasoning', 'function_calling'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'x-ai/grok-4.1-fast', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'x-ai/grok-4.20', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 2000000, maxOutputTokens: 4096 },
       },
       {
-        slug: 'grok-4',
-        name: 'Grok 4',
-        displayName: 'Grok 4',
+        slug: 'grok-4.3',
+        name: 'Grok 4.3',
+        displayName: 'Grok 4.3',
         description: 'Флагманская reasoning модель от xAI',
         type: 'text',
         // 🆕 цена: от 1.2 🔥 (соответствует "Grok 4.3" из ТЗ)
@@ -511,7 +511,7 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['streaming', 'reasoning', 'vision'],
         providerMappings: [
-          { providerSlug: 'openrouter', modelId: 'x-ai/grok-4', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'x-ai/grok-4.3', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 256000, maxOutputTokens: 8192, includedInPlans: ['pro', 'unlimited'] },
