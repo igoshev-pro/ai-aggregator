@@ -42,6 +42,10 @@ export class UpdateModelDto {
   @IsOptional() @IsArray() @IsString({ each: true }) capabilities?: string[];
 
   @IsOptional()
+@IsArray()
+providerMappings?: any[];
+
+  @IsOptional()
   @IsArray()
   uiParameters?: any[]
 
