@@ -130,10 +130,10 @@ export interface ModelPreviewCost {
 
 // ─── Fallback константы ──────────────────────────────────────────
 const FALLBACK_TOKEN_PACKAGES: TokenPackageConfig[] = [
-  { id: 'pack_100',  tokens: 100,  priceRub: 99,   label: '100 токенов' },
-  { id: 'pack_300',  tokens: 300,  priceRub: 249,  label: '300 токенов', popular: true },
-  { id: 'pack_700',  tokens: 700,  priceRub: 499,  label: '700 токенов' },
-  { id: 'pack_1500', tokens: 1500, priceRub: 899,  label: '1500 токенов' },
+  { id: 'pack_100', tokens: 100, priceRub: 99, label: '100 токенов' },
+  { id: 'pack_300', tokens: 300, priceRub: 249, label: '300 токенов', popular: true },
+  { id: 'pack_700', tokens: 700, priceRub: 499, label: '700 токенов' },
+  { id: 'pack_1500', tokens: 1500, priceRub: 899, label: '1500 токенов' },
   { id: 'pack_5000', tokens: 5000, priceRub: 2499, label: '5000 токенов', best: true },
 ];
 
@@ -277,7 +277,7 @@ export class BillingService implements OnApplicationBootstrap {
     private freedompayProvider: FreedomPayProvider,
     private tochkaProvider: TochkaProvider,
     private heleketProvider: HeleketProvider,
-  ) {}
+  ) { }
 
   async onApplicationBootstrap() {
     try {
@@ -462,14 +462,14 @@ export class BillingService implements OnApplicationBootstrap {
     const source: TokenPackageConfig[] =
       dbPacks.length > 0
         ? dbPacks.map((p) => ({
-            id: p.packageId,
-            tokens: p.tokens,
-            priceRub: p.priceRub,
-            label: p.label,
-            bonusPercent: p.bonusPercent,
-            popular: p.popular,
-            best: p.best,
-          }))
+          id: p.packageId,
+          tokens: p.tokens,
+          priceRub: p.priceRub,
+          label: p.label,
+          bonusPercent: p.bonusPercent,
+          popular: p.popular,
+          best: p.best,
+        }))
         : FALLBACK_TOKEN_PACKAGES;
 
     return source.map((pack) => {
@@ -523,22 +523,22 @@ export class BillingService implements OnApplicationBootstrap {
     const entries: Array<[string, SubscriptionPlanConfig]> =
       dbPlans.length > 0
         ? dbPlans.map((p) => [
-            p.planKey,
-            {
-              name: p.name,
-              priceRub: p.priceRub,
-              tokensPerMonth: p.tokensPerMonth,
-              bonusTokens: p.bonusTokens,
-              modelsAccess: p.modelsAccess,
-              freeModels: (p.freeModels || []) as FreeModelAccess[],
-              features: p.features as any,
-              capabilities: p.capabilities || [],
-              description: p.description,
-              color: p.color,
-              icon: p.icon,
-              isPopular: p.isPopular,
-            },
-          ])
+          p.planKey,
+          {
+            name: p.name,
+            priceRub: p.priceRub,
+            tokensPerMonth: p.tokensPerMonth,
+            bonusTokens: p.bonusTokens,
+            modelsAccess: p.modelsAccess,
+            freeModels: (p.freeModels || []) as FreeModelAccess[],
+            features: p.features as any,
+            capabilities: p.capabilities || [],
+            description: p.description,
+            color: p.color,
+            icon: p.icon,
+            isPopular: p.isPopular,
+          },
+        ])
         : Object.entries(FALLBACK_SUBSCRIPTION_PLANS);
 
     for (const [planId, config] of entries) {
@@ -616,21 +616,21 @@ export class BillingService implements OnApplicationBootstrap {
     const [hourlyCount, dailyCount] = await Promise.all([
       freeModel.hourlyLimit !== null
         ? this.transactionModel.countDocuments({
-            userId: new Types.ObjectId(userId),
-            type: TransactionType.GENERATION,
-            modelSlug,
-            createdAt: { $gte: hourAgo },
-            'metadata.freeAccess': true,
-          })
+          userId: new Types.ObjectId(userId),
+          type: TransactionType.GENERATION,
+          modelSlug,
+          createdAt: { $gte: hourAgo },
+          'metadata.freeAccess': true,
+        })
         : Promise.resolve(0),
       freeModel.dailyLimit !== null
         ? this.transactionModel.countDocuments({
-            userId: new Types.ObjectId(userId),
-            type: TransactionType.GENERATION,
-            modelSlug,
-            createdAt: { $gte: dayStart },
-            'metadata.freeAccess': true,
-          })
+          userId: new Types.ObjectId(userId),
+          type: TransactionType.GENERATION,
+          modelSlug,
+          createdAt: { $gte: dayStart },
+          'metadata.freeAccess': true,
+        })
         : Promise.resolve(0),
     ]);
 
@@ -756,7 +756,7 @@ export class BillingService implements OnApplicationBootstrap {
 
       this.logger.log(
         `🎟 Promo ${promoValidation.promo.code} applied to package ${pack.id}: ` +
-          `${pack.priceRub}₽ → ${finalPriceRub}₽ (+${promoBonusTokens}🔥)`,
+        `${pack.priceRub}₽ → ${finalPriceRub}₽ (+${promoBonusTokens}🔥)`,
       );
     }
 
@@ -788,8 +788,8 @@ export class BillingService implements OnApplicationBootstrap {
         ),
         balanceAfter: roundTokens(
           finalUser.tokenBalance +
-            finalUser.bonusTokens +
-            (finalUser.cashbackBalance || 0),
+          finalUser.bonusTokens +
+          (finalUser.cashbackBalance || 0),
         ),
         metadata: {
           currency,
@@ -847,9 +847,8 @@ export class BillingService implements OnApplicationBootstrap {
     await this.createTransaction(userId, {
       type: TransactionType.DEPOSIT,
       amount: totalTokens,
-      description: `Пополнение: ${pack.label}${
-        bonusTokensFromPack > 0 ? ` (+${bonusTokensFromPack} бонус)` : ''
-      }${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
+      description: `Пополнение: ${pack.label}${bonusTokensFromPack > 0 ? ` (+${bonusTokensFromPack} бонус)` : ''
+        }${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
       paymentStatus: PaymentStatus.PENDING,
       externalPaymentId: result.paymentId,
       paymentProvider: provider,
@@ -866,12 +865,12 @@ export class BillingService implements OnApplicationBootstrap {
         bonusTokens: bonusTokensFromPack,
         promoCodeApplied: promoValidation
           ? {
-              promoId: promoValidation.promo._id.toString(),
-              code: promoValidation.promo.code,
-              type: promoValidation.promo.type,
-              discountRub: promoValidation.discountRub,
-              bonusTokens: promoValidation.bonusTokens,
-            }
+            promoId: promoValidation.promo._id.toString(),
+            code: promoValidation.promo.code,
+            type: promoValidation.promo.type,
+            discountRub: promoValidation.discountRub,
+            bonusTokens: promoValidation.bonusTokens,
+          }
           : null,
       },
     });
@@ -892,11 +891,11 @@ export class BillingService implements OnApplicationBootstrap {
       },
       promo: promoValidation
         ? {
-            code: promoValidation.promo.code,
-            effectLabel: promoValidation.effectLabel,
-            discountRub: promoValidation.discountRub,
-            bonusTokens: promoValidation.bonusTokens,
-          }
+          code: promoValidation.promo.code,
+          effectLabel: promoValidation.effectLabel,
+          discountRub: promoValidation.discountRub,
+          bonusTokens: promoValidation.bonusTokens,
+        }
         : null,
     };
   }
@@ -945,12 +944,12 @@ export class BillingService implements OnApplicationBootstrap {
 
       const promoApplied = transaction.metadata?.promoCodeApplied as
         | {
-            promoId: string;
-            code: string;
-            type: string;
-            discountRub: number;
-            bonusTokens: number;
-          }
+          promoId: string;
+          code: string;
+          type: string;
+          discountRub: number;
+          bonusTokens: number;
+        }
         | null
         | undefined;
 
@@ -1081,7 +1080,7 @@ export class BillingService implements OnApplicationBootstrap {
     );
   }
 
-    // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // 🔥 СПИСАНИЕ ЗА ГЕНЕРАЦИЮ
   // ═══════════════════════════════════════════════════════════════
 
@@ -1100,8 +1099,8 @@ export class BillingService implements OnApplicationBootstrap {
       const userFree = await this.usersService.findById(userId);
       const totalFree = roundTokens(
         userFree.tokenBalance +
-          userFree.bonusTokens +
-          (userFree.cashbackBalance || 0),
+        userFree.bonusTokens +
+        (userFree.cashbackBalance || 0),
       );
 
       await this.createTransaction(userId, {
@@ -1141,8 +1140,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     // Атомарное списание (с retry внутри UsersService)
@@ -1153,8 +1152,8 @@ export class BillingService implements OnApplicationBootstrap {
     );
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     await this.createTransaction(userId, {
@@ -1212,9 +1211,8 @@ export class BillingService implements OnApplicationBootstrap {
     await this.createTransaction(userId, {
       type: TransactionType.GENERATION,
       amount: -cost,
-      description: `Генерация ${params.generationType}: ${params.modelSlug}${
-        params.matchedTier ? ` (${params.matchedTier})` : ''
-      }`,
+      description: `Генерация ${params.generationType}: ${params.modelSlug}${params.matchedTier ? ` (${params.matchedTier})` : ''
+        }`,
       paymentStatus: PaymentStatus.COMPLETED,
       generationId: params.generationId,
       generationType: params.generationType,
@@ -1279,8 +1277,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     if (balanceBefore + FLOAT_EPSILON < costInTokens) {
@@ -1297,8 +1295,8 @@ export class BillingService implements OnApplicationBootstrap {
     );
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     return {
@@ -1333,8 +1331,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     await this.usersService.refundTokens(userId, refundAmount);
@@ -1342,8 +1340,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userAfter = await this.usersService.findById(userId);
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     await this.createTransaction(userId, {
@@ -1385,8 +1383,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     const user = await this.usersService.addBonusTokens(
@@ -1525,7 +1523,7 @@ export class BillingService implements OnApplicationBootstrap {
 
       this.logger.log(
         `🎟 Promo ${promoValidation.promo.code} applied to plan ${effectivePlan}: ` +
-          `${planConfig.priceRub}₽ → ${finalPriceRub}₽`,
+        `${planConfig.priceRub}₽ → ${finalPriceRub}₽`,
       );
     }
 
@@ -1594,9 +1592,8 @@ export class BillingService implements OnApplicationBootstrap {
     await this.createTransaction(userId, {
       type: TransactionType.SUBSCRIPTION,
       amount: planConfig.tokensPerMonth,
-      description: `Подписка ${planConfig.name}${
-        promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''
-      }`,
+      description: `Подписка ${planConfig.name}${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''
+        }`,
       paymentStatus: PaymentStatus.PENDING,
       externalPaymentId: result.paymentId,
       paymentProvider: provider,
@@ -1610,12 +1607,12 @@ export class BillingService implements OnApplicationBootstrap {
         finalPriceRub,
         promoCodeApplied: promoValidation
           ? {
-              promoId: promoValidation.promo._id.toString(),
-              code: promoValidation.promo.code,
-              type: promoValidation.promo.type,
-              discountRub: promoValidation.discountRub,
-              bonusTokens: promoValidation.bonusTokens,
-            }
+            promoId: promoValidation.promo._id.toString(),
+            code: promoValidation.promo.code,
+            type: promoValidation.promo.type,
+            discountRub: promoValidation.discountRub,
+            bonusTokens: promoValidation.bonusTokens,
+          }
           : null,
       },
     });
@@ -1635,10 +1632,10 @@ export class BillingService implements OnApplicationBootstrap {
       },
       promo: promoValidation
         ? {
-            code: promoValidation.promo.code,
-            effectLabel: promoValidation.effectLabel,
-            discountRub: promoValidation.discountRub,
-          }
+          code: promoValidation.promo.code,
+          effectLabel: promoValidation.effectLabel,
+          discountRub: promoValidation.discountRub,
+        }
         : null,
     };
   }
@@ -1755,7 +1752,7 @@ export class BillingService implements OnApplicationBootstrap {
     );
   }
 
-    // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // Баланс
   // ═══════════════════════════════════════════════════════════════
 
@@ -1968,8 +1965,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(targetUserId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     if (amount > 0) {
@@ -1985,8 +1982,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userAfter = await this.usersService.findById(targetUserId);
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     await this.createTransaction(targetUserId, {
@@ -2105,27 +2102,30 @@ export class BillingService implements OnApplicationBootstrap {
   ): Promise<ModelPreviewCost> {
     // ─── TEXT ─────────────────────────────────────────────────
     if (model.type === 'text') {
-      const inputPrice = Number(model.pricePerMillionInputTokens) || 0;
-      const outputPrice = Number(model.pricePerMillionOutputTokens) || 0;
+      const inputPrice =
+        Number(model.pricePerMillionInputTokens) ||
+        Number(model.costPerMillionInputTokens) || 0;
+      const outputPrice =
+        Number(model.pricePerMillionOutputTokens) ||
+        Number(model.costPerMillionOutputTokens) || 0;
       const avgTokens = Number(model.avgTokensPerRequest) || 1500;
 
-      // Допущение: 30% input, 70% output (типичный чат)
-      const avgInputTokens = avgTokens * 0.3;
-      const avgOutputTokens = avgTokens * 0.7;
-
       const avgCost = finalizeTokenCost(
-        (avgInputTokens * inputPrice) / 1_000_000 +
-          (avgOutputTokens * outputPrice) / 1_000_000,
+        (avgTokens * 0.3 * inputPrice) / 1_000_000 +
+        (avgTokens * 0.7 * outputPrice) / 1_000_000,
       );
 
-      // min — короткий запрос ~200 токенов
-      const minCost = finalizeTokenCost(
-        (60 * inputPrice) / 1_000_000 + (140 * outputPrice) / 1_000_000,
-      );
+      // 🆕 Если задан ручной minTokenCost — используем его, иначе формулу
+      const minCost =
+        Number(model.minTokenCost) > 0
+          ? finalizeTokenCost(Number(model.minTokenCost))
+          : finalizeTokenCost(
+            (60 * inputPrice) / 1_000_000 + (140 * outputPrice) / 1_000_000,
+          );
 
       return {
         avgCostInTokens: avgCost,
-        minCostInTokens: minCost,
+        minCostInTokens: minCost,   // → 0.8
         pricingType: 'per_token',
         details: {
           pricePerMillionInput: inputPrice,
