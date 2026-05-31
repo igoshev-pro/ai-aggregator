@@ -26,6 +26,19 @@ export class Message {
   @Prop({ type: [String], default: [] })
   imageUrls: string[];
 
+  // 🆕 Прикреплённые документы (метаданные для истории)
+  @Prop({
+    type: [
+      {
+        url: String,
+        filename: String,
+        mimeType: String,
+      },
+    ],
+    default: [],
+  })
+  attachments: { url: string; filename: string; mimeType: string }[];
+
   @Prop()
   modelSlug: string;
 

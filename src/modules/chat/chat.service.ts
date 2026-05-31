@@ -19,11 +19,19 @@ import { UsersService } from '../users/users.service';
 import { BillingService } from '../billing/billing.service';
 import { ProviderRegistryService } from '../ai-providers/providers/provider-registry.service';
 
+export interface ChatAttachment {
+  url: string;
+  filename: string;
+  mimeType?: string;
+  text?: string;
+}
+
 export interface SendMessageDto {
   conversationId?: string;
   modelSlug: string;
   content: string;
   imageUrls?: string[];
+  attachments?: ChatAttachment[]; // 🆕 документы
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
@@ -187,6 +195,11 @@ export class ChatService {
       role: 'user',
       content: dto.content,
       imageUrls: dto.imageUrls || [],
+      attachments: (dto.attachments || []).map((a) => ({   // 🆕
+        url: a.url,
+        filename: a.filename,
+        mimeType: a.mimeType || '',
+      })),
     });
     await userMessage.save();
 
@@ -350,6 +363,11 @@ export class ChatService {
         role: 'user',
         content: dto.content,
         imageUrls: dto.imageUrls || [],
+        attachments: (dto.attachments || []).map((a) => ({   // 🆕
+        url: a.url,
+        filename: a.filename,
+        mimeType: a.mimeType || '',
+      })),
       });
       await userMessage.save();
 
@@ -542,7 +560,7 @@ export class ChatService {
   /**
    * Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
    */
-  private async buildContext(
+    private async buildContext(
     conversation: ConversationDocument,
     dto: SendMessageDto,
   ): Promise<ContextMessage[]> {
@@ -580,9 +598,31 @@ export class ChatService {
       messages.push(contextMsg);
     }
 
+    // 🆕 Встраиваем извлечённый текст документов в content последнего сообщения
+    let lastContent = dto.content || '';
+    if (dto.attachments && dto.attachments.length > 0) {
+      const docBlocks: string[] = [];
+      for (const att of dto.attachments) {
+        if (att.text && att.text.trim()) {
+          docBlocks.push(
+            `Содержимое прикреплённого файла «${att.filename}»:\n` +
+              '```\n' +
+              att.text.trim() +
+              '\n```',
+          );
+        }
+      }
+      if (docBlocks.length > 0) {
+        lastContent =
+          docBlocks.join('\n\n') +
+          '\n\n---\n\n' +
+          (lastContent || 'Проанализируй прикреплённые файлы.');
+      }
+    }
+
     const lastUserMsg: ContextMessage = {
       role: 'user',
-      content: dto.content,
+      content: lastContent,
     };
     if (dto.imageUrls && dto.imageUrls.length > 0) {
       lastUserMsg.imageUrls = dto.imageUrls;
