@@ -577,6 +577,26 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384, includedInPlans: ['unlimited'] },
       },
       {
+        slug: 'claude-opus-4.7',
+        name: 'Claude Opus 4.7',
+        displayName: 'Claude Opus 4.7',
+        description: 'Самая мощная модель Anthropic',
+        type: 'text',
+        // 🆕 цена: от 1.5 🔥 (соответствует "Claude Opus 4.7" из ТЗ)
+        costPerMillionInputTokens: 25.382,
+        costPerMillionOutputTokens: 25.382,
+        tokensPerDollar: 1000,
+        minTokenCost: 1.5,
+        sortOrder: 8,
+        isPremium: true,
+        capabilities: ['streaming', 'vision', 'thinking'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'claude-opus-4-7', priority: 1, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['unlimited'] },
+      },
+      {
         slug: 'claude-opus-4.8',
         name: 'Claude Opus 4.8',
         displayName: 'Claude Opus 4.8',
