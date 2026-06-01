@@ -62,46 +62,23 @@ export class DocumentParserService {
     }
   }
 
-  private async parsePdf(buffer: Buffer): Promise<string> {
-    this.logger.log(`parsePdf: bufferLen=${buffer?.length}`);
+private async parsePdf(buffer: Buffer): Promise<string> {
+  this.logger.log(`parsePdf: bufferLen=${buffer?.length}`);
 
-    if (!buffer || buffer.length === 0) {
-      this.logger.error('parsePdf: ПУСТОЙ БУФЕР');
-      return '';
-    }
+  if (!buffer || buffer.length === 0) return '';
 
-    // Проверка сигнатуры PDF
-    const header = buffer.slice(0, 5).toString('latin1');
-    this.logger.log(`parsePdf: header="${header}"`);
-    if (!header.startsWith('%PDF')) {
-      this.logger.error('parsePdf: это НЕ PDF (нет %PDF в начале)');
-      return '';
-    }
-
-    try {
-      // ✅ КРИТИЧНО: импортируем внутренний файл, а не корневой index.js.
-      //    Корневой index.js исполняет debug-блок, который падает с ENOENT
-      //    при попытке прочитать ./test/data/05-versions-space.pdf
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const pdfParse = require('pdf-parse/lib/pdf-parse.js');
-      const data = await pdfParse(buffer);
-
-      const text = this.truncate(data.text || '');
-      this.logger.log(
-        `parsePdf: pages=${data.numpages}, textLen=${text.length}`,
-      );
-
-      if (!text) {
-        this.logger.warn(
-          'parsePdf: текст пустой — вероятно скан/изображение без текстового слоя (нужен OCR)',
-        );
-      }
-      return text;
-    } catch (err: any) {
-      this.logger.error(`parsePdf FAILED: ${err.message}`, err.stack);
-      return '';
-    }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pdfParse = require('pdf-parse');
+    const data = await pdfParse(buffer);
+    const text = this.truncate(data.text || '');
+    this.logger.log(`parsePdf: pages=${data.numpages}, textLen=${text.length}`);
+    return text;
+  } catch (err: any) {
+    this.logger.error(`parsePdf FAILED: ${err.message}`, err.stack);
+    return '';
   }
+}
 
   private async parseDocx(buffer: Buffer): Promise<string> {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
