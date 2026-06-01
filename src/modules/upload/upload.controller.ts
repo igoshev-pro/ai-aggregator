@@ -9,13 +9,14 @@ import {
   Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { StorageService } from '../storage/storage.service';
 import { DocumentParserService } from './document-parser.service';
 import { v4 as uuidv4 } from 'uuid';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
-const MAX_SIZE = 10 * 1024 * 1024;          // 10 MB (audio/image)
-const MAX_DOC_SIZE = 20 * 1024 * 1024;      // 20 MB (документы)
+const MAX_SIZE = 10 * 1024 * 1024; // 10 MB (audio/image)
+const MAX_DOC_SIZE = 20 * 1024 * 1024; // 20 MB (документы)
 
 const ALLOWED_AUDIO_MIMES = [
   'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/x-wav',
@@ -55,10 +56,15 @@ export class UploadController {
   @Post('audio')
   @UseInterceptors(
     FileInterceptor('file', {
+      storage: memoryStorage(), // ← гарантирует file.buffer
       limits: { fileSize: MAX_SIZE },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_AUDIO_MIMES.includes(file.mimetype)) cb(null, true);
-        else cb(new BadRequestException(`Недопустимый тип файла: ${file.mimetype}`), false);
+        else
+          cb(
+            new BadRequestException(`Недопустимый тип файла: ${file.mimetype}`),
+            false,
+          );
       },
     }),
   )
@@ -73,10 +79,16 @@ export class UploadController {
       this.scheduleDelete(key, 60 * 60 * 1000);
       return {
         success: true,
-        data: { url, key, size: file.size, mimetype: file.mimetype, originalName: file.originalname },
+        data: {
+          url,
+          key,
+          size: file.size,
+          mimetype: file.mimetype,
+          originalName: file.originalname,
+        },
       };
     } catch (error: any) {
-      this.logger.error(`Audio upload failed: ${error.message}`);
+      this.logger.error(`Audio upload failed: ${error.message}`, error.stack);
       throw new BadRequestException('Ошибка загрузки файла');
     }
   }
@@ -87,10 +99,15 @@ export class UploadController {
   @Post('image')
   @UseInterceptors(
     FileInterceptor('file', {
+      storage: memoryStorage(), // ← гарантирует file.buffer
       limits: { fileSize: MAX_SIZE },
       fileFilter: (_req, file, cb) => {
         if (ALLOWED_IMAGE_MIMES.includes(file.mimetype)) cb(null, true);
-        else cb(new BadRequestException(`Недопустимый тип файла: ${file.mimetype}`), false);
+        else
+          cb(
+            new BadRequestException(`Недопустимый тип файла: ${file.mimetype}`),
+            false,
+          );
       },
     }),
   )
@@ -107,7 +124,7 @@ export class UploadController {
         data: { url, key, size: file.size, mimetype: file.mimetype },
       };
     } catch (error: any) {
-      this.logger.error(`Image upload failed: ${error.message}`);
+      this.logger.error(`Image upload failed: ${error.message}`, error.stack);
       throw new BadRequestException('Ошибка загрузки файла');
     }
   }
@@ -118,34 +135,61 @@ export class UploadController {
   @Post('document')
   @UseInterceptors(
     FileInterceptor('file', {
+      storage: memoryStorage(), // ← КРИТИЧНО: без этого file.buffer может быть undefined
       limits: { fileSize: MAX_DOC_SIZE },
       fileFilter: (_req, file, cb) => {
         const ext = (file.originalname.split('.').pop() || '').toLowerCase();
-        if (ALLOWED_DOC_MIMES.includes(file.mimetype) || ALLOWED_DOC_EXT.includes(ext)) {
+        if (
+          ALLOWED_DOC_MIMES.includes(file.mimetype) ||
+          ALLOWED_DOC_EXT.includes(ext)
+        ) {
           cb(null, true);
         } else {
-          cb(new BadRequestException('Поддерживаются: PDF, Word, Excel, TXT, CSV'), false);
+          cb(
+            new BadRequestException('Поддерживаются: PDF, Word, Excel, TXT, CSV'),
+            false,
+          );
         }
       },
     }),
   )
-  async uploadDocument(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
+  async uploadDocument(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
     if (!file) throw new BadRequestException('Файл не передан');
 
     const userId = req.user?.sub || req.user?.id || req.user?._id || 'anonymous';
-    this.logger.log(`Document upload: ${file.originalname} (${file.size} bytes) by ${userId}`);
+
+    // 🔍 ДИАГНОСТИКА — покажет состояние буфера
+    this.logger.log(
+      `[DOC] name=${file.originalname} | mime=${file.mimetype} | ` +
+        `size=${file.size} | hasBuffer=${!!file.buffer} | ` +
+        `bufferLen=${file.buffer?.length} | by=${userId}`,
+    );
+
+    if (!file.buffer || file.buffer.length === 0) {
+      this.logger.error('[DOC] ПУСТОЙ БУФЕР — проверьте multer storage');
+      throw new BadRequestException('Файл получен пустым');
+    }
 
     try {
       const ext = this.getExtension(file.mimetype, file.originalname);
       const key = `uploads/document/${userId}/${uuidv4()}.${ext}`;
 
-      // 1. S3
-      const url = await this.storage.uploadBuffer(file.buffer, key, file.mimetype);
-
-      // 2. Извлекаем текст
+      // ⚠️ ВАЖНО: сначала парсим (пока буфер точно цел), потом грузим в S3
       const extractedText = await this.documentParser.extractText(
         file.buffer,
         file.originalname,
+        file.mimetype,
+      );
+
+      this.logger.log(`[DOC] extractedText.length = ${extractedText.length}`);
+
+      // S3 — после извлечения текста
+      const url = await this.storage.uploadBuffer(
+        file.buffer,
+        key,
         file.mimetype,
       );
 
@@ -166,7 +210,10 @@ export class UploadController {
         },
       };
     } catch (error: any) {
-      this.logger.error(`Document upload failed: ${error.message}`);
+      this.logger.error(
+        `Document upload failed: ${error.message}`,
+        error.stack,
+      );
       throw new BadRequestException('Ошибка загрузки документа');
     }
   }
