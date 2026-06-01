@@ -13,60 +13,78 @@ export class DocumentParserService {
   ): Promise<string> {
     const ext = (filename.split('.').pop() || '').toLowerCase();
 
-    try {
-      if (mimeType === 'application/pdf' || ext === 'pdf') {
-        return await this.parsePdf(buffer);
-      }
+    this.logger.log(
+      `Extracting: ${filename} | mime=${mimeType} | ext=${ext} | size=${buffer.length}b`,
+    );
 
-      if (
+    try {
+      let text = '';
+
+      if (mimeType === 'application/pdf' || ext === 'pdf') {
+        text = await this.parsePdf(buffer);
+      } else if (
         mimeType ===
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         ext === 'docx'
       ) {
-        return await this.parseDocx(buffer);
-      }
-
-      if (mimeType === 'application/msword' || ext === 'doc') {
+        text = await this.parseDocx(buffer);
+      } else if (mimeType === 'application/msword' || ext === 'doc') {
         try {
-          return await this.parseDocx(buffer);
+          text = await this.parseDocx(buffer);
         } catch {
           this.logger.warn(`Cannot parse legacy .doc: ${filename}`);
-          return '';
+          text = '';
         }
-      }
-
-      if (
+      } else if (
         mimeType ===
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
         mimeType === 'application/vnd.ms-excel' ||
         ext === 'xlsx' ||
         ext === 'xls'
       ) {
-        return await this.parseExcel(buffer);
-      }
-
-      if (
+        text = await this.parseExcel(buffer);
+      } else if (
         mimeType === 'text/plain' ||
         mimeType === 'text/csv' ||
         ext === 'txt' ||
         ext === 'csv'
       ) {
-        return this.truncate(buffer.toString('utf-8'));
+        text = this.truncate(buffer.toString('utf-8'));
+      } else {
+        this.logger.warn(`Unsupported document type: ${mimeType} (${filename})`);
+        return '';
       }
 
-      this.logger.warn(`Unsupported document type: ${mimeType} (${filename})`);
-      return '';
+      this.logger.log(
+        `Extracted from ${filename}: ${text.length} chars (hasText=${text.length > 0})`,
+      );
+      return text;
     } catch (err: any) {
-      this.logger.error(`Failed to parse ${filename}: ${err.message}`);
+      // ⚠️ Логируем stack — без него реальную причину PDF-ошибки не видно
+      this.logger.error(
+        `Failed to parse ${filename}: ${err.message}`,
+        err.stack,
+      );
       return '';
     }
   }
 
   private async parsePdf(buffer: Buffer): Promise<string> {
+    // ✅ ВАЖНО: импортируем внутренний файл, а не корневой index.js,
+    //    иначе pdf-parse исполняет debug-блок и падает с ENOENT
+    //    при попытке прочитать ./test/data/05-versions-space.pdf
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pdfParse = require('pdf-parse');
+    const pdfParse = require('pdf-parse/lib/pdf-parse.js');
     const data = await pdfParse(buffer);
-    return this.truncate(data.text || '');
+    const text = this.truncate(data.text || '');
+
+    if (!text) {
+      this.logger.warn(
+        `PDF parsed but no text extracted (pages=${data.numpages}). ` +
+          `Возможно это скан/изображение без текстового слоя.`,
+      );
+    }
+    return text;
   }
 
   private async parseDocx(buffer: Buffer): Promise<string> {
