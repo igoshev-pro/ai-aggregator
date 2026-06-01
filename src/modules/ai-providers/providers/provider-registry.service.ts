@@ -577,9 +577,9 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384, includedInPlans: ['unlimited'] },
       },
       {
-        slug: 'claude-opus-4.6',
-        name: 'Claude Opus 4.6',
-        displayName: 'Claude Opus 4.6',
+        slug: 'claude-opus-4.8',
+        name: 'Claude Opus 4.8',
+        displayName: 'Claude Opus 4.8',
         description: 'Самая мощная модель Anthropic',
         type: 'text',
         // 🆕 цена: от 1.5 🔥 (соответствует "Claude Opus 4.7" из ТЗ)
@@ -591,7 +591,7 @@ export class ProviderRegistryService implements OnModuleInit {
         isPremium: true,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'claude-opus-4-6', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'claude-opus-4-8', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['unlimited'] },
