@@ -41,6 +41,8 @@ const KLING_I2V_MODELS = ['kling-v3-image-to-video'];
 // Kling motion control требует image_urls + video_urls
 const KLING_MOTION_MODELS = ['kling-v3-motion-control'];
 
+const DEEPSEEK_V4_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
+
 export class EvolinkProvider extends BaseProvider {
   private client: AxiosInstance;
   private readonly logger = new Logger(EvolinkProvider.name);
@@ -179,6 +181,9 @@ export class EvolinkProvider extends BaseProvider {
         max_completion_tokens: request.maxTokens || 4096,
         temperature: request.temperature ?? 0.7,
         stream: false,
+        ...(DEEPSEEK_V4_MODELS.includes(request.model)
+          ? { thinking: { type: 'disabled' } }
+          : {}),
       });
 
       const data = response.data;
@@ -224,6 +229,9 @@ export class EvolinkProvider extends BaseProvider {
           max_completion_tokens: request.maxTokens || 4096,
           temperature: request.temperature ?? 0.7,
           stream: true,
+          ...(DEEPSEEK_V4_MODELS.includes(request.model)
+            ? { thinking: { type: 'disabled' } }
+            : {}),
         },
         { responseType: 'stream', timeout: 180000 },
       );
@@ -473,7 +481,7 @@ export class EvolinkProvider extends BaseProvider {
                 };
                 return;
             }
-          } catch {}
+          } catch { }
         }
       }
     } catch (error) {
@@ -534,11 +542,11 @@ export class EvolinkProvider extends BaseProvider {
           typeof msg.content === 'string'
             ? msg.content
             : Array.isArray(msg.content)
-            ? msg.content
+              ? msg.content
                 .filter((p: any) => p.type === 'text')
                 .map((p: any) => p.text)
                 .join('\n')
-            : '';
+              : '';
         system = system ? `${system}\n\n${text}` : text;
       } else {
         const role = msg.role === 'assistant' ? 'assistant' : 'user';
@@ -645,7 +653,7 @@ export class EvolinkProvider extends BaseProvider {
     }
   }
 
-    // ========================================
+  // ========================================
   // VIDEO GENERATION
   // ========================================
 

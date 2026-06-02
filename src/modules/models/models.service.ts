@@ -129,27 +129,39 @@ export class ModelsService {
 
   /**
    * Минимальная стоимость одного запроса для отображения в UI ("от X 🔥")
-   * - text: цена короткого запроса ~50 токенов
+   * - text: preview по средней длине запроса (0.3·input + 0.7·output на 1M токенов),
+   *         синхронизировано с BillingService.buildPreviewFromModel.
+   *         Если результат меньше minTokenCost — берём minTokenCost.
    * - media: фиксированная цена за генерацию (минимум из pricingMatrix если есть)
    */
   private computeDisplayCost(model: ModelDocument): number {
     // === TEXT (LLM) ===
     if (model.type === GenerationType.TEXT) {
-      const inputPrice = model.costPerMillionInputTokens ?? 0;
-      const outputPrice = model.costPerMillionOutputTokens ?? 0;
-      const avgPrice = (inputPrice + outputPrice) / 2;
+      // 🆕 Приоритет новых полей цен (спички за 1M токенов), fallback на legacy
+      const inputPrice =
+        Number((model as any).pricePerMillionInputTokens) ||
+        Number(model.costPerMillionInputTokens) || 0;
+      const outputPrice =
+        Number((model as any).pricePerMillionOutputTokens) ||
+        Number(model.costPerMillionOutputTokens) || 0;
+      const avgTokens = Number((model as any).avgTokensPerRequest) || 1500;
 
-      if (avgPrice > 0) {
-        // Цена короткого запроса: (avg цена за 1M) × MIN_TOKENS / 1_000_000
-        // Для GPT-5.4: 14 × 50 / 1000 = 0.7
-        // (формула делит на 1000, а не 1_000_000, потому что 
-        //  costPerMillionInputTokens у вас уже в спичках за 1M токенов)
-        const minCost = (avgPrice * MIN_TOKENS_ESTIMATE) / 1000;
-        // Округление до 2 знаков
-        return Math.round(minCost * 100) / 100;
+      const minCost = model.minTokenCost ?? model.tokenCost ?? 1;
+
+      if (inputPrice > 0 || outputPrice > 0) {
+        // Та же формула, что в BillingService.buildPreviewFromModel:
+        // 30% input + 70% output, деление на 1_000_000
+        const preview =
+          (avgTokens * 0.3 * inputPrice) / 1_000_000 +
+          (avgTokens * 0.7 * outputPrice) / 1_000_000;
+
+        const rounded = Math.round(preview * 100) / 100;
+
+        // Если получилось меньше минимума — отдаём minTokenCost
+        return rounded < minCost ? minCost : rounded;
       }
 
-      return model.minTokenCost ?? model.tokenCost ?? 1;
+      return minCost;
     }
 
     // === MEDIA (image/video/audio) ===

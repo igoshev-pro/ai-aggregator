@@ -47,7 +47,7 @@ import {
 } from './schemas/token-package.schema';
 
 // ─── Курс конвертации ────────────────────────────────────────────
-const RUB_TO_USD_RATE = 75;
+const RUB_TO_USD_RATE = 90;
 
 // ─── 🆕 Глобальные константы точности ────────────────────────────
 const MIN_CHARGE_TOKENS = 0.01;

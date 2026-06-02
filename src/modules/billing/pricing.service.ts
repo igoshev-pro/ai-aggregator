@@ -29,7 +29,8 @@ export interface PriceCalculation {
  * PricingService — централизованный расчёт стоимости генерации.
  *
  * Логика:
- * 1. Для текстовых моделей → возвращает `minTokenCost` как preview-цену.
+ * 1. Для текстовых моделей → возвращает preview-цену по средней длине запроса
+ *    (0.3·input + 0.7·output на 1M токенов). Если меньше minTokenCost → minTokenCost.
  *    Реальная цена считается в BillingService.calculateGenerationCost ПОСЛЕ стрима,
  *    когда уже известны inputTokens/outputTokens.
  *
@@ -77,7 +78,30 @@ export class PricingService {
 
     // ─── ТЕКСТ ─── preview цена (реальная считается после стрима)
     if (model.type === 'text') {
-      const previewCost = model.minTokenCost || 1;
+      const minCost = model.minTokenCost || 1;
+
+      // 🆕 Приоритет новых полей цен, fallback на legacy
+      const inputPrice =
+        Number((model as any).pricePerMillionInputTokens) ||
+        Number((model as any).costPerMillionInputTokens) || 0;
+      const outputPrice =
+        Number((model as any).pricePerMillionOutputTokens) ||
+        Number((model as any).costPerMillionOutputTokens) || 0;
+      const avgTokens = Number((model as any).avgTokensPerRequest) || 1500;
+
+      let previewCost = minCost;
+
+      if (inputPrice > 0 || outputPrice > 0) {
+        // Та же формула, что в BillingService.buildPreviewFromModel
+        const raw =
+          (avgTokens * 0.3 * inputPrice) / 1_000_000 +
+          (avgTokens * 0.7 * outputPrice) / 1_000_000;
+
+        const rounded = Math.round(raw * 100) / 100;
+
+        // Если получилось меньше минимума — берём minTokenCost
+        previewCost = rounded < minCost ? minCost : rounded;
+      }
 
       const breakdown = {
         modelSlug: model.slug,

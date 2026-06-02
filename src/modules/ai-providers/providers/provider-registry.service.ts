@@ -18,6 +18,9 @@ import { AIModel, ModelDocument } from '../schemas/model.schema';
  * ⚙️ Флаг разовой принудительной миграции цен текстовых моделей.
  * Включи на один деплой → цены в БД перезапишутся на актуальные из каталога.
  * После успешного запуска можно выключить (или удалить блок миграции).
+ *
+ * ⚠️ Перезаписывает ТОЛЬКО текстовые модели (type === 'text').
+ *    Media-модели (image/video/audio) в БД НЕ затрагиваются.
  */
 const FORCE_TEXT_PRICES_MIGRATION = true;
 
@@ -263,24 +266,41 @@ export class ProviderRegistryService implements OnModuleInit {
         providerId: providerMap.get(m.providerSlug),
       }));
 
+      // ─── 🆕 Новые ценовые поля (в спичках 🔥) ───
+      const pricePerMillionInputTokens =
+        (modelData as any).pricePerMillionInputTokens ?? 0;
+      const pricePerMillionOutputTokens =
+        (modelData as any).pricePerMillionOutputTokens ?? 0;
+      const providerCostPerMillionInput =
+        (modelData as any).providerCostPerMillionInput ?? 0;
+      const providerCostPerMillionOutput =
+        (modelData as any).providerCostPerMillionOutput ?? 0;
+      const avgTokensPerRequest =
+        (modelData as any).avgTokensPerRequest ?? 1500;
+
+      // ─── Legacy поля (дублируем те же спички для совместимости fallback) ───
       const costPerMillionInputTokens =
-        (modelData as any).costPerMillionInputTokens ?? 0;
+        (modelData as any).costPerMillionInputTokens ?? pricePerMillionInputTokens;
       const costPerMillionOutputTokens =
-        (modelData as any).costPerMillionOutputTokens ?? 0;
+        (modelData as any).costPerMillionOutputTokens ?? pricePerMillionOutputTokens;
       const fixedCostPerGeneration =
         (modelData as any).fixedCostPerGeneration ?? 0;
 
+      // tokenCost — справочное поле для UI ("от X 🔥")
       let tokenCost = modelData.minTokenCost;
       if (modelData.type === 'text') {
-        const avgCost = (costPerMillionInputTokens + costPerMillionOutputTokens) / 2;
-        tokenCost = Math.max(
-          modelData.minTokenCost,
-          Math.ceil((avgCost * modelData.tokensPerDollar) / 1000),
-        );
+        // Preview-оценка: avgTokens × (0.3×in + 0.7×out) / 1M
+        const previewCost =
+          (avgTokensPerRequest *
+            (0.3 * pricePerMillionInputTokens +
+              0.7 * pricePerMillionOutputTokens)) /
+          1_000_000;
+        tokenCost = Math.max(modelData.minTokenCost, previewCost);
+        tokenCost = Math.round(tokenCost * 100) / 100;
       } else {
         tokenCost = Math.max(
           modelData.minTokenCost,
-          Math.ceil(fixedCostPerGeneration * modelData.tokensPerDollar),
+          Math.ceil(fixedCostPerGeneration * (modelData.tokensPerDollar || 30)),
         );
       }
 
@@ -294,6 +314,7 @@ export class ProviderRegistryService implements OnModuleInit {
         providerMappings: mappings,
         limits: modelData.limits || {},
         defaultParams: modelData.defaultParams || {},
+        supportsVision: (modelData as any).supportsVision ?? false,
       };
 
       // $setOnInsert — только при первом создании
@@ -305,6 +326,13 @@ export class ProviderRegistryService implements OnModuleInit {
         tokensPerDollar: modelData.tokensPerDollar,
         minTokenCost: modelData.minTokenCost,
         tokenCost,
+        // 🆕 новые поля
+        pricePerMillionInputTokens,
+        pricePerMillionOutputTokens,
+        avgTokensPerRequest,
+        providerCostPerMillionInput,
+        providerCostPerMillionOutput,
+        // legacy
         costPerMillionInputTokens,
         costPerMillionOutputTokens,
         fixedCostPerGeneration,
@@ -328,7 +356,7 @@ export class ProviderRegistryService implements OnModuleInit {
       if (wasInserted) created++;
       else updated++;
 
-      // ─── ONE-TIME MIGRATION (старая) ───
+      // ─── ONE-TIME MIGRATION (старая — для media uiParameters/pricingMatrix) ───
       if (!wasInserted) {
         const matrix = (modelData as any).pricingMatrix || [];
         const uiParams = (modelData as any).uiParameters || [];
@@ -378,8 +406,7 @@ export class ProviderRegistryService implements OnModuleInit {
       }
 
       // ─── 🆕 PRICE MIGRATION (для текстовых моделей) ───
-      // Перезаписывает minTokenCost, tokenCost и цены за 1M токенов
-      // на актуальные значения из каталога.
+      // Перезаписывает все ценовые поля на актуальные значения из каталога.
       if (FORCE_TEXT_PRICES_MIGRATION && modelData.type === 'text') {
         await this.modelModel.updateOne(
           { slug },
@@ -387,10 +414,18 @@ export class ProviderRegistryService implements OnModuleInit {
             $set: {
               minTokenCost: modelData.minTokenCost,
               tokenCost,
+              // 🆕 главные поля — их читает реальное списание
+              pricePerMillionInputTokens,
+              pricePerMillionOutputTokens,
+              avgTokensPerRequest,
+              providerCostPerMillionInput,
+              providerCostPerMillionOutput,
+              // legacy дубль для fallback
               costPerMillionInputTokens,
               costPerMillionOutputTokens,
               tokensPerDollar: modelData.tokensPerDollar,
               isPremium: (modelData as any).isPremium ?? false,
+              supportsVision: (modelData as any).supportsVision ?? false,
             },
           },
         );
@@ -412,8 +447,14 @@ export class ProviderRegistryService implements OnModuleInit {
 
   // ═══════════════════════════════════════════════════════════════
   // КАТАЛОГ МОДЕЛЕЙ — данные для seed
-  // Цены текстовых моделей: minTokenCost = минимальная стоимость
-  // одного короткого запроса (~50 токенов) в спичках.
+  //
+  // Ценообразование текстовых моделей (формула платформы):
+  //   спички_за_1M = цена_провайдера_USD × 90
+  //   (×3 наценка платформы × 90 ₽/$ ÷ 3 ₽/спичка = ×90)
+  //
+  //   pricePerMillionInputTokens / pricePerMillionOutputTokens — в 🔥 (читает биллинг)
+  //   providerCostPerMillionInput / Output — чистый USD (аналитика маржи)
+  //   minTokenCost — минимум за запрос (вручную), списание не опускается ниже
   // ═══════════════════════════════════════════════════════════════
   private buildModelsCatalog(): any[] {
     return [
@@ -426,9 +467,12 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'GPT-OSS 120B',
         description: 'Open-source 117B MoE model, оптимизирована для H100',
         type: 'text',
-        // 🆕 цена: от 0.1 🔥
-        costPerMillionInputTokens: 0.039,
-        costPerMillionOutputTokens: 0.19,
+        // provider: $0.039 / $0.18  →  ×90  →  3.51 / 16.2 🔥
+        pricePerMillionInputTokens: 3.51,
+        pricePerMillionOutputTokens: 16.2,
+        providerCostPerMillionInput: 0.039,
+        providerCostPerMillionOutput: 0.18,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.1,
         sortOrder: 1,
@@ -445,12 +489,16 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Claude Haiku 4.5',
         description: 'Быстрая модель Anthropic с расширенным мышлением',
         type: 'text',
-        // 🆕 цена: от 0.5 🔥
-        costPerMillionInputTokens: 1.0,
-        costPerMillionOutputTokens: 5.0,
+        // provider: $1 / $5  →  ×90  →  90 / 450 🔥
+        pricePerMillionInputTokens: 90,
+        pricePerMillionOutputTokens: 450,
+        providerCostPerMillionInput: 1.0,
+        providerCostPerMillionOutput: 5.0,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.5,
         sortOrder: 2,
+        supportsVision: true,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'openrouter', modelId: 'anthropic/claude-haiku-4.5', priority: 1, isActive: true },
@@ -458,54 +506,63 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192 },
       },
-           {
-  slug: 'deepseek-v4-flash',
-  name: 'DeepSeek V4 Flash',
-  displayName: 'DeepSeek V4 Flash',
-  description: 'Быстрая универсальная модель DeepSeek, контекст 1M',
-  type: 'text',
-  // UC/1K: input miss 100, output 200 → $ за 1M (UC≈$0.000001? уточните курс)
-  // ставлю относительные цены; minTokenCost — главное для UI
-  costPerMillionInputTokens: 0.28,
-  costPerMillionOutputTokens: 0.42,
-  tokensPerDollar: 1000,
-  minTokenCost: 0.1,
-  sortOrder: 10,
-  capabilities: ['streaming', 'function_calling'],
-  providerMappings: [
-    { providerSlug: 'evolink', modelId: 'deepseek-v4-flash', priority: 1, isActive: true },
-  ],
-  defaultParams: { maxTokens: 8192, temperature: 0.7 },
-  limits: { maxInputTokens: 1000000, maxOutputTokens: 16384 },
-},
-{
-  slug: 'deepseek-v4-pro',
-  name: 'DeepSeek V4 Pro',
-  displayName: 'DeepSeek V4 Pro',
-  description: 'Reasoning-модель DeepSeek: математика, код, сложная логика',
-  type: 'text',
-  costPerMillionInputTokens: 1.5,
-  costPerMillionOutputTokens: 3.0,
-  tokensPerDollar: 1000,
-  minTokenCost: 0.5,
-  sortOrder: 10.5,
-  isPremium: true,
-  capabilities: ['streaming', 'reasoning', 'function_calling'],
-  providerMappings: [
-    { providerSlug: 'evolink', modelId: 'deepseek-v4-pro', priority: 1, isActive: true },
-  ],
-  defaultParams: { maxTokens: 8192, temperature: 0.7 },
-  limits: { maxInputTokens: 1000000, maxOutputTokens: 16384 },
-},
+      {
+        slug: 'deepseek-v4-flash',
+        name: 'DeepSeek V4 Flash',
+        displayName: 'DeepSeek V4 Flash',
+        description: 'Быстрая универсальная модель DeepSeek, контекст 1M',
+        type: 'text',
+        // provider: $0.147 / $0.294  →  ×90  →  13.23 / 26.46 🔥
+        pricePerMillionInputTokens: 13.23,
+        pricePerMillionOutputTokens: 26.46,
+        providerCostPerMillionInput: 0.147,
+        providerCostPerMillionOutput: 0.294,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 1000,
+        minTokenCost: 0.1,
+        sortOrder: 10,
+        capabilities: ['streaming', 'function_calling'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'deepseek-v4-flash', priority: 1, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 1000000, maxOutputTokens: 16384 },
+      },
+      {
+        slug: 'deepseek-v4-pro',
+        name: 'DeepSeek V4 Pro',
+        displayName: 'DeepSeek V4 Pro',
+        description: 'Reasoning-модель DeepSeek: математика, код, сложная логика',
+        type: 'text',
+        // provider: $1.765 / $3.529  →  ×90  →  158.85 / 317.61 🔥
+        pricePerMillionInputTokens: 158.85,
+        pricePerMillionOutputTokens: 317.61,
+        providerCostPerMillionInput: 1.765,
+        providerCostPerMillionOutput: 3.529,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 1000,
+        minTokenCost: 0.5,
+        sortOrder: 10.5,
+        isPremium: true,
+        capabilities: ['streaming', 'reasoning', 'function_calling'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'deepseek-v4-pro', priority: 1, isActive: true },
+        ],
+                defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 1000000, maxOutputTokens: 16384 },
+      },
       {
         slug: 'grok-4.20',
         name: 'Grok 4.20',
         displayName: 'Grok 4.20',
         description: 'Быстрая версия Grok от xAI',
         type: 'text',
-        // 🆕 цена: от 0.3 🔥 (не было в твоём списке, оставил умеренную)
-        costPerMillionInputTokens: 0.20,
-        costPerMillionOutputTokens: 0.50,
+        // provider: $1.25 / $2.50  →  ×90  →  112.5 / 225 🔥
+        pricePerMillionInputTokens: 112.5,
+        pricePerMillionOutputTokens: 225,
+        providerCostPerMillionInput: 1.25,
+        providerCostPerMillionOutput: 2.5,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.3,
         sortOrder: 4,
@@ -522,13 +579,17 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Grok 4.3',
         description: 'Флагманская reasoning модель от xAI',
         type: 'text',
-        // 🆕 цена: от 1.2 🔥 (соответствует "Grok 4.3" из ТЗ)
-        costPerMillionInputTokens: 3.0,
-        costPerMillionOutputTokens: 15.0,
+        // provider: $1.25 / $2.50  →  ×90  →  112.5 / 225 🔥
+        pricePerMillionInputTokens: 112.5,
+        pricePerMillionOutputTokens: 225,
+        providerCostPerMillionInput: 1.25,
+        providerCostPerMillionOutput: 2.5,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 1.2,
         sortOrder: 5,
         isPremium: true,
+        supportsVision: true,
         capabilities: ['streaming', 'reasoning', 'vision'],
         providerMappings: [
           { providerSlug: 'openrouter', modelId: 'x-ai/grok-4.3', priority: 1, isActive: true },
@@ -542,9 +603,12 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Perplexity Sonar',
         description: 'Поисковая модель с актуальными данными',
         type: 'text',
-        // 🆕 цена: от 1.0 🔥
-        costPerMillionInputTokens: 1.0,
-        costPerMillionOutputTokens: 1.0,
+        // provider: $1 / $1  →  ×90  →  90 / 90 🔥
+        pricePerMillionInputTokens: 90,
+        pricePerMillionOutputTokens: 90,
+        providerCostPerMillionInput: 1.0,
+        providerCostPerMillionOutput: 1.0,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 1.0,
         sortOrder: 6,
@@ -562,13 +626,17 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'GPT-5.4',
         description: 'Новейшая флагманская модель OpenAI',
         type: 'text',
-        // 🆕 цена: от 0.8 🔥
-        costPerMillionInputTokens: 14.0,
-        costPerMillionOutputTokens: 14.0,
+        // provider: $2.25 / $13.50  →  ×90  →  202.5 / 1215 🔥
+        pricePerMillionInputTokens: 202.5,
+        pricePerMillionOutputTokens: 1215,
+        providerCostPerMillionInput: 2.25,
+        providerCostPerMillionOutput: 13.5,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.8,
         sortOrder: 7,
         isPremium: true,
+        supportsVision: true,
         capabilities: ['streaming', 'vision', 'function_calling'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'gpt-5.4', priority: 1, isActive: true },
@@ -582,13 +650,17 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Claude Opus 4.7',
         description: 'Самая мощная модель Anthropic',
         type: 'text',
-        // 🆕 цена: от 1.5 🔥 (соответствует "Claude Opus 4.7" из ТЗ)
-        costPerMillionInputTokens: 25.382,
-        costPerMillionOutputTokens: 25.382,
+        // provider: $4.50 / $22.50  →  ×90  →  405 / 2025 🔥
+        pricePerMillionInputTokens: 405,
+        pricePerMillionOutputTokens: 2025,
+        providerCostPerMillionInput: 4.5,
+        providerCostPerMillionOutput: 22.5,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 1.5,
         sortOrder: 8,
         isPremium: true,
+        supportsVision: true,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'claude-opus-4-7', priority: 1, isActive: true },
@@ -602,13 +674,17 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Claude Opus 4.8',
         description: 'Самая мощная модель Anthropic',
         type: 'text',
-        // 🆕 цена: от 1.5 🔥 (соответствует "Claude Opus 4.7" из ТЗ)
-        costPerMillionInputTokens: 25.382,
-        costPerMillionOutputTokens: 25.382,
+        // provider: $4.50 / $22.50  →  ×90  →  405 / 2025 🔥
+        pricePerMillionInputTokens: 405,
+        pricePerMillionOutputTokens: 2025,
+        providerCostPerMillionInput: 4.5,
+        providerCostPerMillionOutput: 22.5,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 1.5,
         sortOrder: 8,
         isPremium: true,
+        supportsVision: true,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'claude-opus-4-8', priority: 1, isActive: true },
@@ -622,13 +698,17 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Claude Sonnet 4.6',
         description: 'Балансированная модель Anthropic нового поколения',
         type: 'text',
-        // 🆕 цена: от 0.8 🔥
-        costPerMillionInputTokens: 15.3,
-        costPerMillionOutputTokens: 15.3,
+        // provider: $2.70 / $13.50  →  ×90  →  243 / 1215 🔥
+        pricePerMillionInputTokens: 243,
+        pricePerMillionOutputTokens: 1215,
+        providerCostPerMillionInput: 2.7,
+        providerCostPerMillionOutput: 13.5,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.8,
         sortOrder: 9,
         isPremium: true,
+        supportsVision: true,
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'claude-sonnet-4-6', priority: 1, isActive: true },
@@ -642,12 +722,16 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Gemini 3.1 Pro',
         description: 'Продвинутая модель Google',
         type: 'text',
-        // 🆕 цена: от 0.2 🔥
-        costPerMillionInputTokens: 4.0,
-        costPerMillionOutputTokens: 4.0,
+        // provider: $0.50 / $3.50  →  ×90  →  45 / 315 🔥
+        pricePerMillionInputTokens: 45,
+        pricePerMillionOutputTokens: 315,
+        providerCostPerMillionInput: 0.5,
+        providerCostPerMillionOutput: 3.5,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.2,
         sortOrder: 11,
+        supportsVision: true,
         capabilities: ['streaming', 'vision'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gemini-3.1-pro', priority: 1, isActive: true },
@@ -661,12 +745,16 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Gemini 3 Flash',
         description: 'Быстрая модель Google',
         type: 'text',
-        // 🆕 цена: от 0.1 🔥
-        costPerMillionInputTokens: 1.05,
-        costPerMillionOutputTokens: 1.05,
+        // provider: $0.15 / $3.90  →  ×90  →  13.5 / 351 🔥
+        pricePerMillionInputTokens: 13.5,
+        pricePerMillionOutputTokens: 351,
+        providerCostPerMillionInput: 0.15,
+        providerCostPerMillionOutput: 3.9,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.1,
         sortOrder: 12,
+        supportsVision: true,
         capabilities: ['streaming', 'vision'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gemini-3-flash', priority: 1, isActive: true },
@@ -680,11 +768,16 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'ChatGPT 4o',
         description: 'Флагманская модель OpenAI с vision и function calling',
         type: 'text',
-        costPerMillionInputTokens: 2.5,
-        costPerMillionOutputTokens: 10.0,
+        // provider: $2.50 / $10  →  ×90  →  225 / 900 🔥
+        pricePerMillionInputTokens: 225,
+        pricePerMillionOutputTokens: 900,
+        providerCostPerMillionInput: 2.5,
+        providerCostPerMillionOutput: 10.0,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.3,
         sortOrder: 13,
+        supportsVision: true,
         capabilities: ['streaming', 'vision', 'function_calling'],
         providerMappings: [
           { providerSlug: 'openrouter', modelId: 'openai/gpt-4o', priority: 1, isActive: true },
@@ -699,11 +792,16 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'ChatGPT 4o Mini',
         description: 'Быстрая и дешёвая модель OpenAI',
         type: 'text',
-        costPerMillionInputTokens: 0.15,
-        costPerMillionOutputTokens: 0.6,
+        // provider: $0.15 / $0.60  →  ×90  →  13.5 / 54 🔥
+        pricePerMillionInputTokens: 13.5,
+        pricePerMillionOutputTokens: 54,
+        providerCostPerMillionInput: 0.15,
+        providerCostPerMillionOutput: 0.6,
+        avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
         minTokenCost: 0.1,
         sortOrder: 14,
+        supportsVision: true,
         capabilities: ['streaming', 'vision', 'function_calling'],
         providerMappings: [
           { providerSlug: 'openrouter', modelId: 'openai/gpt-4o-mini', priority: 1, isActive: true },
@@ -714,20 +812,20 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ════════════════════════════════════════════════════
-      // 📌 Остальные модели (image / video / audio) без изменений
-      // Сохрани из оригинала всё начиная с { slug: 'gpt-5-image', ... }
-      // и до конца массива. Структуру и цены этих моделей я НЕ трогаю.
+      // 📌 МЕДИА-МОДЕЛИ (image / video / audio)
       // ════════════════════════════════════════════════════
-
-      // ↓↓↓ ВСТАВЬ СЮДА свой оригинальный код моделей:
-      //     gpt-5-image, gpt-image-1.5-lite, midjourney, midjourney-img2img,
-      //     seedream-5-lite, imagen-4, flux-2, flux-2-img2img,
-      //     nano-banana-2, nano-banana-pro,
-      //     veo-3.1-fast, veo-3.1-pro, sora-2-pro, sora-2, sora-2-img2vid,
-      //     kling-3.0, kling-3.0-img2vid, kling-3.0-motion,
-      //     runway, hailuo-2.3-standard, hailuo-2.3-pro,
-      //     suno-v4, elevenlabs-tts-turbo, elevenlabs-tts-multilingual,
-      //     elevenlabs-dialogue, elevenlabs-isolation, elevenlabs-stt, elevenlabs-sfx
+      // Сейчас в каталоге их НЕТ — они существуют только в БД
+      // (созданы ранее или скриптами seed-*.js).
+      //
+      // ⚠️ FORCE_TEXT_PRICES_MIGRATION фильтрует по type === 'text',
+      //    поэтому media-модели в БД НЕ затрагиваются — их цены,
+      //    pricingMatrix и uiParameters остаются нетронутыми.
+      //
+      // 👉 Когда будем разбираться с media — добавим их сюда:
+      //     gpt-5-image, gpt-image-1.5-lite, midjourney, seedream-5-lite,
+      //     imagen-4, flux-2, nano-banana-2, nano-banana-pro,
+      //     veo-3.1-fast/pro, sora-2/pro, kling-3.0, runway,
+      //     hailuo-2.3, suno-v4, elevenlabs-*
     ];
   }
 }
