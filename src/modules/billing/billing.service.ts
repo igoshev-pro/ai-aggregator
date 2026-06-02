@@ -2249,13 +2249,22 @@ export class BillingService implements OnApplicationBootstrap {
       const newInputPrice = Number(model.pricePerMillionInputTokens) || 0;
       const newOutputPrice = Number(model.pricePerMillionOutputTokens) || 0;
 
+      // 🆕 Минимум списания из модели (в спичках). Если не задан → 0.01
+      const modelMinCost = Number(model.minTokenCost) > 0
+        ? Number(model.minTokenCost)
+        : MIN_CHARGE_TOKENS;
+
       if (newInputPrice > 0 || newOutputPrice > 0) {
         const inputCost =
           ((inputTokens || 0) * newInputPrice) / 1_000_000;
         const outputCost =
           ((outputTokens || 0) * newOutputPrice) / 1_000_000;
 
-        const costInTokens = finalizeTokenCost(inputCost + outputCost);
+        // Реальная стоимость в спичках, округлённая до 2 знаков
+        const rawCost = roundTokens(inputCost + outputCost);
+
+        // 🆕 Пол по minTokenCost модели (а не по глобальному 0.01)
+        const costInTokens = rawCost < modelMinCost ? modelMinCost : rawCost;
 
         const providerInputCost =
           ((inputTokens || 0) *
@@ -2272,7 +2281,7 @@ export class BillingService implements OnApplicationBootstrap {
         return { costInDollars, costInTokens };
       }
 
-      // ⚠️ Fallback на старую формулу
+      // ⚠️ Fallback на старую формулу (legacy-поля в долларах)
       const legacyInputDollars =
         ((inputTokens || 0) *
           (Number(model.costPerMillionInputTokens) || 0)) /
@@ -2283,10 +2292,11 @@ export class BillingService implements OnApplicationBootstrap {
         1_000_000;
       const costInDollars = legacyInputDollars + legacyOutputDollars;
 
-      const tokensPerDollar = Number(model.tokensPerDollar) || 30;
-      const costInTokens = finalizeTokenCost(
-        costInDollars * tokensPerDollar,
-      );
+      // legacy: доллары → спички через курс RUB_TO_USD_RATE / tokenPriceRub
+      // tokensPerDollar в БД устарел; конвертируем сами: 1$ = 90₽ = 30 спичек
+      const legacyTokensPerDollar = RUB_TO_USD_RATE / 3; // = 30
+      const rawLegacy = roundTokens(costInDollars * legacyTokensPerDollar);
+      const costInTokens = rawLegacy < modelMinCost ? modelMinCost : rawLegacy;
 
       return { costInDollars, costInTokens };
     }
