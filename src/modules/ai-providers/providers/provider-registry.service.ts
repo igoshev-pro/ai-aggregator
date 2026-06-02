@@ -24,6 +24,14 @@ import { AIModel, ModelDocument } from '../schemas/model.schema';
  */
 const FORCE_TEXT_PRICES_MIGRATION = true;
 
+/**
+ * ⚙️ Разовая принудительная миграция MEDIA-моделей (image/video/audio).
+ * Перезаписывает: fixedCostPerGeneration, tokenCost, minTokenCost,
+ * tokensPerDollar, pricingMatrix, uiParameters, inputCapabilities, isPremium.
+ * После успешного запуска → выключить.
+ */
+const FORCE_MEDIA_MIGRATION = true;
+
 @Injectable()
 export class ProviderRegistryService implements OnModuleInit {
   private readonly logger = new Logger(ProviderRegistryService.name);
@@ -431,6 +439,35 @@ export class ProviderRegistryService implements OnModuleInit {
         );
         priceMigrated++;
       }
+
+      if (FORCE_MEDIA_MIGRATION && modelData.type !== 'text') {
+        const mediaSet: Record<string, any> = {
+          minTokenCost: modelData.minTokenCost,
+          tokenCost,
+          tokensPerDollar: modelData.tokensPerDollar,
+          fixedCostPerGeneration,
+          isPremium: (modelData as any).isPremium ?? false,
+        };
+
+        // pricingMatrix / uiParameters / inputCapabilities —
+        // перезаписываем только если они заданы в каталоге
+        const matrix = (modelData as any).pricingMatrix;
+        const uiParams = (modelData as any).uiParameters;
+        const inputCap = (modelData as any).inputCapabilities;
+
+        if (Array.isArray(matrix) && matrix.length > 0) {
+          mediaSet.pricingMatrix = matrix;
+        }
+        if (Array.isArray(uiParams) && uiParams.length > 0) {
+          mediaSet.uiParameters = uiParams;
+        }
+        if (inputCap) {
+          mediaSet.inputCapabilities = inputCap;
+        }
+
+        await this.modelModel.updateOne({ slug }, { $set: mediaSet });
+        priceMigrated++;
+      }
     }
 
     this.logger.log(
@@ -812,10 +849,1090 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ════════════════════════════════════════════════════
-      // 📌 МЕДИА-МОДЕЛИ (image / video / audio)
+      // IMAGE МОДЕЛИ
       // ════════════════════════════════════════════════════
-      // Сейчас в каталоге их НЕТ — они существуют только в БД
-      // (созданы ранее или скриптами seed-*.js).
+      {
+        slug: 'gpt-5-image',
+        name: 'GPT-5 Image',
+        displayName: 'GPT-5 Image',
+        description: 'Новейший генератор изображений OpenAI',
+        type: 'image',
+        fixedCostPerGeneration: 0.04,
+        tokensPerDollar: 125,
+        minTokenCost: 9,
+        sortOrder: 1,
+        capabilities: ['text_rendering', 'image_editing'],
+        providerMappings: [
+          { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5-image', priority: 1, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
+        pricingMatrix: [
+          { conditions: { quality: 'hd' }, costInTokens: 12, costInDollars: 0.08, label: 'HD качество' },
+          { conditions: { quality: 'standard' }, costInTokens: 9, costInDollars: 0.04, label: 'Стандартное качество' },
+        ],
+        uiParameters: [
+          {
+            key: 'quality', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'standard',
+            options: [
+              { value: 'standard', label: 'Стандарт (9🔥)' },
+              { value: 'hd', label: 'HD (12🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Портрет (2:3)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'gpt-image-1.5-lite',
+        name: 'GPT Image 1.5 Lite',
+        displayName: 'GPT Image 1.5 Lite',
+        description: 'Облегчённая версия генератора изображений OpenAI',
+        type: 'image',
+        fixedCostPerGeneration: 0.0125,
+        tokensPerDollar: 200,
+        minTokenCost: 2,
+        sortOrder: 2,
+        capabilities: ['text_to_image', 'image_editing'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'gpt-image-1.5', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '1:1' },
+        limits: { maxResolution: '1536x1024' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
+        pricingMatrix: [
+          { costInTokens: 3, costInDollars: 0.0125, label: 'Стандартная генерация' },
+        ],
+        uiParameters: [
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Портрет (2:3)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'midjourney',
+        name: 'Midjourney',
+        displayName: 'Midjourney',
+        description: 'Лучший генератор изображений',
+        type: 'image',
+        fixedCostPerGeneration: 0.055,
+        tokensPerDollar: 100,
+        minTokenCost: 5,
+        sortOrder: 3,
+        capabilities: ['variations', 'upscale'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'mj_txt2img', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'midjourney', priority: 2, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { conditions: { mode: 'turbo' }, costInTokens: 22, costInDollars: 0.22, label: 'Турбо режим' },
+          { conditions: { mode: 'fast' }, costInTokens: 12, costInDollars: 0.12, label: 'Быстрый режим' },
+          { conditions: { mode: 'relax' }, costInTokens: 5, costInDollars: 0.05, label: 'Relax режим' },
+        ],
+        uiParameters: [
+          {
+            key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
+            options: [
+              { value: 'relax', label: 'Relax (5🔥, ~5 мин)' },
+              { value: 'fast', label: 'Быстрый (12🔥, ~30 сек)' },
+              { value: 'turbo', label: 'Турбо (22🔥, ~15 сек)' },
+            ],
+          },
+                    {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Книга (2:3)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'midjourney-img2img',
+        name: 'Midjourney Img2Img',
+        displayName: 'Midjourney (Image to Image)',
+        description: 'Трансформация изображений через Midjourney',
+        type: 'image',
+        fixedCostPerGeneration: 0.055,
+        tokensPerDollar: 100,
+        minTokenCost: 12,
+        sortOrder: 4,
+        capabilities: ['image_to_image', 'variations'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'mj_img2img', priority: 1, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { mode: 'turbo' }, costInTokens: 22, costInDollars: 0.22, label: 'Турбо режим' },
+          { conditions: { mode: 'fast' }, costInTokens: 12, costInDollars: 0.12, label: 'Быстрый режим' },
+          { conditions: { mode: 'relax' }, costInTokens: 5, costInDollars: 0.05, label: 'Relax режим' },
+        ],
+        uiParameters: [
+          {
+            key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
+            options: [
+              { value: 'relax', label: 'Relax (5🔥)' },
+              { value: 'fast', label: 'Быстрый (12🔥)' },
+              { value: 'turbo', label: 'Турбо (22🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Портрет (2:3)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'seedream-5-lite',
+        name: 'Seedream 5.0 Lite',
+        displayName: 'Seedream 5.0 Lite',
+        description: 'Быстрый генератор Seedream',
+        type: 'image',
+        fixedCostPerGeneration: 0.0275,
+        tokensPerDollar: 150,
+        minTokenCost: 4,
+        sortOrder: 5,
+        capabilities: [],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'seedream/5-lite-text-to-image', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'seedream', priority: 2, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { costInTokens: 6, costInDollars: 0.0275, label: 'Стандартная генерация' },
+        ],
+        uiParameters: [
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'imagen-4',
+        name: 'Imagen 4',
+        displayName: 'Google Imagen 4',
+        description: 'Генератор изображений от Google',
+        type: 'image',
+        fixedCostPerGeneration: 0.02,
+        tokensPerDollar: 150,
+        minTokenCost: 5,
+        sortOrder: 6,
+        capabilities: [],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'google/imagen4-fast', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'imagen-3', priority: 2, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { costInTokens: 5, costInDollars: 0.02, label: 'Стандартная генерация' },
+        ],
+        uiParameters: [
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'flux-2',
+        name: 'Flux 2',
+        displayName: 'Flux 2',
+        description: 'Новая версия Flux',
+        type: 'image',
+        fixedCostPerGeneration: 0.035,
+        tokensPerDollar: 125,
+        minTokenCost: 8,
+        sortOrder: 7,
+        capabilities: ['text_to_image', 'image_to_image'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'flux-2/flex-text-to-image', priority: 1, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024, steps: 28 },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { conditions: { version: 'pro', resolution: '2K' }, costInTokens: 14, costInDollars: 0.06, label: 'Pro × 2K' },
+          { conditions: { version: 'pro', resolution: '1K' }, costInTokens: 10, costInDollars: 0.045, label: 'Pro × 1K' },
+          { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 10, costInDollars: 0.045, label: 'Flex × 2K' },
+          { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 8, costInDollars: 0.035, label: 'Flex × 1K' },
+        ],
+        uiParameters: [
+          {
+            key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'flex',
+            options: [
+              { value: 'flex', label: 'Flex (быстрее)' },
+              { value: 'pro', label: 'Pro (качественнее)' },
+            ],
+          },
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K (1024×1024)' },
+              { value: '2K', label: '2K (2048×2048)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'flux-2-img2img',
+        name: 'Flux 2 Img2Img',
+        displayName: 'Flux 2 (Image to Image)',
+        description: 'Flux 2 для трансформации изображений',
+        type: 'image',
+        fixedCostPerGeneration: 0.035,
+        tokensPerDollar: 125,
+        minTokenCost: 8,
+        sortOrder: 8,
+        capabilities: ['image_to_image'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'flux-2/flex-image-to-image', priority: 1, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024, steps: 28 },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 8 },
+        pricingMatrix: [
+          { conditions: { version: 'pro', resolution: '2K' }, costInTokens: 14, costInDollars: 0.06, label: 'Pro × 2K' },
+          { conditions: { version: 'pro', resolution: '1K' }, costInTokens: 10, costInDollars: 0.045, label: 'Pro × 1K' },
+          { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 10, costInDollars: 0.045, label: 'Flex × 2K' },
+          { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 8, costInDollars: 0.035, label: 'Flex × 1K' },
+        ],
+        uiParameters: [
+          {
+            key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'flex',
+            options: [
+              { value: 'flex', label: 'Flex (быстрее)' },
+              { value: 'pro', label: 'Pro (качественнее)' },
+            ],
+          },
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K (1024×1024)' },
+              { value: '2K', label: '2K (2048×2048)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'nano-banana-2',
+        name: 'Nano Banana 2',
+        displayName: 'Nano Banana 2',
+        description: 'Стандартная версия Nano Banana',
+        type: 'image',
+        fixedCostPerGeneration: 0.025,
+        tokensPerDollar: 150,
+        minTokenCost: 6,
+        sortOrder: 9,
+        capabilities: [],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'nano-banana-2', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'nano-banana', priority: 2, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '4096x4096' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 14 },
+        pricingMatrix: [
+          { conditions: { resolution: '4K' }, costInTokens: 10, costInDollars: 0.04, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 8, costInDollars: 0.035, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 6, costInDollars: 0.025, label: '1K разрешение' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K (6🔥)' },
+              { value: '2K', label: '2K (8🔥)' },
+              { value: '4K', label: '4K (10🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+            ],
+          },
+          {
+            key: 'outputFormat', label: 'Формат файла', type: 'select', affectsPrice: false, defaultValue: 'png',
+            options: [
+              { value: 'png', label: 'PNG' },
+              { value: 'jpeg', label: 'JPEG' },
+              { value: 'webp', label: 'WebP' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'nano-banana-pro',
+        name: 'Nano Banana Pro',
+        displayName: 'Nano Banana Pro',
+        description: 'Продвинутая версия Nano Banana',
+        type: 'image',
+        fixedCostPerGeneration: 0.04,
+        tokensPerDollar: 125,
+        minTokenCost: 9,
+        sortOrder: 10,
+        capabilities: ['high_quality'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'nano-banana-pro', priority: 1, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '4096x4096' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 8 },
+        pricingMatrix: [
+          { conditions: { resolution: '4K' }, costInTokens: 14, costInDollars: 0.06, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 11, costInDollars: 0.05, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 9, costInDollars: 0.04, label: '1K разрешение' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K (9🔥)' },
+              { value: '2K', label: '2K (11🔥)' },
+              { value: '4K', label: '4K (14🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+            ],
+          },
+          {
+            key: 'outputFormat', label: 'Формат файла', type: 'select', affectsPrice: false, defaultValue: 'png',
+            options: [
+              { value: 'png', label: 'PNG' },
+              { value: 'jpeg', label: 'JPEG' },
+              { value: 'webp', label: 'WebP' },
+            ],
+          },
+        ],
+      },
+
+      // ════════════════════════════════════════════════════
+      // VIDEO МОДЕЛИ
+      // ════════════════════════════════════════════════════
+      {
+        slug: 'veo-3.1-fast',
+        name: 'Veo 3.1 Fast',
+        displayName: 'Google Veo 3.1 Fast',
+        description: 'Быстрая версия Veo от Google',
+        type: 'video',
+        fixedCostPerGeneration: 0.15,
+        tokensPerDollar: 50,
+        minTokenCost: 32,
+        sortOrder: 1,
+        capabilities: ['text_to_video'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'veo-3.1-fast-generate-preview', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 8 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { costInTokens: 32, costInDollars: 0.32, label: 'Veo 3.1 Fast' },
+        ],
+        uiParameters: [
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'veo-3.1-pro',
+        name: 'Veo 3.1 Pro',
+        displayName: 'Google Veo 3.1 Pro',
+        description: 'Премиум версия Veo от Google',
+        type: 'video',
+        fixedCostPerGeneration: 0.3,
+        tokensPerDollar: 40,
+        minTokenCost: 65,
+        sortOrder: 2,
+        isPremium: true,
+        capabilities: ['text_to_video', 'high_quality'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'veo-3.1-generate-preview', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 10, includedInPlans: ['pro', 'unlimited'] },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { costInTokens: 65, costInDollars: 0.65, label: 'Veo 3.1 Pro' },
+        ],
+        uiParameters: [
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'sora-2-pro',
+        name: 'Sora 2 Pro',
+        displayName: 'OpenAI Sora 2 Pro',
+        description: 'Флагманский генератор видео от OpenAI',
+        type: 'video',
+        fixedCostPerGeneration: 0.9583,
+        tokensPerDollar: 30,
+        minTokenCost: 200,
+        sortOrder: 3,
+        isPremium: true,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'sora-2-pro-preview', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 20, includedInPlans: ['unlimited'] },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { duration: 15 }, costInTokens: 280, costInDollars: 2.8, label: '15 секунд' },
+          { conditions: { duration: 10 }, costInTokens: 200, costInDollars: 2, label: '10 секунд' },
+          { costInTokens: 200, costInDollars: 2, label: 'Стандарт (5 сек)' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 сек (200🔥)' },
+              { value: 10, label: '10 сек (200🔥)' },
+              { value: 15, label: '15 сек (280🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'sora-2',
+        name: 'Sora 2',
+        displayName: 'OpenAI Sora 2',
+        description: 'Стандартная версия Sora',
+        type: 'video',
+        fixedCostPerGeneration: 0.15,
+        tokensPerDollar: 40,
+        minTokenCost: 25,
+        sortOrder: 4,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'sora-2-text-to-video', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 15 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { conditions: { duration: 15 }, costInTokens: 45, costInDollars: 0.45, label: '15 секунд' },
+          { conditions: { duration: 10 }, costInTokens: 30, costInDollars: 0.3, label: '10 секунд' },
+          { costInTokens: 20, costInDollars: 0.2, label: 'Стандарт (5 сек)' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 сек (20🔥)' },
+              { value: 10, label: '10 сек (30🔥)' },
+              { value: 15, label: '15 сек (45🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+                            { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'sora-2-img2vid',
+        name: 'Sora 2 Img2Vid',
+        displayName: 'Sora 2 (Image to Video)',
+        description: 'Sora для анимации изображений',
+        type: 'video',
+        fixedCostPerGeneration: 0.175,
+        tokensPerDollar: 40,
+        minTokenCost: 28,
+        sortOrder: 5,
+        capabilities: ['image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'sora-2-image-to-video', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 15 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { duration: 15 }, costInTokens: 50, costInDollars: 0.5, label: '15 секунд' },
+          { conditions: { duration: 10 }, costInTokens: 35, costInDollars: 0.35, label: '10 секунд' },
+          { costInTokens: 22, costInDollars: 0.22, label: 'Стандарт (5 сек)' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 сек (22🔥)' },
+              { value: 10, label: '10 сек (35🔥)' },
+              { value: 15, label: '15 сек (50🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'kling-3.0',
+        name: 'Kling 3.0',
+        displayName: 'Kling 3.0',
+        description: 'Генератор видео Kling (Text-to-Video)',
+        type: 'video',
+        fixedCostPerGeneration: 0.075,
+        tokensPerDollar: 60,
+        minTokenCost: 17,
+        sortOrder: 6,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'kling-v3-text-to-video', priority: 2, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { conditions: { mode: 'pro', sound: true }, costInTokens: 28, costInDollars: 0.28, label: 'Pro + звук' },
+          { conditions: { mode: 'pro', sound: false }, costInTokens: 22, costInDollars: 0.22, label: 'Pro без звука' },
+          { conditions: { mode: 'std', sound: true }, costInTokens: 20, costInDollars: 0.2, label: 'Стандарт + звук' },
+          { conditions: { mode: 'std', sound: false }, costInTokens: 17, costInDollars: 0.17, label: 'Стандарт без звука' },
+        ],
+        uiParameters: [
+          {
+            key: 'mode', label: 'Режим', type: 'select', affectsPrice: true, defaultValue: 'std',
+            options: [
+              { value: 'std', label: 'Стандарт (17🔥)' },
+              { value: 'pro', label: 'Pro (22🔥)' },
+            ],
+          },
+          {
+            key: 'sound', label: 'Со звуком', type: 'boolean', affectsPrice: true, defaultValue: false,
+            options: [],
+          },
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: false, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 сек' },
+              { value: 10, label: '10 сек' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'kling-3.0-img2vid',
+        name: 'Kling 3.0 Img2Vid',
+        displayName: 'Kling 3.0 (Image to Video)',
+        description: 'Kling для анимации изображений',
+        type: 'video',
+        fixedCostPerGeneration: 0.1,
+        tokensPerDollar: 60,
+        minTokenCost: 22,
+        sortOrder: 7,
+        capabilities: ['image_to_video', 'motion_control'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'kling-v3-image-to-video', priority: 2, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { mode: 'pro', sound: true }, costInTokens: 32, costInDollars: 0.32, label: 'Pro + звук' },
+          { conditions: { mode: 'pro', sound: false }, costInTokens: 26, costInDollars: 0.26, label: 'Pro без звука' },
+          { conditions: { mode: 'std', sound: true }, costInTokens: 25, costInDollars: 0.25, label: 'Стандарт + звук' },
+          { conditions: { mode: 'std', sound: false }, costInTokens: 22, costInDollars: 0.22, label: 'Стандарт без звука' },
+        ],
+        uiParameters: [
+          {
+            key: 'mode', label: 'Режим', type: 'select', affectsPrice: true, defaultValue: 'std',
+            options: [
+              { value: 'std', label: 'Стандарт (22🔥)' },
+              { value: 'pro', label: 'Pro (26🔥)' },
+            ],
+          },
+          {
+            key: 'sound', label: 'Со звуком', type: 'boolean', affectsPrice: true, defaultValue: false,
+            options: [],
+          },
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: false, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 сек' },
+              { value: 10, label: '10 сек' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'kling-3.0-motion',
+        name: 'Kling 3.0 Motion Control',
+        displayName: 'Kling 3.0 Motion Control',
+        description: 'Kling с контролем движения (image + motion reference video)',
+        type: 'video',
+        fixedCostPerGeneration: 0.12,
+        tokensPerDollar: 50,
+        minTokenCost: 26,
+        sortOrder: 8,
+        capabilities: ['motion_control', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'kling-v3-motion-control', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1, acceptsVideos: true },
+        pricingMatrix: [
+          { costInTokens: 26, costInDollars: 0.26, label: 'Motion Control' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: false, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 сек' },
+              { value: 10, label: '10 сек' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'runway',
+        name: 'Runway',
+        displayName: 'Runway Gen-3',
+        description: 'Генератор видео от Runway',
+        type: 'video',
+        fixedCostPerGeneration: 0.1,
+        tokensPerDollar: 50,
+        minTokenCost: 22,
+        sortOrder: 9,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'runway', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'runway-gen3', priority: 2, isActive: false },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { resolution: '1080p', duration: 10 }, costInTokens: 40, costInDollars: 0.4, label: '1080p × 10s' },
+          { conditions: { resolution: '1080p', duration: 5 }, costInTokens: 28, costInDollars: 0.28, label: '1080p × 5s' },
+          { conditions: { resolution: '720p', duration: 10 }, costInTokens: 28, costInDollars: 0.28, label: '720p × 10s' },
+          { conditions: { resolution: '720p', duration: 5 }, costInTokens: 20, costInDollars: 0.2, label: '720p × 5s' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '720p', label: '720p (20🔥)' },
+              { value: '1080p', label: '1080p (28🔥)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 сек' },
+              { value: 10, label: '10 сек' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'hailuo-2.3-standard',
+        name: 'Hailuo 2.3 Standard',
+        displayName: 'Hailuo 2.3 Standard',
+        description: 'Стандартная версия Hailuo',
+        type: 'video',
+        fixedCostPerGeneration: 0.08,
+        tokensPerDollar: 60,
+        minTokenCost: 18,
+        sortOrder: 10,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'hailuo/02-text-to-video-standard', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'hailuo', priority: 2, isActive: false },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { conditions: { resolution: '768p', duration: 10 }, costInTokens: 28, costInDollars: 0.28, label: '768p × 10s' },
+          { conditions: { resolution: '768p', duration: 6 }, costInTokens: 18, costInDollars: 0.18, label: '768p × 6s' },
+          { costInTokens: 16, costInDollars: 0.16, label: 'Стандарт' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '768p',
+            options: [
+              { value: '768p', label: '768p (HD)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 6,
+            options: [
+              { value: 6, label: '6 сек (18🔥)' },
+              { value: 10, label: '10 сек (28🔥)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'hailuo-2.3-pro',
+        name: 'Hailuo 2.3 Pro',
+        displayName: 'Hailuo 2.3 Pro',
+        description: 'Премиум версия Hailuo',
+        type: 'video',
+        fixedCostPerGeneration: 0.12,
+        tokensPerDollar: 50,
+        minTokenCost: 26,
+        sortOrder: 11,
+        capabilities: ['text_to_video', 'image_to_video', 'high_quality'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'hailuo/2-3-image-to-video-pro', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { resolution: '1080p', duration: 10 }, costInTokens: 45, costInDollars: 0.45, label: '1080p × 10s' },
+          { conditions: { resolution: '1080p', duration: 6 }, costInTokens: 30, costInDollars: 0.3, label: '1080p × 6s' },
+          { costInTokens: 25, costInDollars: 0.25, label: 'Стандарт' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1080p',
+            options: [
+              { value: '1080p', label: '1080p (Full HD)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 6,
+            options: [
+              { value: 6, label: '6 сек (30🔥)' },
+              { value: 10, label: '10 сек (45🔥)' },
+            ],
+          },
+        ],
+      },
+
+      // ════════════════════════════════════════════════════
+      // AUDIO МОДЕЛИ
+      // ════════════════════════════════════════════════════
+      {
+        slug: 'suno-v4',
+        name: 'Suno V4',
+        displayName: 'Suno V4',
+        description: 'Генератор музыки от Suno',
+        type: 'audio',
+        fixedCostPerGeneration: 0.06,
+        tokensPerDollar: 100,
+        minTokenCost: 13,
+        sortOrder: 1,
+        capabilities: ['text_to_music', 'lyrics', 'instrumental'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'ai-music-api/generate', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 30 },
+        limits: { maxDuration: 240 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { costInTokens: 13, costInDollars: 0.13, label: 'Генерация трека' },
+        ],
+        uiParameters: [
+          {
+            key: 'operation', label: 'Операция', type: 'select', affectsPrice: false, defaultValue: 'generate',
+            options: [
+              { value: 'generate', label: 'Создать трек' },
+            ],
+          },
+          {
+            key: 'customMode', label: 'Кастомный режим', type: 'boolean', affectsPrice: false, defaultValue: false,
+            options: [],
+          },
+          {
+            key: 'instrumental', label: 'Только инструментал', type: 'boolean', affectsPrice: false, defaultValue: false,
+            options: [],
+          },
+        ],
+      },
+      {
+        slug: 'elevenlabs-tts',
+        name: 'ElevenLabs TTS',
+        displayName: 'ElevenLabs Text-to-Speech',
+        description: 'Синтез речи от ElevenLabs',
+        type: 'audio',
+        fixedCostPerGeneration: 0.05,
+        tokensPerDollar: 150,
+        minTokenCost: 11,
+        sortOrder: 2,
+        capabilities: ['text_to_speech', 'voice_cloning', 'multilingual'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'elevenlabs/text-to-speech-turbo-2-5', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'elevenlabs', priority: 2, isActive: true },
+        ],
+        defaultParams: { duration: 30 },
+        limits: { maxDuration: 600 },
+      },
+      {
+        slug: 'elevenlabs-tts-turbo',
+        name: 'ElevenLabs TTS Turbo',
+        displayName: 'ElevenLabs Turbo 2.5',
+        description: 'Быстрый синтез речи от ElevenLabs',
+        type: 'audio',
+        fixedCostPerGeneration: 0.03,
+        tokensPerDollar: 100,
+        minTokenCost: 7,
+        sortOrder: 2,
+        capabilities: ['text_to_speech', 'multilingual', 'voice_selection'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'elevenlabs/text-to-speech-turbo-2-5', priority: 1, isActive: true },
+        ],
+        defaultParams: {},
+        limits: { maxDuration: 600 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { costInTokens: 5, costInDollars: 0.03, label: 'TTS Turbo' },
+        ],
+        uiParameters: [
+          {
+            key: 'voice', label: 'Голос', type: 'select', affectsPrice: false, defaultValue: 'rachel',
+            options: [
+              { value: 'rachel', label: 'Rachel (женский)' },
+              { value: 'adam', label: 'Adam (мужской)' },
+              { value: 'antoni', label: 'Antoni (мужской)' },
+              { value: 'bella', label: 'Bella (женский)' },
+              { value: 'domi', label: 'Domi (женский)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'elevenlabs-tts-multilingual',
+        name: 'ElevenLabs Multilingual V2',
+        displayName: 'ElevenLabs Multilingual V2',
+        description: 'Мультиязычный синтез речи высокого качества',
+        type: 'audio',
+        fixedCostPerGeneration: 0.06,
+        tokensPerDollar: 100,
+        minTokenCost: 13,
+        sortOrder: 3,
+        capabilities: ['text_to_speech', 'multilingual', 'voice_selection'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'elevenlabs/text-to-speech-multilingual-v2', priority: 1, isActive: true },
+        ],
+        defaultParams: {},
+        limits: { maxDuration: 600 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { costInTokens: 9, costInDollars: 0.06, label: 'TTS Multilingual' },
+        ],
+        uiParameters: [
+          {
+            key: 'voice', label: 'Голос', type: 'select', affectsPrice: false, defaultValue: 'rachel',
+            options: [
+              { value: 'rachel', label: 'Rachel (женский)' },
+              { value: 'adam', label: 'Adam (мужской)' },
+              { value: 'antoni', label: 'Antoni (мужской)' },
+              { value: 'bella', label: 'Bella (женский)' },
+              { value: 'domi', label: 'Domi (женский)' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'elevenlabs-dialogue',
+        name: 'ElevenLabs Dialogue',
+        displayName: 'ElevenLabs Text-to-Dialogue',
+        description: 'Генерация диалогов с несколькими голосами',
+        type: 'audio',
+        fixedCostPerGeneration: 0.07,
+        tokensPerDollar: 100,
+        minTokenCost: 15,
+        sortOrder: 4,
+        capabilities: ['text_to_speech', 'dialogue', 'multi_voice'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'elevenlabs/text-to-dialogue-v3', priority: 1, isActive: true },
+        ],
+        defaultParams: {},
+        limits: { maxDuration: 600 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { costInTokens: 10, costInDollars: 0.07, label: 'Dialogue v3' },
+        ],
+      },
+      {
+        slug: 'elevenlabs-isolation',
+        name: 'ElevenLabs Isolation',
+        displayName: 'ElevenLabs Audio Isolation',
+        description: 'Удаление шума и изоляция голоса из аудио',
+        type: 'audio',
+        fixedCostPerGeneration: 0.001,
+        tokensPerDollar: 100,
+        minTokenCost: 1,
+        sortOrder: 5,
+        capabilities: ['audio_isolation', 'noise_removal'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'elevenlabs/audio-isolation', priority: 1, isActive: true },
+        ],
+        defaultParams: {},
+        limits: {},
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0, acceptsAudio: true },
+        pricingMatrix: [
+          { costInTokens: 1, costInDollars: 0.001, label: 'Audio Isolation' },
+        ],
+      },
+            {
+        slug: 'elevenlabs-stt',
+        name: 'ElevenLabs STT',
+        displayName: 'ElevenLabs Speech-to-Text',
+        description: 'Распознавание речи с поддержкой языков',
+        type: 'audio',
+        fixedCostPerGeneration: 0.0175,
+        tokensPerDollar: 100,
+        minTokenCost: 4,
+        sortOrder: 6,
+        capabilities: ['speech_to_text', 'multilingual'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'elevenlabs/speech-to-text', priority: 1, isActive: true },
+        ],
+        defaultParams: {},
+        limits: {},
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0, acceptsAudio: true },
+        pricingMatrix: [
+          { costInTokens: 3, costInDollars: 0.0175, label: 'Speech-to-Text' },
+        ],
+      },
+      {
+        slug: 'elevenlabs-sfx',
+        name: 'ElevenLabs SFX',
+        displayName: 'ElevenLabs Sound Effects',
+        description: 'Генерация звуковых эффектов по описанию',
+        type: 'audio',
+        fixedCostPerGeneration: 0.03,
+        tokensPerDollar: 100,
+        minTokenCost: 7,
+        sortOrder: 7,
+        capabilities: ['sound_effects', 'loop'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'elevenlabs/sound-effect-v2', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 5 },
+        limits: { maxDuration: 30 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { costInTokens: 5, costInDollars: 0.03, label: 'Sound Effect' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: false, defaultValue: 5,
+            options: [
+              { value: 3, label: '3 сек' },
+              { value: 5, label: '5 сек' },
+              { value: 10, label: '10 сек' },
+              { value: 20, label: '20 сек' },
+              { value: 30, label: '30 сек' },
+            ],
+          },
+        ],
+      },
       //
       // ⚠️ FORCE_TEXT_PRICES_MIGRATION фильтрует по type === 'text',
       //    поэтому media-модели в БД НЕ затрагиваются — их цены,
