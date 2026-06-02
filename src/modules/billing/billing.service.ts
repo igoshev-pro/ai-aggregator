@@ -917,109 +917,165 @@ export class BillingService implements OnApplicationBootstrap {
       return { processed: false };
     }
 
-    const transaction = await this.transactionModel.findOne({
-      externalPaymentId: result.paymentId,
-      paymentStatus: PaymentStatus.PENDING,
-    });
+    // ─── FAILED: просто помечаем, без атомарного захвата ──────────
+    if (result.status === 'failed') {
+      const failedTx = await this.transactionModel.findOneAndUpdate(
+        {
+          externalPaymentId: result.paymentId,
+          paymentProvider: provider,
+          paymentStatus: PaymentStatus.PENDING,
+        },
+        { $set: { paymentStatus: PaymentStatus.FAILED } },
+        { new: true },
+      );
+
+      if (!failedTx) {
+        this.logger.warn(
+          `[${provider}] No pending tx to fail for payment ${result.paymentId}`,
+        );
+        return { processed: false };
+      }
+
+      this.logger.log(
+        `❌ Payment ${result.paymentId} marked failed (tx=${failedTx._id})`,
+      );
+      return { processed: true, status: 'failed' };
+    }
+
+    // ─── PENDING (промежуточный статус провайдера) ───────────────
+    if (result.status !== 'completed') {
+      return { processed: false, status: 'pending' };
+    }
+
+    // ─── COMPLETED: АТОМАРНЫЙ ЗАХВАТ транзакции ──────────────────
+    // findOneAndUpdate({ PENDING }, { COMPLETED }) гарантирует, что
+    // только ОДИН вебхук в мире сможет получить документ — остальные
+    // получат null и тихо выйдут (идемпотентность).
+    //
+    // 🆕 Фильтр включает paymentProvider — исключаем коллизию ID
+    // между разными провайдерами.
+    const transaction = await this.transactionModel.findOneAndUpdate(
+      {
+        externalPaymentId: result.paymentId,
+        paymentProvider: provider,
+        paymentStatus: PaymentStatus.PENDING,
+      },
+      {
+        $set: { paymentStatus: PaymentStatus.COMPLETED },
+      },
+      { new: true },
+    );
 
     if (!transaction) {
       this.logger.warn(
-        `No pending transaction for payment ${result.paymentId}`,
+        `[${provider}] No pending tx for payment ${result.paymentId} ` +
+          `(already processed or wrong provider)`,
       );
       return { processed: false };
     }
 
-    if (result.status === 'completed') {
-      const user = await this.usersService.addTokens(
+    // ─── НАЧИСЛЕНИЕ ТОКЕНОВ ──────────────────────────────────────
+    // 🆕 Для SUBSCRIPTION токены начисляет activateSubscription —
+    // здесь НЕ дублируем, иначе пользователь получит 2× tokensPerMonth
+    let user;
+    if (transaction.type === TransactionType.SUBSCRIPTION) {
+      user = await this.usersService.findById(transaction.userId.toString());
+    } else {
+      user = await this.usersService.addTokens(
         transaction.userId.toString(),
         transaction.amount,
       );
+    }
 
-      transaction.paymentStatus = PaymentStatus.COMPLETED;
-      // 🆕 Учитываем cashbackBalance, чтобы балансы сходились с остальным кодом
-      transaction.balanceAfter = roundTokens(
-        user.tokenBalance + user.bonusTokens + (user.cashbackBalance || 0),
-      );
-      await transaction.save();
+    // Фиксируем balanceAfter с учётом cashbackBalance
+    transaction.balanceAfter = roundTokens(
+      user.tokenBalance + user.bonusTokens + (user.cashbackBalance || 0),
+    );
+    await transaction.save();
 
-      const promoApplied = transaction.metadata?.promoCodeApplied as
-        | {
+    // ─── ПРОМОКОД (бонусы + markUsed) ────────────────────────────
+    const promoApplied = transaction.metadata?.promoCodeApplied as
+      | {
           promoId: string;
           code: string;
           type: string;
           discountRub: number;
           bonusTokens: number;
         }
-        | null
-        | undefined;
+      | null
+      | undefined;
 
-      if (promoApplied) {
-        try {
-          if (promoApplied.bonusTokens > 0) {
-            await this.usersService.addBonusTokens(
-              transaction.userId.toString(),
-              promoApplied.bonusTokens,
-            );
-
-            await this.createTransaction(transaction.userId.toString(), {
-              type: TransactionType.PROMO_CODE,
-              amount: promoApplied.bonusTokens,
-              description: `Промокод ${promoApplied.code}: +${promoApplied.bonusTokens} 🔥 спичек`,
-              paymentStatus: PaymentStatus.COMPLETED,
-              promoCode: promoApplied.code,
-              metadata: {
-                relatedPaymentId: result.paymentId,
-                promoId: promoApplied.promoId,
-                promoType: promoApplied.type,
-              },
-            });
-          }
-
-          await this.promoCodeService.markUsed(
-            promoApplied.promoId,
+    if (promoApplied) {
+      try {
+        if (promoApplied.bonusTokens > 0) {
+          await this.usersService.addBonusTokens(
             transaction.userId.toString(),
-            {
-              discountRub: promoApplied.discountRub,
-              bonusTokens: promoApplied.bonusTokens,
+            promoApplied.bonusTokens,
+          );
+
+          await this.createTransaction(transaction.userId.toString(), {
+            type: TransactionType.PROMO_CODE,
+            amount: promoApplied.bonusTokens,
+            description: `Промокод ${promoApplied.code}: +${promoApplied.bonusTokens} 🔥 спичек`,
+            paymentStatus: PaymentStatus.COMPLETED,
+            promoCode: promoApplied.code,
+            metadata: {
+              relatedPaymentId: result.paymentId,
+              promoId: promoApplied.promoId,
+              promoType: promoApplied.type,
             },
-          );
-
-          this.logger.log(
-            `🎟 Promo ${promoApplied.code} applied after webhook for user ${transaction.userId}`,
-          );
-        } catch (err: any) {
-          this.logger.error(
-            `Failed to apply promo ${promoApplied.code} after webhook: ${err.message}`,
-          );
+          });
         }
-      }
 
-      if (
-        transaction.type === TransactionType.SUBSCRIPTION &&
-        transaction.metadata?.plan
-      ) {
-        await this.activateSubscription(
+        await this.promoCodeService.markUsed(
+          promoApplied.promoId,
           transaction.userId.toString(),
-          transaction.metadata.plan as SubscriptionPlan,
+          {
+            discountRub: promoApplied.discountRub,
+            bonusTokens: promoApplied.bonusTokens,
+          },
+        );
+
+        this.logger.log(
+          `🎟 Promo ${promoApplied.code} applied after webhook for user ${transaction.userId}`,
+        );
+      } catch (err: any) {
+        this.logger.error(
+          `Failed to apply promo ${promoApplied.code} after webhook: ${err.message}`,
         );
       }
+    }
 
-      await this.processReferralBonus(transaction);
-
-      this.logger.log(
-        `✅ Payment ${result.paymentId} completed: ${transaction.amount} tokens → user ${transaction.userId}`,
+    // ─── АКТИВАЦИЯ ПОДПИСКИ (с начислением tokensPerMonth) ────────
+    if (
+      transaction.type === TransactionType.SUBSCRIPTION &&
+      transaction.metadata?.plan
+    ) {
+      await this.activateSubscription(
+        transaction.userId.toString(),
+        transaction.metadata.plan as SubscriptionPlan,
       );
 
-      return { processed: true, status: 'completed' };
-    }
-
-    if (result.status === 'failed') {
-      transaction.paymentStatus = PaymentStatus.FAILED;
+      // 🆕 Перечитываем баланс после начисления подписочных токенов
+      // и обновляем balanceAfter транзакции (чтобы в истории
+      // отображалось финальное значение, а не промежуточное).
+      const fresh = await this.usersService.findById(
+        transaction.userId.toString(),
+      );
+      transaction.balanceAfter = roundTokens(
+        fresh.tokenBalance + fresh.bonusTokens + (fresh.cashbackBalance || 0),
+      );
       await transaction.save();
-      return { processed: true, status: 'failed' };
     }
 
-    return { processed: false, status: 'pending' };
+    // ─── РЕФЕРАЛЬНЫЙ КЭШБЕК ──────────────────────────────────────
+    await this.processReferralBonus(transaction);
+
+    this.logger.log(
+      `✅ Payment ${result.paymentId} completed: ${transaction.amount} tokens → user ${transaction.userId}`,
+    );
+
+    return { processed: true, status: 'completed' };
   }
 
   // ═══════════════════════════════════════════════════════════════
