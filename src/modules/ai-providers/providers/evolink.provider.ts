@@ -187,6 +187,13 @@ export class EvolinkProvider extends BaseProvider {
       });
 
       const data = response.data;
+
+      // 🔍🔍🔍 LOGGING — снять usage от Evolink (OpenAI-формат, non-stream)
+      this.logger.warn(
+        `[USAGE-PROBE][Evolink-OpenAI][non-stream] model=${request.model} ` +
+        `usage=${JSON.stringify(data.usage)}`,
+      );
+
       return {
         success: true,
         data: {
@@ -254,6 +261,14 @@ export class EvolinkProvider extends BaseProvider {
 
           try {
             const parsed = JSON.parse(data);
+
+            if (parsed.usage) {
+              this.logger.warn(
+                `[USAGE-PROBE][Evolink-OpenAI][stream] model=${request.model} ` +
+                `usage=${JSON.stringify(parsed.usage)}`,
+              );
+            }
+
             const content = parsed.choices?.[0]?.delta?.content || '';
             if (content) {
               yield { content, done: false };
@@ -369,6 +384,12 @@ export class EvolinkProvider extends BaseProvider {
 
       const response = await this.client.post('/messages', body);
       const data = response.data;
+
+      // 🔍🔍🔍 LOGGING — снять usage от Evolink (Claude/Anthropic, non-stream)
+      this.logger.warn(
+        `[USAGE-PROBE][Evolink-Claude][non-stream] model=${request.model} ` +
+        `usage=${JSON.stringify(data.usage)}`,
+      );
 
       // Claude возвращает content как массив блоков
       const textContent =

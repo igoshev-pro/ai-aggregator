@@ -95,9 +95,16 @@ export class OpenRouterProvider extends BaseProvider {
         temperature: request.temperature ?? 0.7,
         top_p: request.topP ?? 1,
         stream: false,
+        usage: { include: true }, // 🔍 LOG: просим детальный usage с cost
       });
 
       const data = response.data;
+
+      this.logger.warn(
+        `[USAGE-PROBE][OpenRouter][non-stream] model=${request.model} ` +
+        `usage=${JSON.stringify(data.usage)}`,
+      );
+
       return {
         success: true,
         data: {
@@ -144,6 +151,8 @@ export class OpenRouterProvider extends BaseProvider {
           temperature: request.temperature ?? 0.7,
           top_p: request.topP ?? 1,
           stream: true,
+          usage: { include: true },             // 🔍 LOG
+          stream_options: { include_usage: true },
         },
         {
           responseType: 'stream',
@@ -173,6 +182,14 @@ export class OpenRouterProvider extends BaseProvider {
 
           try {
             const parsed = JSON.parse(data);
+
+            // 🔍🔍🔍 LOGGING — ловим чанки с usage в стриме
+  if (parsed.usage) {
+    this.logger.warn(
+      `[USAGE-PROBE][OpenRouter][stream] model=${request.model} ` +
+      `usage=${JSON.stringify(parsed.usage)}`,
+    );
+  }
 
             if (parsed.error) {
               this.logger.error(
