@@ -865,7 +865,7 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ════════════════════════════════════════════════════
-      // IMAGE МОДЕЛИ  (цены: $провайдера × 90 = 🔥, round2)
+      // IMAGE МОДЕЛИ  (фикс цены по новой таблице, в спичках 🔥)
       // ════════════════════════════════════════════════════
       {
         slug: 'gpt-5-image',
@@ -873,117 +873,113 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'GPT-5 Image 2',
         description: 'Новейший генератор изображений OpenAI (GPT Image 2)',
         type: 'image',
-        fixedCostPerGeneration: 0.00816,
+        fixedCostPerGeneration: 0.03, // справочно (1K)
         tokensPerDollar: 90,
-        minTokenCost: 0.73,
+        minTokenCost: 2.7,
         sortOrder: 1,
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
-          { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5.4-image-2', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'gpt-image-2-text-to-image', priority: 1, isActive: true },
         ],
-        defaultParams: { width: 1024, height: 1024 },
-        limits: { maxResolution: '2048x2048' },
+        // kie ждёт aspect_ratio + resolution
+        defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
+        limits: { maxResolution: '4096x4096' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
+        // Фикс цены: 1K=2.7, 2K=4.5, 4K=7.2
         pricingMatrix: [
-          { conditions: { quality: 'high' },   costInTokens: 11.23, costInDollars: 0.1248,  label: 'Высокое качество' },
-          { conditions: { quality: 'medium' }, costInTokens: 2.85,  costInDollars: 0.03168, label: 'Среднее качество' },
-          { conditions: { quality: 'low' },    costInTokens: 0.73,  costInDollars: 0.00816, label: 'Базовое качество' },
+          { conditions: { resolution: '4K' }, costInTokens: 7.2, costInDollars: 0.08, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 4.5, costInDollars: 0.05, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 2.7, costInDollars: 0.03, label: '1K разрешение' },
         ],
         uiParameters: [
           {
-            key: 'quality', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'medium',
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
             options: [
-              { value: 'low', label: 'Базовое (0.73🔥)' },
-              { value: 'medium', label: 'Среднее (2.85🔥)' },
-              { value: 'high', label: 'Высокое (11.23🔥)' },
+              { value: '1K', label: '1K (2.7🔥)' },
+              { value: '2K', label: '2K (4.5🔥)' },
+              { value: '4K', label: '4K (7.2🔥)' },
             ],
           },
           {
             key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            // ⚠️ 1:1 нельзя конвертировать в 4K; auto/без AR → только 1K (ограничение kie)
             options: [
               { value: '1:1', label: 'Квадрат (1:1)' },
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)' },
               { value: '3:2', label: 'Фото (3:2)' },
               { value: '2:3', label: 'Портрет (2:3)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
             ],
           },
         ],
       },
       {
-        slug: 'gpt-image-1.5-lite',
-        name: 'GPT Image 1.5 Lite',
-        displayName: 'GPT Image 1.5 Lite',
-        description: 'Облегчённая версия генератора изображений OpenAI',
+        slug: 'imagen-4-ultra',
+        name: 'Imagen 4 Ultra',
+        displayName: 'Google Imagen 4 Ultra',
+        description: 'Топовый генератор изображений от Google (Imagen 4 Ultra)',
         type: 'image',
-        fixedCostPerGeneration: 0.0435,
+        fixedCostPerGeneration: 0.04, // справочно
         tokensPerDollar: 90,
-        minTokenCost: 3.92,
+        minTokenCost: 3.6,
         sortOrder: 2,
-        capabilities: ['text_to_image', 'image_editing'],
+        capabilities: ['text_to_image'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'gpt-image-1.5', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'google/imagen4-ultra', priority: 1, isActive: true },
         ],
-        defaultParams: { aspectRatio: '1:1', quality: 'medium' },
-        limits: { maxResolution: '1536x1024' },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
-        // ⚠️ B3: 3-уровневая прикидка качества (провайдер token-based, без явного quality)
+        defaultParams: { aspect_ratio: '1:1' },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        // Фикс цена: 3.6🔥
         pricingMatrix: [
-          { conditions: { quality: 'high' },   costInTokens: 15.68, costInDollars: 0.1742, label: 'Высокое качество' },
-          { conditions: { quality: 'medium' }, costInTokens: 7.84,  costInDollars: 0.0871, label: 'Среднее качество' },
-          { conditions: { quality: 'low' },    costInTokens: 3.92,  costInDollars: 0.0435, label: 'Базовое качество' },
+          { costInTokens: 3.6, costInDollars: 0.04, label: 'Стандартная генерация' },
         ],
         uiParameters: [
-          {
-            key: 'quality', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'medium',
-            options: [
-              { value: 'low', label: 'Базовое (3.92🔥)' },
-              { value: 'medium', label: 'Среднее (7.84🔥)' },
-              { value: 'high', label: 'Высокое (15.68🔥)' },
-            ],
-          },
           {
             key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
             options: [
               { value: '1:1', label: 'Квадрат (1:1)' },
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)' },
-              { value: '3:2', label: 'Фото (3:2)' },
-              { value: '2:3', label: 'Портрет (2:3)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
             ],
           },
         ],
       },
-            {
+      {
         slug: 'midjourney',
         name: 'Midjourney',
         displayName: 'Midjourney V7',
         description: 'Лучший генератор изображений',
         type: 'image',
-        fixedCostPerGeneration: 0.040,
+        fixedCostPerGeneration: 0.028, // справочно (draft)
         tokensPerDollar: 90,
-        minTokenCost: 3.6,
+        minTokenCost: 2.5,
         sortOrder: 3,
         capabilities: ['variations', 'upscale'],
         providerMappings: [
-          // { providerSlug: 'kie', modelId: 'mj_txt2img', priority: 1, isActive: true }, // ⏸ нет модели у kie
           { providerSlug: 'evolink', modelId: 'mj-v7', priority: 1, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        // Фикс цены: Draft 2.5, Fast 5, Turbo 9.5
+        // ⚠️ evolink ждёт model_params.speed = draft|fast|turbo — провайдер маппит mode → speed
         pricingMatrix: [
-          { conditions: { mode: 'turbo' }, costInTokens: 14.31, costInDollars: 0.159, label: 'Турбо режим' },
-          { conditions: { mode: 'fast' },  costInTokens: 7.11,  costInDollars: 0.079, label: 'Быстрый режим' },
-          { conditions: { mode: 'relax' }, costInTokens: 3.6,   costInDollars: 0.040, label: 'Relax режим' },
+          { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
+          { conditions: { mode: 'fast' },  costInTokens: 5,   costInDollars: 0.056, label: 'Быстрый режим' },
+          { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Draft режим' },
         ],
         uiParameters: [
           {
             key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
             options: [
-              { value: 'relax', label: 'Relax (3.6🔥, ~5 мин)' },
-              { value: 'fast', label: 'Быстрый (7.11🔥, ~30 сек)' },
-              { value: 'turbo', label: 'Турбо (14.31🔥, ~15 сек)' },
+              { value: 'draft', label: 'Draft (2.5🔥, ~быстро/дёшево)' },
+              { value: 'fast', label: 'Быстрый (5🔥, ~30 сек)' },
+              { value: 'turbo', label: 'Турбо (9.5🔥, ~15 сек)' },
             ],
           },
           {
@@ -1006,30 +1002,30 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Midjourney V7 (Image to Image)',
         description: 'Трансформация изображений через Midjourney',
         type: 'image',
-        fixedCostPerGeneration: 0.040,
+        fixedCostPerGeneration: 0.028, // справочно (draft)
         tokensPerDollar: 90,
-        minTokenCost: 3.6,
+        minTokenCost: 2.5,
         sortOrder: 4,
         capabilities: ['image_to_image', 'variations'],
         providerMappings: [
-          // { providerSlug: 'kie', modelId: 'mj_img2img', priority: 1, isActive: true }, // ⏸ нет модели у kie
           { providerSlug: 'evolink', modelId: 'mj-v7', priority: 1, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Фикс цены: Draft 2.5, Fast 5, Turbo 9.5
         pricingMatrix: [
-          { conditions: { mode: 'turbo' }, costInTokens: 14.31, costInDollars: 0.159, label: 'Турбо режим' },
-          { conditions: { mode: 'fast' },  costInTokens: 7.11,  costInDollars: 0.079, label: 'Быстрый режим' },
-          { conditions: { mode: 'relax' }, costInTokens: 3.6,   costInDollars: 0.040, label: 'Relax режим' },
+          { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
+          { conditions: { mode: 'fast' },  costInTokens: 5,   costInDollars: 0.056, label: 'Быстрый режим' },
+          { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Draft режим' },
         ],
         uiParameters: [
           {
             key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
             options: [
-              { value: 'relax', label: 'Relax (3.6🔥)' },
-              { value: 'fast', label: 'Быстрый (7.11🔥)' },
-              { value: 'turbo', label: 'Турбо (14.31🔥)' },
+              { value: 'draft', label: 'Draft (2.5🔥)' },
+              { value: 'fast', label: 'Быстрый (5🔥)' },
+              { value: 'turbo', label: 'Турбо (9.5🔥)' },
             ],
           },
           {
@@ -1050,9 +1046,9 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Seedream 5.0 Lite',
         description: 'Быстрый генератор Seedream',
         type: 'image',
-        fixedCostPerGeneration: 0.0275,
+        fixedCostPerGeneration: 0.0178, // справочно
         tokensPerDollar: 90,
-        minTokenCost: 2.48,
+        minTokenCost: 1.6,
         sortOrder: 5,
         capabilities: [],
         providerMappings: [
@@ -1062,8 +1058,9 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        // Фикс цена: 1.6🔥
         pricingMatrix: [
-          { costInTokens: 2.48, costInDollars: 0.0275, label: 'Стандартная генерация' },
+          { costInTokens: 1.6, costInDollars: 0.0178, label: 'Стандартная генерация' },
         ],
         uiParameters: [
           {
@@ -1079,12 +1076,12 @@ export class ProviderRegistryService implements OnModuleInit {
       {
         slug: 'imagen-4',
         name: 'Imagen 4',
-        displayName: 'Google Imagen 4',
-        description: 'Генератор изображений от Google',
+        displayName: 'Google Imagen 4 Fast',
+        description: 'Быстрый генератор изображений от Google',
         type: 'image',
-        fixedCostPerGeneration: 0.020,
+        fixedCostPerGeneration: 0.0133, // справочно
         tokensPerDollar: 90,
-        minTokenCost: 1.8,
+        minTokenCost: 1.2,
         sortOrder: 6,
         capabilities: [],
         providerMappings: [
@@ -1094,8 +1091,9 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        // Фикс цена: 1.2🔥
         pricingMatrix: [
-          { costInTokens: 1.8, costInDollars: 0.020, label: 'Стандартная генерация' },
+          { costInTokens: 1.2, costInDollars: 0.0133, label: 'Стандартная генерация' },
         ],
         uiParameters: [
           {
@@ -1252,7 +1250,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      {
+            {
         slug: 'nano-banana-pro',
         name: 'Nano Banana Pro',
         displayName: 'Nano Banana Pro',
