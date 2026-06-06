@@ -41,7 +41,7 @@ export class ProviderRegistryService implements OnModuleInit {
     private configService: ConfigService,
     @InjectModel(Provider.name) private providerModel: Model<ProviderDocument>,
     @InjectModel(AIModel.name) private modelModel: Model<ModelDocument>,
-  ) {}
+  ) { }
 
   async onModuleInit() {
     await this.initializeProviders();
@@ -536,7 +536,7 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 4096, temperature: 0.7 },
         limits: { maxInputTokens: 131072, maxOutputTokens: 16384 },
       },
-            {
+      {
         slug: 'claude-haiku-4.5',
         name: 'Claude Haiku 4.5',
         displayName: 'Claude Haiku 4.5',
@@ -970,7 +970,7 @@ export class ProviderRegistryService implements OnModuleInit {
         // ⚠️ evolink ждёт model_params.speed = draft|fast|turbo — провайдер маппит mode → speed
         pricingMatrix: [
           { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
-          { conditions: { mode: 'fast' },  costInTokens: 5,   costInDollars: 0.056, label: 'Быстрый режим' },
+          { conditions: { mode: 'fast' }, costInTokens: 5, costInDollars: 0.056, label: 'Быстрый режим' },
           { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Draft режим' },
         ],
         uiParameters: [
@@ -1016,7 +1016,7 @@ export class ProviderRegistryService implements OnModuleInit {
         // Фикс цены: Draft 2.5, Fast 5, Turbo 9.5
         pricingMatrix: [
           { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
-          { conditions: { mode: 'fast' },  costInTokens: 5,   costInDollars: 0.056, label: 'Быстрый режим' },
+          { conditions: { mode: 'fast' }, costInTokens: 5, costInDollars: 0.056, label: 'Быстрый режим' },
           { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Draft режим' },
         ],
         uiParameters: [
@@ -1116,7 +1116,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'image',
         fixedCostPerGeneration: 0.025,
         tokensPerDollar: 90,
-        minTokenCost: 2.25,
+        minTokenCost: 1.8, // ← минимальная строка матрицы (Pro × 1K)
         sortOrder: 7,
         capabilities: ['text_to_image', 'image_to_image'],
         providerMappings: [
@@ -1125,18 +1125,19 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024, steps: 28 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        // Таблица: Flex 1K=5, Flex 2K=7.5, Pro 1K=1.8, Pro 2K=2
         pricingMatrix: [
-          { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 10.8, costInDollars: 0.12,  label: 'Flex × 2K' },
-          { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 6.3,  costInDollars: 0.07,  label: 'Flex × 1K' },
-          { conditions: { version: 'pro',  resolution: '2K' }, costInTokens: 3.15, costInDollars: 0.035, label: 'Pro × 2K' },
-          { conditions: { version: 'pro',  resolution: '1K' }, costInTokens: 2.25, costInDollars: 0.025, label: 'Pro × 1K' },
+          { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 7.5, costInDollars: 0.12, label: 'Flex × 2K' },
+          { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 5, costInDollars: 0.07, label: 'Flex × 1K' },
+          { conditions: { version: 'pro', resolution: '2K' }, costInTokens: 2, costInDollars: 0.035, label: 'Pro × 2K' },
+          { conditions: { version: 'pro', resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.025, label: 'Pro × 1K' },
         ],
         uiParameters: [
           {
             key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'flex',
             options: [
-              { value: 'flex', label: 'Flex' },
-              { value: 'pro', label: 'Pro' },
+              { value: 'flex', label: 'Flex (от 5🔥)' },
+              { value: 'pro', label: 'Pro (от 1.8🔥)' },
             ],
           },
           {
@@ -1166,7 +1167,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'image',
         fixedCostPerGeneration: 0.025,
         tokensPerDollar: 90,
-        minTokenCost: 2.25,
+        minTokenCost: 1.8, // ← минимальная строка матрицы (Pro × 1K)
         sortOrder: 8,
         capabilities: ['image_to_image'],
         providerMappings: [
@@ -1175,18 +1176,19 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024, steps: 28 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 8 },
+        // Таблица: Flex 1K=5, Flex 2K=7.5, Pro 1K=1.8, Pro 2K=2
         pricingMatrix: [
-          { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 10.8, costInDollars: 0.12,  label: 'Flex × 2K' },
-          { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 6.3,  costInDollars: 0.07,  label: 'Flex × 1K' },
-          { conditions: { version: 'pro',  resolution: '2K' }, costInTokens: 3.15, costInDollars: 0.035, label: 'Pro × 2K' },
-          { conditions: { version: 'pro',  resolution: '1K' }, costInTokens: 2.25, costInDollars: 0.025, label: 'Pro × 1K' },
+          { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 7.5, costInDollars: 0.12, label: 'Flex × 2K' },
+          { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 5, costInDollars: 0.07, label: 'Flex × 1K' },
+          { conditions: { version: 'pro', resolution: '2K' }, costInTokens: 2, costInDollars: 0.035, label: 'Pro × 2K' },
+          { conditions: { version: 'pro', resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.025, label: 'Pro × 1K' },
         ],
         uiParameters: [
           {
             key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'flex',
             options: [
-              { value: 'flex', label: 'Flex' },
-              { value: 'pro', label: 'Pro' },
+              { value: 'flex', label: 'Flex (от 5🔥)' },
+              { value: 'pro', label: 'Pro (от 1.8🔥)' },
             ],
           },
           {
@@ -1206,7 +1208,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'image',
         fixedCostPerGeneration: 0.04,
         tokensPerDollar: 90,
-        minTokenCost: 3.6,
+        minTokenCost: 3.3, // ← минимальная строка матрицы (1K)
         sortOrder: 9,
         capabilities: [],
         providerMappings: [
@@ -1216,18 +1218,19 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '4096x4096' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 14 },
+        // Таблица: 1K=3.3, 2K=4, 4K=6
         pricingMatrix: [
-          { conditions: { resolution: '4K' }, costInTokens: 8.1, costInDollars: 0.09, label: '4K разрешение' },
-          { conditions: { resolution: '2K' }, costInTokens: 5.4, costInDollars: 0.06, label: '2K разрешение' },
-          { conditions: { resolution: '1K' }, costInTokens: 3.6, costInDollars: 0.04, label: '1K разрешение' },
+          { conditions: { resolution: '4K' }, costInTokens: 6, costInDollars: 0.09, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 4, costInDollars: 0.06, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 3.3, costInDollars: 0.04, label: '1K разрешение' },
         ],
         uiParameters: [
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
             options: [
-              { value: '1K', label: '1K (3.6🔥)' },
-              { value: '2K', label: '2K (5.4🔥)' },
-              { value: '4K', label: '4K (8.1🔥)' },
+              { value: '1K', label: '1K (3.3🔥)' },
+              { value: '2K', label: '2K (4🔥)' },
+              { value: '4K', label: '4K (6🔥)' },
             ],
           },
           {
@@ -1250,7 +1253,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'nano-banana-pro',
         name: 'Nano Banana Pro',
         displayName: 'Nano Banana Pro',
@@ -1258,7 +1261,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'image',
         fixedCostPerGeneration: 0.09,
         tokensPerDollar: 90,
-        minTokenCost: 8.1,
+        minTokenCost: 6, // ← минимальная строка матрицы (1K/2K)
         sortOrder: 10,
         capabilities: ['high_quality'],
         providerMappings: [
@@ -1267,18 +1270,19 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '4096x4096' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 8 },
+        // Таблица: 1K=6, 2K=6, 4K=7.7
         pricingMatrix: [
-          { conditions: { resolution: '4K' }, costInTokens: 10.8, costInDollars: 0.12, label: '4K разрешение' },
-          { conditions: { resolution: '2K' }, costInTokens: 8.1,  costInDollars: 0.09, label: '2K разрешение' },
-          { conditions: { resolution: '1K' }, costInTokens: 8.1,  costInDollars: 0.09, label: '1K разрешение' },
+          { conditions: { resolution: '4K' }, costInTokens: 7.7, costInDollars: 0.12, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 6, costInDollars: 0.09, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 6, costInDollars: 0.09, label: '1K разрешение' },
         ],
         uiParameters: [
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
             options: [
-              { value: '1K', label: '1K (8.1🔥)' },
-              { value: '2K', label: '2K (8.1🔥)' },
-              { value: '4K', label: '4K (10.8🔥)' },
+              { value: '1K', label: '1K (6🔥)' },
+              { value: '2K', label: '2K (6🔥)' },
+              { value: '4K', label: '4K (7.7🔥)' },
             ],
           },
           {
@@ -1389,7 +1393,7 @@ export class ProviderRegistryService implements OnModuleInit {
           { conditions: { duration: 10 }, costInTokens: 200, costInDollars: 2, label: '10 секунд' },
           { costInTokens: 200, costInDollars: 2, label: 'Стандарт (5 сек)' },
         ],
-                uiParameters: [
+        uiParameters: [
           {
             key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
             options: [
@@ -1426,7 +1430,7 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
           { conditions: { duration: 10 }, costInTokens: 135, costInDollars: 1.5, label: '10 секунд' },
-          { conditions: { duration: 5 },  costInTokens: 75,  costInDollars: 0.84, label: '5 секунд' },
+          { conditions: { duration: 5 }, costInTokens: 75, costInDollars: 0.84, label: '5 секунд' },
         ],
         uiParameters: [
           {
@@ -1465,7 +1469,7 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
           { conditions: { duration: 10 }, costInTokens: 135, costInDollars: 1.5, label: '10 секунд' },
-          { conditions: { duration: 5 },  costInTokens: 75,  costInDollars: 0.84, label: '5 секунд' },
+          { conditions: { duration: 5 }, costInTokens: 75, costInDollars: 0.84, label: '5 секунд' },
         ],
         uiParameters: [
           {
@@ -1496,7 +1500,7 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
           { conditions: { duration: 10 }, costInTokens: 130, costInDollars: 1.45, label: '10 секунд' },
-          { conditions: { duration: 5 },  costInTokens: 70,  costInDollars: 0.78, label: '5 секунд' },
+          { conditions: { duration: 5 }, costInTokens: 70, costInDollars: 0.78, label: '5 секунд' },
         ],
         uiParameters: [
           {
