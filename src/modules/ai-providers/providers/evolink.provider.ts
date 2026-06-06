@@ -204,6 +204,8 @@ export class EvolinkProvider extends BaseProvider {
           inputTokens: data.usage?.prompt_tokens,
           outputTokens: data.usage?.completion_tokens,
           totalTokens: data.usage?.total_tokens,
+          cachedTokens: data.usage?.prompt_tokens_details?.cached_tokens, // 🆕
+          cacheCreationTokens: data.usage?.cache_creation_input_tokens, // 🆕
         },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
@@ -412,6 +414,8 @@ export class EvolinkProvider extends BaseProvider {
           outputTokens: data.usage?.output_tokens,
           totalTokens:
             (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
+          cachedTokens: data.usage?.cache_read_input_tokens,          // 🆕
+          cacheCreationTokens: data.usage?.cache_creation_input_tokens, // 🆕
         },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,

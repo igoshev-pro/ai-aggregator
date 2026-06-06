@@ -84,6 +84,8 @@ export interface GenerationResult {
     inputTokens?: number;
     outputTokens?: number;
     totalTokens?: number;
+    cachedTokens?: number;        // 🆕 кеш-чтение (входит в inputTokens)
+    cacheCreationTokens?: number; // 🆕 запись кеша (Anthropic)
   };
   error?: {
     code: string;
@@ -100,6 +102,8 @@ export interface StreamChunk {
   usage?: {
     inputTokens?: number;
     outputTokens?: number;
+    cachedTokens?: number;        // 🆕
+    cacheCreationTokens?: number; // 🆕
   };
   error?: string;
 }

@@ -162,6 +162,11 @@ export class AIModel {
   pricePerMillionOutputTokens!: number;
 
 
+  // 🔥 за 1 миллион ВХОДНЫХ токенов, прочитанных из КЕША.
+  // Обычно ~10% от pricePerMillionInputTokens (кеш у провайдера дешевле).
+  // Если 0 → берётся 10% от обычного input-тарифа.
+  @Prop({ default: 0 })
+  pricePerMillionCachedTokens!: number;
 
 
   // Средняя длина запроса (input + output, в токенах модели)

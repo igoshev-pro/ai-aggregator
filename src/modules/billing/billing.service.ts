@@ -969,7 +969,7 @@ export class BillingService implements OnApplicationBootstrap {
     if (!transaction) {
       this.logger.warn(
         `[${provider}] No pending tx for payment ${result.paymentId} ` +
-          `(already processed or wrong provider)`,
+        `(already processed or wrong provider)`,
       );
       return { processed: false };
     }
@@ -996,12 +996,12 @@ export class BillingService implements OnApplicationBootstrap {
     // ─── ПРОМОКОД (бонусы + markUsed) ────────────────────────────
     const promoApplied = transaction.metadata?.promoCodeApplied as
       | {
-          promoId: string;
-          code: string;
-          type: string;
-          discountRub: number;
-          bonusTokens: number;
-        }
+        promoId: string;
+        code: string;
+        type: string;
+        discountRub: number;
+        bonusTokens: number;
+      }
       | null
       | undefined;
 
@@ -1148,6 +1148,7 @@ export class BillingService implements OnApplicationBootstrap {
     inputTokens?: number,
     outputTokens?: number,
     params?: Record<string, any>,
+    cachedTokens?: number
   ) {
     const freeAccess = await this.checkFreeModelAccess(userId, modelSlug);
 
@@ -1190,6 +1191,7 @@ export class BillingService implements OnApplicationBootstrap {
         inputTokens,
         outputTokens,
         params,
+        cachedTokens,
       );
 
     // 🆕 Снимаем актуальный баланс ПЕРЕД списанием
@@ -1229,6 +1231,7 @@ export class BillingService implements OnApplicationBootstrap {
       metadata: {
         inputTokens,
         outputTokens,
+        cachedTokens,
         costInDollars,
         freeAccess: false,
         params,
@@ -2292,6 +2295,7 @@ export class BillingService implements OnApplicationBootstrap {
     inputTokens?: number,
     outputTokens?: number,
     params?: Record<string, any>,
+    cachedTokens?: number,   // 🆕 кеш-чтение (входит в inputTokens у OpenAI/OpenRouter)
   ): Promise<{
     costInDollars: number;
     costInTokens: number;
@@ -2305,26 +2309,41 @@ export class BillingService implements OnApplicationBootstrap {
       const newInputPrice = Number(model.pricePerMillionInputTokens) || 0;
       const newOutputPrice = Number(model.pricePerMillionOutputTokens) || 0;
 
-      // 🆕 Минимум списания из модели (в спичках). Если не задан → 0.01
-      const modelMinCost = Number(model.minTokenCost) > 0
-        ? Number(model.minTokenCost)
-        : MIN_CHARGE_TOKENS;
+      // 🆕 Тариф за кеш-чтение (🔥/1M). Если не задан → 10% от обычного input.
+      const cachedPrice =
+        Number((model as any).pricePerMillionCachedTokens) > 0
+          ? Number((model as any).pricePerMillionCachedTokens)
+          : newInputPrice * 0.1;
+
+      // Минимум списания из модели (в спичках). Если не задан → 0.01
+      const modelMinCost =
+        Number(model.minTokenCost) > 0
+          ? Number(model.minTokenCost)
+          : MIN_CHARGE_TOKENS;
 
       if (newInputPrice > 0 || newOutputPrice > 0) {
-        const inputCost =
-          ((inputTokens || 0) * newInputPrice) / 1_000_000;
+        // 🆕 cachedTokens у OpenAI/OpenRouter ВХОДИТ в inputTokens.
+        // Вычитаем кеш из обычного input и тарифицируем его дешевле.
+        const cached = Math.max(0, Number(cachedTokens) || 0);
+        const totalInput = Math.max(0, Number(inputTokens) || 0);
+        const nonCachedInput = Math.max(0, totalInput - cached);
+
+        const inputCost = (nonCachedInput * newInputPrice) / 1_000_000;
+        const cachedCost = (cached * cachedPrice) / 1_000_000;
         const outputCost =
           ((outputTokens || 0) * newOutputPrice) / 1_000_000;
 
         // Реальная стоимость в спичках, округлённая до 2 знаков
-        const rawCost = roundTokens(inputCost + outputCost);
+        const rawCost = roundTokens(inputCost + cachedCost + outputCost);
 
-        // 🆕 Пол по minTokenCost модели (а не по глобальному 0.01)
+        // Пол по minTokenCost модели
         const costInTokens = rawCost < modelMinCost ? modelMinCost : rawCost;
 
+        // Себестоимость провайдера (справочно, для аналитики маржи).
+        // Кеш у провайдера тоже дешевле, но точную ставку не знаем →
+        // считаем по обычной input-ставке (консервативно).
         const providerInputCost =
-          ((inputTokens || 0) *
-            (Number(model.providerCostPerMillionInput) || 0)) /
+          (totalInput * (Number(model.providerCostPerMillionInput) || 0)) /
           1_000_000;
         const providerOutputCost =
           ((outputTokens || 0) *
@@ -2348,8 +2367,7 @@ export class BillingService implements OnApplicationBootstrap {
         1_000_000;
       const costInDollars = legacyInputDollars + legacyOutputDollars;
 
-      // legacy: доллары → спички через курс RUB_TO_USD_RATE / tokenPriceRub
-      // tokensPerDollar в БД устарел; конвертируем сами: 1$ = 90₽ = 30 спичек
+      // legacy: доллары → спички. 1$ = 90₽ = 30 спичек
       const legacyTokensPerDollar = RUB_TO_USD_RATE / 3; // = 30
       const rawLegacy = roundTokens(costInDollars * legacyTokensPerDollar);
       const costInTokens = rawLegacy < modelMinCost ? modelMinCost : rawLegacy;
@@ -2377,8 +2395,7 @@ export class BillingService implements OnApplicationBootstrap {
       }
     }
 
-    // Fallback на фиксированную цену
-    // 🔧 дефолт 90 спичек/$ (синхронно с PricingService и каталогом)
+    // Fallback на фиксированную цену (дефолт 90 спичек/$)
     const fixedDollars = Number(model.fixedCostPerGeneration) || 0;
     const tokensPerDollar = Number(model.tokensPerDollar) || 90;
     const costInTokens = finalizeTokenCost(fixedDollars * tokensPerDollar);

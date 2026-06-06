@@ -63,7 +63,7 @@ export class ChatService {
     private billingService: BillingService,
     @Inject(forwardRef(() => ProviderRegistryService))
     private providerRegistry: ProviderRegistryService,
-  ) {}
+  ) { }
 
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -229,12 +229,11 @@ export class ChatService {
       }
 
       const { costInTokens, costInDollars } = await this.billingService.chargeForGeneration(
-        userId,
-        dto.modelSlug,
-        'text',
-        conversation._id.toString(),
+        userId, dto.modelSlug, 'text', conversation._id.toString(),
         result.usage?.inputTokens,
         result.usage?.outputTokens,
+        undefined,                       // params
+        result.usage?.cachedTokens,      // 🆕 новый аргумент
       );
 
       this.logger.log(
@@ -364,10 +363,10 @@ export class ChatService {
         content: dto.content,
         imageUrls: dto.imageUrls || [],
         attachments: (dto.attachments || []).map((a) => ({   // 🆕
-        url: a.url,
-        filename: a.filename,
-        mimeType: a.mimeType || '',
-      })),
+          url: a.url,
+          filename: a.filename,
+          mimeType: a.mimeType || '',
+        })),
       });
       await userMessage.save();
 
@@ -466,6 +465,8 @@ export class ChatService {
             conversation._id.toString(),
             lastUsage?.inputTokens,
             lastUsage?.outputTokens,
+            undefined,                  // params
+            lastUsage?.cachedTokens,    // 🆕 cachedTokens
           );
 
         costInTokens = billedTokens;
@@ -560,7 +561,7 @@ export class ChatService {
   /**
    * Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
    */
-    private async buildContext(
+  private async buildContext(
     conversation: ConversationDocument,
     dto: SendMessageDto,
   ): Promise<ContextMessage[]> {
@@ -606,9 +607,9 @@ export class ChatService {
         if (att.text && att.text.trim()) {
           docBlocks.push(
             `Содержимое прикреплённого файла «${att.filename}»:\n` +
-              '```\n' +
-              att.text.trim() +
-              '\n```',
+            '```\n' +
+            att.text.trim() +
+            '\n```',
           );
         }
       }

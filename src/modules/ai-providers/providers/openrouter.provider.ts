@@ -118,6 +118,7 @@ export class OpenRouterProvider extends BaseProvider {
           inputTokens: data.usage?.prompt_tokens,
           outputTokens: data.usage?.completion_tokens,
           totalTokens: data.usage?.total_tokens,
+          cachedTokens: data.usage?.prompt_tokens_details?.cached_tokens, // 🆕
         },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
@@ -131,15 +132,27 @@ export class OpenRouterProvider extends BaseProvider {
     }
   }
 
-  async *generateTextStream(
+   async *generateTextStream(
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
+    // 🆕 Накопитель usage — OpenRouter присылает его в отдельном
+    // финальном чанке (choices:[]), а не вместе с finish_reason.
+    let finalUsage: StreamChunk['usage'] | undefined;
+
+    const captureUsage = (u: any) => {
+      if (!u) return;
+      finalUsage = {
+        inputTokens: u.prompt_tokens,
+        outputTokens: u.completion_tokens,
+        cachedTokens: u.prompt_tokens_details?.cached_tokens, // 🆕
+      };
+    };
+
     try {
       this.logger.debug(
         `OpenRouter stream request: model=${request.model}, messages=${request.messages?.length}`,
       );
 
-      // 🆕 Преобразуем messages — поддержка vision
       const messages = this.prepareMessages(request.messages as any[]);
 
       const response = await this.client.post(
@@ -151,7 +164,7 @@ export class OpenRouterProvider extends BaseProvider {
           temperature: request.temperature ?? 0.7,
           top_p: request.topP ?? 1,
           stream: true,
-          usage: { include: true },             // 🔍 LOG
+          usage: { include: true },
           stream_options: { include_usage: true },
         },
         {
@@ -176,20 +189,22 @@ export class OpenRouterProvider extends BaseProvider {
 
           const data = trimmed.slice(6);
           if (data === '[DONE]') {
-            yield { content: '', done: true };
+            // 🆕 Отдаём накопленный usage в финале
+            yield { content: '', done: true, usage: finalUsage };
             return;
           }
 
           try {
             const parsed = JSON.parse(data);
 
-            // 🔍🔍🔍 LOGGING — ловим чанки с usage в стриме
-  if (parsed.usage) {
-    this.logger.warn(
-      `[USAGE-PROBE][OpenRouter][stream] model=${request.model} ` +
-      `usage=${JSON.stringify(parsed.usage)}`,
-    );
-  }
+            // 🆕 Ловим usage из ЛЮБОГО чанка где он есть
+            if (parsed.usage) {
+              this.logger.warn(
+                `[USAGE-PROBE][OpenRouter][stream] model=${request.model} ` +
+                `usage=${JSON.stringify(parsed.usage)}`,
+              );
+              captureUsage(parsed.usage);
+            }
 
             if (parsed.error) {
               this.logger.error(
@@ -210,15 +225,12 @@ export class OpenRouterProvider extends BaseProvider {
               yield { content, done: false };
             }
 
-            if (finishReason === 'stop') {
-              yield {
-                content: '',
-                done: true,
-                usage: {
-                  inputTokens: parsed.usage?.prompt_tokens,
-                  outputTokens: parsed.usage?.completion_tokens,
-                },
-              };
+            // 🆕 НЕ выходим сразу при finish_reason — usage может прийти
+            // в следующем чанке. Просто запоминаем, что стрим завершён.
+            // Реальный выход — на [DONE] или на конце потока.
+            if (finishReason === 'stop' && parsed.usage) {
+              // usage уже в этом чанке — можно отдать сразу
+              yield { content: '', done: true, usage: finalUsage };
               return;
             }
           } catch {
@@ -230,10 +242,11 @@ export class OpenRouterProvider extends BaseProvider {
       this.logger.warn(
         `OpenRouter stream ended without [DONE] for model ${request.model}`,
       );
-      yield { content: '', done: true };
+      // 🆕 На конце потока тоже отдаём накопленный usage
+      yield { content: '', done: true, usage: finalUsage };
 
     } catch (error) {
-      // ═══ SAFE ERROR — no JSON.stringify on response objects ═══
+      // ═══ SAFE ERROR — без изменений ═══
       const status = error?.response?.status;
       let errorMessage = error?.message || 'Unknown error';
 
@@ -243,7 +256,6 @@ export class OpenRouterProvider extends BaseProvider {
             typeof error.response.data?.pipe === 'function' ||
             typeof error.response.data?.[Symbol.asyncIterator] === 'function'
           ) {
-            // Response data is a stream — read it safely
             const chunks: Buffer[] = [];
             try {
               for await (const chunk of error.response.data) {
