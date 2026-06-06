@@ -949,15 +949,15 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      {
+       {
         slug: 'midjourney',
         name: 'Midjourney',
         displayName: 'Midjourney V7',
         description: 'Лучший генератор изображений',
         type: 'image',
-        fixedCostPerGeneration: 0.028, // справочно (draft)
+        fixedCostPerGeneration: 0.015, // справочно (обычный режим)
         tokensPerDollar: 90,
-        minTokenCost: 2.5,
+        minTokenCost: 1.3, // ← минимальная строка матрицы (обычный)
         sortOrder: 3,
         capabilities: ['variations', 'upscale'],
         providerMappings: [
@@ -966,20 +966,20 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        // Фикс цены: Draft 2.5, Fast 5, Turbo 9.5
+        // Таблица: Обычный 1.3, Быстрый 3, Турбо 5.7
         // ⚠️ evolink ждёт model_params.speed = draft|fast|turbo — провайдер маппит mode → speed
         pricingMatrix: [
-          { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
-          { conditions: { mode: 'fast' }, costInTokens: 5, costInDollars: 0.056, label: 'Быстрый режим' },
-          { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Draft режим' },
+          { conditions: { mode: 'turbo' }, costInTokens: 5.7, costInDollars: 0.08,  label: 'Турбо режим' },
+          { conditions: { mode: 'fast' },  costInTokens: 3,   costInDollars: 0.04,  label: 'Быстрый режим' },
+          { conditions: { mode: 'draft' }, costInTokens: 1.3, costInDollars: 0.015, label: 'Обычный режим' },
         ],
         uiParameters: [
           {
             key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
             options: [
-              { value: 'draft', label: 'Draft (2.5🔥, ~быстро/дёшево)' },
-              { value: 'fast', label: 'Быстрый (5🔥, ~30 сек)' },
-              { value: 'turbo', label: 'Турбо (9.5🔥, ~15 сек)' },
+              { value: 'draft', label: 'Обычный (1.3🔥)' },
+              { value: 'fast', label: 'Быстрый (3🔥, ~30 сек)' },
+              { value: 'turbo', label: 'Турбо (5.7🔥, ~15 сек)' },
             ],
           },
           {
@@ -996,15 +996,15 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      {
+            {
         slug: 'midjourney-img2img',
         name: 'Midjourney Img2Img',
         displayName: 'Midjourney V7 (Image to Image)',
         description: 'Трансформация изображений через Midjourney',
         type: 'image',
-        fixedCostPerGeneration: 0.028, // справочно (draft)
+        fixedCostPerGeneration: 0.015, // справочно (обычный режим)
         tokensPerDollar: 90,
-        minTokenCost: 2.5,
+        minTokenCost: 1.3, // ← минимальная строка матрицы (обычный)
         sortOrder: 4,
         capabilities: ['image_to_image', 'variations'],
         providerMappings: [
@@ -1013,19 +1013,19 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-        // Фикс цены: Draft 2.5, Fast 5, Turbo 9.5
+        // Таблица: Обычный 1.3, Быстрый 3, Турбо 5.7
         pricingMatrix: [
-          { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
-          { conditions: { mode: 'fast' }, costInTokens: 5, costInDollars: 0.056, label: 'Быстрый режим' },
-          { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Draft режим' },
+          { conditions: { mode: 'turbo' }, costInTokens: 5.7, costInDollars: 0.08,  label: 'Турбо режим' },
+          { conditions: { mode: 'fast' },  costInTokens: 3,   costInDollars: 0.04,  label: 'Быстрый режим' },
+          { conditions: { mode: 'draft' }, costInTokens: 1.3, costInDollars: 0.015, label: 'Обычный режим' },
         ],
         uiParameters: [
           {
             key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
             options: [
-              { value: 'draft', label: 'Draft (2.5🔥)' },
-              { value: 'fast', label: 'Быстрый (5🔥)' },
-              { value: 'turbo', label: 'Турбо (9.5🔥)' },
+              { value: 'draft', label: 'Обычный (1.3🔥)' },
+              { value: 'fast', label: 'Быстрый (3🔥)' },
+              { value: 'turbo', label: 'Турбо (5.7🔥)' },
             ],
           },
           {
