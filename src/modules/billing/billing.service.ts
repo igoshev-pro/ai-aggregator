@@ -2220,7 +2220,7 @@ export class BillingService implements OnApplicationBootstrap {
 
     // ─── MEDIA с фиксированной ценой (fallback) ───────────────
     const fixedDollars = Number(model.fixedCostPerGeneration) || 0;
-    const tokensPerDollar = Number(model.tokensPerDollar) || 30;
+    const tokensPerDollar = Number(model.tokensPerDollar) || 90;
     const fixed = finalizeTokenCost(fixedDollars * tokensPerDollar);
 
     return {
@@ -2378,8 +2378,9 @@ export class BillingService implements OnApplicationBootstrap {
     }
 
     // Fallback на фиксированную цену
+    // 🔧 дефолт 90 спичек/$ (синхронно с PricingService и каталогом)
     const fixedDollars = Number(model.fixedCostPerGeneration) || 0;
-    const tokensPerDollar = Number(model.tokensPerDollar) || 30;
+    const tokensPerDollar = Number(model.tokensPerDollar) || 90;
     const costInTokens = finalizeTokenCost(fixedDollars * tokensPerDollar);
 
     return { costInDollars: fixedDollars, costInTokens };

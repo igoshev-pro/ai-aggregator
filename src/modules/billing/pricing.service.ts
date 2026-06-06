@@ -159,14 +159,38 @@ export class PricingService {
       };
     }
 
-    // ─── FALLBACK ─── fixedCostPerGeneration × tokensPerDollar
-    const fallbackTokens = Math.max(
-      model.minTokenCost || 1,
-      Math.ceil(
-        (model.fixedCostPerGeneration || 0) *
-          (model.tokensPerDollar || 30),
-      ),
-    );
+   // ─── FALLBACK ─── fixedCostPerGeneration × tokensPerDollar
+    // 🔧 Math.round до 2 знаков (вместо Math.ceil) + дефолт 90 спичек/$
+    //    чтобы совпадало с минимумом pricingMatrix в списке моделей
+    //    (0.0178$ × 90 = 1.602 → 1.6, а не 2).
+    //    🆕 Если есть pricingMatrix — берём её минимум как fallback,
+    //    чтобы цена в селекте = цене в списке.
+    let fallbackBase: number;
+    if (
+      Array.isArray((model as any).pricingMatrix) &&
+      (model as any).pricingMatrix.length > 0
+    ) {
+      const costs = (model as any).pricingMatrix
+        .map((r: any) => Number(r.costInTokens))
+        .filter((n: number) => Number.isFinite(n) && n > 0);
+      fallbackBase =
+        costs.length > 0
+          ? Math.min(...costs)
+          : Math.round(
+              (model.fixedCostPerGeneration || 0) *
+                (model.tokensPerDollar || 90) *
+                100,
+            ) / 100;
+    } else {
+      fallbackBase =
+        Math.round(
+          (model.fixedCostPerGeneration || 0) *
+            (model.tokensPerDollar || 90) *
+            100,
+        ) / 100;
+    }
+
+    const fallbackTokens = Math.max(model.minTokenCost || 1, fallbackBase);
 
     this.logger.debug(
       `[${modelSlug}] no rule matched, fallback to fixedCost: ${fallbackTokens}🔥`,
