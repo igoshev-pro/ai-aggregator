@@ -180,6 +180,12 @@ export class VideoGenerationDto {
   @IsBoolean()
   sound?: boolean;
 
+  // 🆕 Veo: генерация звука (Google Veo использует отдельный флаг)
+  @ApiPropertyOptional({ description: 'Generate audio track (Veo)' })
+  @IsOptional()
+  @IsBoolean()
+  generateAudio?: boolean;
+
   // 🆕 Sora stable mode (зарезервировано на будущее)
   @ApiPropertyOptional({
     description: 'Sora stable mode (reserved for future use)',

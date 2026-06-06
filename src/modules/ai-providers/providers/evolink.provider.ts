@@ -728,10 +728,21 @@ export class EvolinkProvider extends BaseProvider {
     if (request.negativePrompt) body.negative_prompt = request.negativePrompt;
     if (request.seed) body.seed = request.seed;
 
-    // resolution маппится в quality у Evolink ('720p', '1080p')
+    // resolution маппится в quality у Evolink ('720p', '1080p', '4k')
+    // Veo/Sora: фронт шлёт quality → backend дублирует в resolution → сюда
     if (request.resolution) body.quality = request.resolution;
 
-    // image_urls для img-to-video (Sora 2 Pro поддерживает 1 изображение)
+    // 🆕 Veo: звук. Google Veo API использует generate_audio.
+    //    Фронт/бэк прокидывают generateAudio (Veo) или sound (общий флаг).
+    const audioFlag =
+      (request as any).generateAudio !== undefined
+        ? (request as any).generateAudio
+        : (request as any).sound;
+    if (audioFlag !== undefined) {
+      body.generate_audio = audioFlag;
+    }
+
+    // image_urls для img-to-video (Sora 2 Pro / Veo поддерживают 1 изображение)
     if (request.imageUrl) {
       body.image_urls = [request.imageUrl];
     }

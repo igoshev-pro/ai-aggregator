@@ -42,7 +42,7 @@ export class GenerationService {
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
     private pricingService: PricingService, // 🆕
-  ) {}
+  ) { }
 
   // ─── IMAGE ──────────────────────────────────────────────────────
 
@@ -159,6 +159,7 @@ export class GenerationService {
       aspectRatio: dto.aspectRatio,
       quality: dto.quality,
       sound: dto.sound,
+      generateAudio: dto.generateAudio,   // 🆕 Veo audio
       stable: dto.stable,
       hasInputImage: !!dto.imageUrl || !!(dto.imageUrls && dto.imageUrls.length > 0),
       hasInputVideo: !!(dto.videoUrls && dto.videoUrls.length > 0),
@@ -189,6 +190,7 @@ export class GenerationService {
         mode: dto.mode,
         quality: dto.quality,
         sound: dto.sound,
+        generateAudio: dto.generateAudio,   // 🆕 Veo audio
         stable: dto.stable,                                              // 🆕
         removeWatermark: dto.removeWatermark,
         promptOptimizer: dto.promptOptimizer,
@@ -435,7 +437,7 @@ export class GenerationService {
     };
   }
 
-    async getUserGenerations(
+  async getUserGenerations(
     userId: string,
     type?: GenerationType,
     page = 1,
@@ -485,7 +487,7 @@ export class GenerationService {
     );
   }
 
-    // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // REFUND — возврат токенов за неудачную генерацию
   // ═══════════════════════════════════════════════════════════════
 
@@ -588,8 +590,7 @@ export class GenerationService {
       );
 
       this.logger.log(
-        `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${
-          isFree ? ' (free)' : ''
+        `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${isFree ? ' (free)' : ''
         } | gen=${generationId}`,
       );
     } catch (err: any) {
@@ -600,7 +601,7 @@ export class GenerationService {
       );
     }
   }
-  
+
   // ─── FAVORITES ──────────────────────────────────────────────────
 
   async toggleFavorite(userId: string, generationId: string) {

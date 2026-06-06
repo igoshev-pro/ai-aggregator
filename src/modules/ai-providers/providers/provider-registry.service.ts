@@ -1309,27 +1309,39 @@ export class ProviderRegistryService implements OnModuleInit {
       // ════════════════════════════════════════════════════
       // VIDEO МОДЕЛИ
       // ════════════════════════════════════════════════════
-      {
+            {
         slug: 'veo-3.1-fast',
         name: 'Veo 3.1 Fast',
         displayName: 'Google Veo 3.1 Fast',
         description: 'Быстрая версия Veo от Google',
         type: 'video',
-        fixedCostPerGeneration: 0.15,
-        tokensPerDollar: 50,
-        minTokenCost: 32,
+        fixedCostPerGeneration: 0.1681, // справочно (720p 8сек)
+        tokensPerDollar: 90,
+        minTokenCost: 15, // ← минимальная строка (720p/1080p)
         sortOrder: 1,
-        capabilities: ['text_to_video'],
+        capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'veo-3.1-fast-generate-preview', priority: 1, isActive: true },
         ],
-        defaultParams: { duration: 5 },
+        // API: quality (720p/1080p/4k), duration (4/6/8), aspect_ratio (auto/16:9/9:16)
+        defaultParams: { duration: 8, quality: '720p', aspect_ratio: 'auto' },
         limits: { maxDuration: 8 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Таблица: 720p/1080p 8сек = 15, 4K 8сек = 45.3
         pricingMatrix: [
-          { costInTokens: 32, costInDollars: 0.32, label: 'Veo 3.1 Fast' },
+          { conditions: { quality: '4k' },    costInTokens: 45.3, costInDollars: 0.5042, label: '4K (8 сек)' },
+          { conditions: { quality: '1080p' }, costInTokens: 15,   costInDollars: 0.1681, label: '1080p (8 сек)' },
+          { conditions: { quality: '720p' },  costInTokens: 15,   costInDollars: 0.1681, label: '720p (8 сек)' },
         ],
         uiParameters: [
+          {
+            key: 'quality', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '720p',  label: '720p (15🔥)' },
+              { value: '1080p', label: '1080p (15🔥)' },
+              { value: '4k',    label: '4K (45.3🔥)' },
+            ],
+          },
           {
             key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
@@ -1337,30 +1349,49 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '9:16', label: 'Вертикаль (9:16)' },
             ],
           },
+          {
+            key: 'generateAudio', label: 'Со звуком', type: 'select', affectsPrice: false, defaultValue: true,
+            options: [
+              { value: true, label: 'Да' },
+              { value: false, label: 'Нет' },
+            ],
+          },
         ],
       },
-      {
+            {
         slug: 'veo-3.1-pro',
         name: 'Veo 3.1 Pro',
         displayName: 'Google Veo 3.1 Pro',
         description: 'Премиум версия Veo от Google',
         type: 'video',
-        fixedCostPerGeneration: 0.3,
-        tokensPerDollar: 40,
-        minTokenCost: 65,
+        fixedCostPerGeneration: 0.8333, // справочно (720p 8сек)
+        tokensPerDollar: 90,
+        minTokenCost: 75, // ← минимальная строка (720p/1080p)
         sortOrder: 2,
         isPremium: true,
-        capabilities: ['text_to_video', 'high_quality'],
+        capabilities: ['text_to_video', 'image_to_video', 'high_quality'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'veo-3.1-generate-preview', priority: 1, isActive: true },
         ],
-        defaultParams: { duration: 5 },
-        limits: { maxDuration: 10, includedInPlans: ['pro', 'unlimited'] },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // API: quality (720p/1080p/4k), duration (4/6/8), aspect_ratio (auto/16:9/9:16)
+        defaultParams: { duration: 8, quality: '720p', aspect_ratio: 'auto' },
+        limits: { maxDuration: 8, includedInPlans: ['pro', 'unlimited'] },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
+        // Таблица: 720p/1080p 8сек = 75, 4K 8сек = 112
         pricingMatrix: [
-          { costInTokens: 65, costInDollars: 0.65, label: 'Veo 3.1 Pro' },
+          { conditions: { quality: '4k' },    costInTokens: 112, costInDollars: 1.25,   label: '4K (8 сек)' },
+          { conditions: { quality: '1080p' }, costInTokens: 75,  costInDollars: 0.8333, label: '1080p (8 сек)' },
+          { conditions: { quality: '720p' },  costInTokens: 75,  costInDollars: 0.8333, label: '720p (8 сек)' },
         ],
         uiParameters: [
+          {
+            key: 'quality', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '720p',  label: '720p (75🔥)' },
+              { value: '1080p', label: '1080p (75🔥)' },
+              { value: '4k',    label: '4K (112🔥)' },
+            ],
+          },
           {
             key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
@@ -1368,38 +1399,53 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '9:16', label: 'Вертикаль (9:16)' },
             ],
           },
+          {
+            key: 'generateAudio', label: 'Со звуком', type: 'select', affectsPrice: false, defaultValue: true,
+            options: [
+              { value: true, label: 'Да' },
+              { value: false, label: 'Нет' },
+            ],
+          },
         ],
       },
-      {
+            {
         slug: 'sora-2-pro',
         name: 'Sora 2 Pro',
         displayName: 'OpenAI Sora 2 Pro',
         description: 'Флагманский генератор видео от OpenAI',
         type: 'video',
         fixedCostPerGeneration: 0.9583,
-        tokensPerDollar: 30,
-        minTokenCost: 200,
+        tokensPerDollar: 90,
+        minTokenCost: 86, // ← минимальная строка (720p)
         sortOrder: 3,
         isPremium: true,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'sora-2-pro-preview', priority: 1, isActive: true },
         ],
-        defaultParams: { duration: 5 },
-        limits: { maxDuration: 20, includedInPlans: ['unlimited'] },
+        // API: duration (4/8/12), quality (720p/1080p ×1.667), aspect_ratio (16:9/9:16)
+        defaultParams: { duration: 12, quality: '720p', aspect_ratio: '16:9' },
+        limits: { maxDuration: 12, includedInPlans: ['unlimited'] },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Таблица: 86🔥. 1080p = ×1.667 → 143
         pricingMatrix: [
-          { conditions: { duration: 15 }, costInTokens: 280, costInDollars: 2.8, label: '15 секунд' },
-          { conditions: { duration: 10 }, costInTokens: 200, costInDollars: 2, label: '10 секунд' },
-          { costInTokens: 200, costInDollars: 2, label: 'Стандарт (5 сек)' },
+          { conditions: { quality: '1080p' }, costInTokens: 143, costInDollars: 1.598, label: '1080p HD' },
+          { conditions: { quality: '720p' },  costInTokens: 86,  costInDollars: 0.9583, label: '720p Standard' },
         ],
         uiParameters: [
           {
-            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            key: 'quality', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: 5, label: '5 сек (200🔥)' },
-              { value: 10, label: '10 сек (200🔥)' },
-              { value: 15, label: '15 сек (280🔥)' },
+              { value: '720p',  label: '720p (86🔥)' },
+              { value: '1080p', label: '1080p HD (143🔥)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: false, defaultValue: 12,
+            options: [
+              { value: 4,  label: '4 сек' },
+              { value: 8,  label: '8 сек' },
+              { value: 12, label: '12 сек' },
             ],
           },
           {
@@ -1411,33 +1457,38 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      {
+            {
         slug: 'kling-2.5-turbo-pro',
         name: 'Kling 2.5 Turbo Pro',
         displayName: 'Kling 2.5 Turbo Pro',
         description: 'Быстрый и качественный генератор видео Kling',
         type: 'video',
         fixedCostPerGeneration: 0.42,
-        tokensPerDollar: 40,
-        minTokenCost: 75,
+        tokensPerDollar: 90,
+        minTokenCost: 21.5, // ← минимальная строка (5 сек × 4.3)
         sortOrder: 4,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'kling/2.5-turbo-pro-text-to-video', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'kling/v2-5-turbo-text-to-video-pro', priority: 1, isActive: true },
         ],
-        defaultParams: { duration: 5 },
+        // API kie: duration '5'/'10' (STRING), aspect_ratio 16:9/9:16/1:1, cfg_scale
+        defaultParams: { duration: '5', aspect_ratio: '16:9', cfg_scale: 0.5 },
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Таблица Kling 3.0: 4.3🔥/сек → 5сек=21.5, 10сек=43
         pricingMatrix: [
-          { conditions: { duration: 10 }, costInTokens: 135, costInDollars: 1.5, label: '10 секунд' },
-          { conditions: { duration: 5 }, costInTokens: 75, costInDollars: 0.84, label: '5 секунд' },
+          { conditions: { duration: '10' }, costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
+          { conditions: { duration: '5' },  costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
+          // fallback на числовой тип, если фронт шлёт number
+          { conditions: { duration: 10 },   costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
+          { conditions: { duration: 5 },    costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
         ],
         uiParameters: [
           {
-            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: '5',
             options: [
-              { value: 5, label: '5 сек (75🔥)' },
-              { value: 10, label: '10 сек (135🔥)' },
+              { value: '5',  label: '5 сек (21.5🔥)' },
+              { value: '10', label: '10 сек (43🔥)' },
             ],
           },
           {
@@ -1450,64 +1501,79 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      {
+            {
         slug: 'kling-2.5-turbo-pro-img2video',
         name: 'Kling 2.5 Turbo Pro Img2Video',
         displayName: 'Kling 2.5 Turbo Pro (Image to Video)',
         description: 'Анимация изображений через Kling 2.5',
         type: 'video',
         fixedCostPerGeneration: 0.42,
-        tokensPerDollar: 40,
-        minTokenCost: 75,
+        tokensPerDollar: 90,
+        minTokenCost: 21.5, // ← минимальная строка (5 сек × 4.3)
         sortOrder: 5,
         capabilities: ['image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'kling/2.5-turbo-pro-image-to-video', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'kling/v2-5-turbo-image-to-video-pro', priority: 1, isActive: true },
         ],
-        defaultParams: { duration: 5 },
+        // API kie: duration '5'/'10' (STRING), cfg_scale, image_url
+        defaultParams: { duration: '5', cfg_scale: 0.5 },
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Таблица Kling 3.0: 4.3🔥/сек → 5сек=21.5, 10сек=43
         pricingMatrix: [
-          { conditions: { duration: 10 }, costInTokens: 135, costInDollars: 1.5, label: '10 секунд' },
-          { conditions: { duration: 5 }, costInTokens: 75, costInDollars: 0.84, label: '5 секунд' },
+          { conditions: { duration: '10' }, costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
+          { conditions: { duration: '5' },  costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
+          { conditions: { duration: 10 },   costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
+          { conditions: { duration: 5 },    costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
         ],
         uiParameters: [
           {
-            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: '5',
             options: [
-              { value: 5, label: '5 сек (75🔥)' },
-              { value: 10, label: '10 сек (135🔥)' },
+              { value: '5',  label: '5 сек (21.5🔥)' },
+              { value: '10', label: '10 сек (43🔥)' },
             ],
           },
         ],
       },
-      {
+           {
         slug: 'wan-2.5',
         name: 'WAN 2.5',
         displayName: 'WAN 2.5 (Alibaba)',
         description: 'Видеогенератор от Alibaba',
         type: 'video',
         fixedCostPerGeneration: 0.4,
-        tokensPerDollar: 40,
-        minTokenCost: 70,
+        tokensPerDollar: 90,
+        minTokenCost: 70, // ← минимальная строка (720p 5сек)
         sortOrder: 6,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'wan/2.5-text-to-video', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'wan/2-5-text-to-video', priority: 1, isActive: true },
         ],
-        defaultParams: { duration: 5 },
+        // API kie: duration '5'/'10' (STRING), resolution 720p/1080p, aspect_ratio 16:9/9:16/1:1
+        defaultParams: { duration: '5', resolution: '720p', aspect_ratio: '16:9' },
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Нет в таблице → 720p: 5сек=70, 10сек=130; 1080p: 5сек=105, 10сек=200
         pricingMatrix: [
-          { conditions: { duration: 10 }, costInTokens: 130, costInDollars: 1.45, label: '10 секунд' },
-          { conditions: { duration: 5 }, costInTokens: 70, costInDollars: 0.78, label: '5 секунд' },
+          { conditions: { resolution: '1080p', duration: '10' }, costInTokens: 200, costInDollars: 2.2,  label: '1080p × 10 сек' },
+          { conditions: { resolution: '1080p', duration: '5' },  costInTokens: 105, costInDollars: 1.16, label: '1080p × 5 сек' },
+          { conditions: { resolution: '720p',  duration: '10' }, costInTokens: 130, costInDollars: 1.45, label: '720p × 10 сек' },
+          { conditions: { resolution: '720p',  duration: '5' },  costInTokens: 70,  costInDollars: 0.78, label: '720p × 5 сек' },
         ],
         uiParameters: [
           {
-            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: 5,
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: 5, label: '5 сек (70🔥)' },
-              { value: 10, label: '10 сек (130🔥)' },
+              { value: '720p',  label: '720p' },
+              { value: '1080p', label: '1080p' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: '5',
+            options: [
+              { value: '5',  label: '5 сек' },
+              { value: '10', label: '10 сек' },
             ],
           },
           {
@@ -1515,6 +1581,7 @@ export class ProviderRegistryService implements OnModuleInit {
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
             ],
           },
         ],
