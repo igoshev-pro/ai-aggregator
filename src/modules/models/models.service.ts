@@ -50,9 +50,13 @@ export class ModelsService {
     const query: any = { isActive: true };
     if (type) query.type = type;
 
+    // 🔧 .lean() — читаем СЫРОЙ документ из Mongo со ВСЕМИ полями
+    //    (pricingMatrix, minTokenCost, fixedCostPerGeneration, tokenCost и т.д.),
+    //    даже если они не объявлены в Mongoose-схеме.
     const models = await this.modelModel
       .find(query)
       .sort({ type: 1, sortOrder: 1 })
+      .lean<any[]>()
       .exec();
 
     // Фильтруем по доступности для плана пользователя
@@ -72,7 +76,10 @@ export class ModelsService {
   }
 
   async getModelDetails(slug: string, userPlan: SubscriptionPlan): Promise<ModelDto | null> {
-    const model = await this.modelModel.findOne({ slug, isActive: true });
+    // 🔧 .lean() — сырой документ со всеми полями
+    const model = await this.modelModel
+      .findOne({ slug, isActive: true })
+      .lean<any>();
     if (!model) return null;
 
     // Проверяем доступность для пользователя
@@ -91,7 +98,7 @@ export class ModelsService {
     return this.mapToDto(model);
   }
 
-  private mapToDto(model: ModelDocument): ModelDto {
+  private mapToDto(model: any): ModelDto {
     const provider = this.getProviderName(model);
 
     // Рассчитываем cost для отображения в UI
@@ -134,7 +141,7 @@ export class ModelsService {
    *         Если результат меньше minTokenCost — берём minTokenCost.
    * - media: фиксированная цена за генерацию (минимум из pricingMatrix если есть)
    */
-  private computeDisplayCost(model: ModelDocument): number {
+  private computeDisplayCost(model: any): number {
     // === TEXT (LLM) ===
     if (model.type === GenerationType.TEXT) {
       // 🆕 Приоритет новых полей цен (спички за 1M токенов), fallback на legacy
@@ -176,19 +183,19 @@ export class ModelsService {
       }
     }
 
-    // Фиксированная цена за генерацию
+    // 🔧 Фиксированная цена за генерацию (БЕЗ Math.ceil — round до 2 знаков,
+    //     чтобы 0.0178×90=1.602 не превращалось в 2, как в каталоге seed)
     if (model.fixedCostPerGeneration && model.fixedCostPerGeneration > 0) {
-      const tokensPerDollar = model.tokensPerDollar || 100;
-      return Math.max(
-        model.minTokenCost ?? 1,
-        Math.ceil(model.fixedCostPerGeneration * tokensPerDollar),
-      );
+      const tokensPerDollar = model.tokensPerDollar || 90;
+      const computed =
+        Math.round(model.fixedCostPerGeneration * tokensPerDollar * 100) / 100;
+      return Math.max(model.minTokenCost ?? 1, computed);
     }
 
     return model.minTokenCost ?? model.tokenCost ?? 1;
   }
 
-  private getProviderName(model: ModelDocument): string {
+  private getProviderName(model: any): string {
     // Берём первого провайдера из маппингов
     if (model.providerMappings?.length > 0) {
       const providerSlug = model.providerMappings[0].providerSlug;
