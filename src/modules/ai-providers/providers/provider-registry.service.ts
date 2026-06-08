@@ -975,7 +975,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         uiParameters: [
           {
-            key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
+            key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'draft',
             options: [
               { value: 'draft', label: 'Обычный (1.3🔥)' },
               { value: 'fast', label: 'Быстрый (3🔥, ~30 сек)' },
@@ -1021,7 +1021,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         uiParameters: [
           {
-            key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'fast',
+            key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'draft',
             options: [
               { value: 'draft', label: 'Обычный (1.3🔥)' },
               { value: 'fast', label: 'Быстрый (3🔥)' },
@@ -1134,7 +1134,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         uiParameters: [
           {
-            key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'flex',
+            key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'pro',
             options: [
               { value: 'flex', label: 'Flex (от 5🔥)' },
               { value: 'pro', label: 'Pro (от 1.8🔥)' },
@@ -1185,7 +1185,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         uiParameters: [
           {
-            key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'flex',
+            key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'pro',
             options: [
               { value: 'flex', label: 'Flex (от 5🔥)' },
               { value: 'pro', label: 'Pro (от 1.8🔥)' },
