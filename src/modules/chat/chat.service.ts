@@ -31,21 +31,23 @@ export interface SendMessageDto {
   modelSlug: string;
   content: string;
   imageUrls?: string[];
-  attachments?: ChatAttachment[]; // 🆕 документы
+  attachments?: ChatAttachment[];
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
 }
 
-// Тип для сообщения с поддержкой vision (imageUrls)
 interface ContextMessage {
   role: string;
   content: string;
   imageUrls?: string[];
 }
 
-// 🆕 Глобальный минимум для работы с чатом
-const MIN_REQUIRED_BALANCE = 0.01; // минимум 0.01 🔥 чтобы вообще начать запрос
+const MIN_REQUIRED_BALANCE = 0.01;
+
+// 🆕 Грубая оценка: сколько символов ≈ 1 токен.
+// Для кириллицы токенизатор плотнее (~2-3 симв/токен), берём 3 как компромисс.
+const CHARS_PER_TOKEN = 3;
 
 @Injectable()
 export class ChatService {
@@ -105,6 +107,38 @@ export class ChatService {
       messages: messages.reverse(),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 Helper: оценка токенов когда провайдер не вернул usage
+  // ═══════════════════════════════════════════════════════════════
+
+  private resolveUsageTokens(
+    rawInput: number | undefined | null,
+    rawOutput: number | undefined | null,
+    contextMessages: ContextMessage[],
+    responseContent: string,
+  ): { inputTokens: number; outputTokens: number; estimated: boolean } {
+    let estimated = false;
+
+    let inputTokens = rawInput;
+    let outputTokens = rawOutput;
+
+        if (inputTokens == null || inputTokens <= 0) {
+      const promptChars = contextMessages.reduce(
+        (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0),
+        0,
+      );
+      inputTokens = Math.max(1, Math.ceil(promptChars / CHARS_PER_TOKEN));
+      estimated = true;
+    }
+
+    if (outputTokens == null || outputTokens <= 0) {
+      outputTokens = Math.max(1, Math.ceil((responseContent?.length || 0) / CHARS_PER_TOKEN));
+      estimated = true;
+    }
+
+    return { inputTokens, outputTokens, estimated };
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -195,7 +229,7 @@ export class ChatService {
       role: 'user',
       content: dto.content,
       imageUrls: dto.imageUrls || [],
-      attachments: (dto.attachments || []).map((a) => ({   // 🆕
+      attachments: (dto.attachments || []).map((a) => ({
         url: a.url,
         filename: a.filename,
         mimeType: a.mimeType || '',
@@ -228,35 +262,54 @@ export class ChatService {
         throw new BadRequestException(result.error?.message || 'Generation failed');
       }
 
-      const { costInTokens, costInDollars } = await this.billingService.chargeForGeneration(
-        userId, dto.modelSlug, 'text', conversation._id.toString(),
+      const responseContent = result.data?.content || '';
+
+      // 🆕 Fallback оценка токенов, если провайдер не вернул usage
+      const { inputTokens, outputTokens, estimated } = this.resolveUsageTokens(
         result.usage?.inputTokens,
         result.usage?.outputTokens,
+        contextMessages,
+        responseContent,
+      );
+
+      if (estimated) {
+        this.logger.warn(
+          `⚠️ [non-stream] usage missing from provider for ${dto.modelSlug}, ` +
+          `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
+          `(rawUsage=${JSON.stringify(result.usage)})`,
+        );
+      }
+
+      const { costInTokens, costInDollars } = await this.billingService.chargeForGeneration(
+        userId, dto.modelSlug, 'text', conversation._id.toString(),
+        inputTokens,
+        outputTokens,
         undefined,                       // params
-        result.usage?.cachedTokens,      // 🆕 новый аргумент
+        result.usage?.cachedTokens,      // 🆕 cachedTokens
       );
 
       this.logger.log(
-        `💸 Charged: ${costInTokens}🔥 (in=${result.usage?.inputTokens}, out=${result.usage?.outputTokens}, providerCost=$${costInDollars})`,
+        `💸 Charged: ${costInTokens}🔥 (in=${inputTokens}, out=${outputTokens}, ` +
+        `estimated=${estimated}, providerCost=$${costInDollars})`,
       );
 
       const assistantMessage = new this.messageModel({
         conversationId: conversation._id,
         userId: new Types.ObjectId(userId),
         role: 'assistant',
-        content: result.data?.content || '',
+        content: responseContent,
         modelSlug: dto.modelSlug,
         providerSlug: result.providerSlug,
         usage: result.usage,
         responseTimeMs: result.responseTimeMs,
         tokensCost: costInTokens,
-        inputTokens: result.usage?.inputTokens,
-        outputTokens: result.usage?.outputTokens,
+        inputTokens,
+        outputTokens,
       });
       await assistantMessage.save();
 
       conversation.messageCount += 2;
-      conversation.totalTokensUsed += result.usage?.totalTokens || 0;
+      conversation.totalTokensUsed += result.usage?.totalTokens || (inputTokens + outputTokens);
       conversation.lastMessageAt = new Date();
 
       if (conversation.messageCount <= 2) {
@@ -362,7 +415,7 @@ export class ChatService {
         role: 'user',
         content: dto.content,
         imageUrls: dto.imageUrls || [],
-        attachments: (dto.attachments || []).map((a) => ({   // 🆕
+        attachments: (dto.attachments || []).map((a) => ({
           url: a.url,
           filename: a.filename,
           mimeType: a.mimeType || '',
@@ -457,14 +510,30 @@ export class ChatService {
 
       // 9. Сохранение результата
       if (success && fullContent) {
+        // 🆕 Fallback оценка токенов, если провайдер не вернул usage
+        const { inputTokens, outputTokens, estimated } = this.resolveUsageTokens(
+          lastUsage?.inputTokens,
+          lastUsage?.outputTokens,
+          contextMessages,
+          fullContent,
+        );
+
+        if (estimated) {
+          this.logger.warn(
+            `⚠️ [stream] usage missing from provider for ${dto.modelSlug}, ` +
+            `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
+            `(rawUsage=${JSON.stringify(lastUsage)})`,
+          );
+        }
+
         const { costInTokens: billedTokens, costInDollars } =
           await this.billingService.chargeForGeneration(
             userId,
             dto.modelSlug,
             'text',
             conversation._id.toString(),
-            lastUsage?.inputTokens,
-            lastUsage?.outputTokens,
+            inputTokens,
+            outputTokens,
             undefined,                  // params
             lastUsage?.cachedTokens,    // 🆕 cachedTokens
           );
@@ -472,7 +541,8 @@ export class ChatService {
         costInTokens = billedTokens;
 
         this.logger.log(
-          `💸 [stream] Charged: ${costInTokens}🔥 (in=${lastUsage?.inputTokens}, out=${lastUsage?.outputTokens}, providerCost=$${costInDollars})`,
+          `💸 [stream] Charged: ${costInTokens}🔥 (in=${inputTokens}, out=${outputTokens}, ` +
+          `estimated=${estimated}, providerCost=$${costInDollars})`,
         );
 
         // ✅ Обновляем сообщение ассистента
@@ -481,13 +551,13 @@ export class ChatService {
         assistantMessage.providerSlug = (model as any).providerSlug;
         assistantMessage.usage = lastUsage;
         assistantMessage.tokensCost = costInTokens;
-        assistantMessage.inputTokens = lastUsage?.inputTokens;
-        assistantMessage.outputTokens = lastUsage?.outputTokens;
+        assistantMessage.inputTokens = inputTokens;
+        assistantMessage.outputTokens = outputTokens;
         await assistantMessage.save();
 
         // ✅ Обновляем conversation
         conversation.messageCount += 2;
-        conversation.totalTokensUsed += lastUsage?.totalTokens || 0;
+        conversation.totalTokensUsed += lastUsage?.totalTokens || (inputTokens + outputTokens);
         conversation.lastMessageAt = new Date();
 
         if (conversation.messageCount <= 2) {
@@ -599,7 +669,7 @@ export class ChatService {
       messages.push(contextMsg);
     }
 
-    // 🆕 Встраиваем извлечённый текст документов в content последнего сообщения
+    // Встраиваем извлечённый текст документов в content последнего сообщения
     let lastContent = dto.content || '';
     if (dto.attachments && dto.attachments.length > 0) {
       const docBlocks: string[] = [];

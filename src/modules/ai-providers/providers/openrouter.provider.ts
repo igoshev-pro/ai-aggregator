@@ -31,18 +31,6 @@ export class OpenRouterProvider extends BaseProvider {
     });
   }
 
-  // ========================================
-  // 🆕 VISION HELPER — OpenAI-compatible multimodal content
-  // ========================================
-
-  /**
-   * 🆕 Строит OpenAI-style content (массив частей) для vision-моделей.
-   * OpenRouter полностью совместим с OpenAI multimodal форматом.
-   * Работает для: GPT-4 Vision, Gemini Pro Vision, Claude через OR и т.д.
-   *
-   * Если imageUrls нет — возвращает строку (legacy формат).
-   * Иначе — массив [{type:'text', text}, {type:'image_url', image_url:{url}}, ...]
-   */
   private buildOpenAIContent(
     text: string,
     imageUrls?: string[],
@@ -67,9 +55,6 @@ export class OpenRouterProvider extends BaseProvider {
     return parts;
   }
 
-  /**
-   * 🆕 Преобразует входящие messages с imageUrls в OpenAI multimodal формат.
-   */
   private prepareMessages(messages: any[]): any[] {
     return messages.map((msg: any) => {
       if (msg.imageUrls && msg.imageUrls.length > 0) {
@@ -85,7 +70,6 @@ export class OpenRouterProvider extends BaseProvider {
   async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
-      // 🆕 Преобразуем messages — поддержка vision
       const messages = this.prepareMessages(request.messages as any[]);
 
       const response = await this.client.post('/chat/completions', {
@@ -95,7 +79,7 @@ export class OpenRouterProvider extends BaseProvider {
         temperature: request.temperature ?? 0.7,
         top_p: request.topP ?? 1,
         stream: false,
-        usage: { include: true }, // 🔍 LOG: просим детальный usage с cost
+        usage: { include: true },
       });
 
       const data = response.data;
@@ -118,7 +102,7 @@ export class OpenRouterProvider extends BaseProvider {
           inputTokens: data.usage?.prompt_tokens,
           outputTokens: data.usage?.completion_tokens,
           totalTokens: data.usage?.total_tokens,
-          cachedTokens: data.usage?.prompt_tokens_details?.cached_tokens, // 🆕
+          cachedTokens: data.usage?.prompt_tokens_details?.cached_tokens,
         },
         responseTimeMs: Date.now() - start,
         providerSlug: this.slug,
@@ -132,7 +116,7 @@ export class OpenRouterProvider extends BaseProvider {
     }
   }
 
-   async *generateTextStream(
+  async *generateTextStream(
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
     // 🆕 Накопитель usage — OpenRouter присылает его в отдельном
@@ -144,7 +128,7 @@ export class OpenRouterProvider extends BaseProvider {
       finalUsage = {
         inputTokens: u.prompt_tokens,
         outputTokens: u.completion_tokens,
-        cachedTokens: u.prompt_tokens_details?.cached_tokens, // 🆕
+        cachedTokens: u.prompt_tokens_details?.cached_tokens,
       };
     };
 
@@ -189,7 +173,6 @@ export class OpenRouterProvider extends BaseProvider {
 
           const data = trimmed.slice(6);
           if (data === '[DONE]') {
-            // 🆕 Отдаём накопленный usage в финале
             yield { content: '', done: true, usage: finalUsage };
             return;
           }
@@ -197,7 +180,6 @@ export class OpenRouterProvider extends BaseProvider {
           try {
             const parsed = JSON.parse(data);
 
-            // 🆕 Ловим usage из ЛЮБОГО чанка где он есть
             if (parsed.usage) {
               this.logger.warn(
                 `[USAGE-PROBE][OpenRouter][stream] model=${request.model} ` +
@@ -225,11 +207,9 @@ export class OpenRouterProvider extends BaseProvider {
               yield { content, done: false };
             }
 
-            // 🆕 НЕ выходим сразу при finish_reason — usage может прийти
-            // в следующем чанке. Просто запоминаем, что стрим завершён.
-            // Реальный выход — на [DONE] или на конце потока.
+            // НЕ выходим сразу при finish_reason — usage может прийти
+            // в следующем чанке. Выходим только если usage уже в этом чанке.
             if (finishReason === 'stop' && parsed.usage) {
-              // usage уже в этом чанке — можно отдать сразу
               yield { content: '', done: true, usage: finalUsage };
               return;
             }
@@ -242,11 +222,9 @@ export class OpenRouterProvider extends BaseProvider {
       this.logger.warn(
         `OpenRouter stream ended without [DONE] for model ${request.model}`,
       );
-      // 🆕 На конце потока тоже отдаём накопленный usage
       yield { content: '', done: true, usage: finalUsage };
 
     } catch (error) {
-      // ═══ SAFE ERROR — без изменений ═══
       const status = error?.response?.status;
       let errorMessage = error?.message || 'Unknown error';
 

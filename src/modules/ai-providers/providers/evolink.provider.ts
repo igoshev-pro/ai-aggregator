@@ -215,11 +215,25 @@ export class EvolinkProvider extends BaseProvider {
     }
   }
 
-  private async *generateTextStreamOpenAI(
+    private async *generateTextStreamOpenAI(
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
+    // 🆕 Накопитель usage — Evolink/OpenAI шлёт usage в отдельном
+    // финальном чанке (choices:[]) ПОСЛЕ finish_reason, поэтому
+    // ловим его из любого чанка и отдаём в финале.
+    let finalUsage: StreamChunk['usage'] | undefined;
+
+    const captureUsage = (u: any) => {
+      if (!u) return;
+      finalUsage = {
+        inputTokens: u.prompt_tokens,
+        outputTokens: u.completion_tokens,
+        cachedTokens: u.prompt_tokens_details?.cached_tokens,
+      };
+    };
+
     try {
-      // 🆕 Преобразуем messages — если есть imageUrls, формируем multimodal content
+      // Преобразуем messages — если есть imageUrls, формируем multimodal content
       const messages = request.messages.map((msg: any) => {
         if (msg.imageUrls && msg.imageUrls.length > 0) {
           return {
@@ -238,6 +252,7 @@ export class EvolinkProvider extends BaseProvider {
           max_completion_tokens: request.maxTokens || 4096,
           temperature: request.temperature ?? 0.7,
           stream: true,
+          stream_options: { include_usage: true }, // 🆕 просим usage в стриме
           ...(DEEPSEEK_V4_MODELS.includes(request.model)
             ? { thinking: { type: 'disabled' } }
             : {}),
@@ -257,80 +272,53 @@ export class EvolinkProvider extends BaseProvider {
 
           const data = trimmed.slice(6);
           if (data === '[DONE]') {
-            yield { content: '', done: true };
+            // 🆕 Отдаём накопленный usage в финале
+            yield { content: '', done: true, usage: finalUsage };
             return;
           }
 
           try {
             const parsed = JSON.parse(data);
 
+            // 🆕 Ловим usage из ЛЮБОГО чанка где он есть
             if (parsed.usage) {
               this.logger.warn(
                 `[USAGE-PROBE][Evolink-OpenAI][stream] model=${request.model} ` +
                 `usage=${JSON.stringify(parsed.usage)}`,
               );
+              captureUsage(parsed.usage);
             }
 
             const content = parsed.choices?.[0]?.delta?.content || '';
+            const finishReason = parsed.choices?.[0]?.finish_reason;
+
             if (content) {
               yield { content, done: false };
             }
-            if (parsed.choices?.[0]?.finish_reason === 'stop') {
-              yield {
-                content: '',
-                done: true,
-                usage: {
-                  inputTokens: parsed.usage?.prompt_tokens,
-                  outputTokens: parsed.usage?.completion_tokens,
-                },
-              };
+
+            // 🆕 НЕ выходим сразу при finish_reason — usage может прийти
+            // в следующем чанке. Выходим только если usage уже в этом чанке.
+            if (finishReason === 'stop' && parsed.usage) {
+              yield { content: '', done: true, usage: finalUsage };
               return;
             }
-          } catch (error) {
-            const status = error?.response?.status;
-            let errorMessage = error.message;
-
-            try {
-              if (error?.response?.data) {
-                if (typeof error.response.data === 'string') {
-                  errorMessage = error.response.data.substring(0, 500);
-                } else if (typeof error.response.data.pipe === 'function') {
-                  const chunks: Buffer[] = [];
-                  for await (const chunk of error.response.data) {
-                    chunks.push(Buffer.from(chunk));
-                    if (chunks.length > 5) break;
-                  }
-                  const body = Buffer.concat(chunks).toString('utf8').substring(0, 500);
-                  try {
-                    const parsed = JSON.parse(body);
-                    errorMessage = parsed?.error?.message || parsed?.message || body;
-                  } catch {
-                    errorMessage = body || error.message;
-                  }
-                } else if (error.response.data?.error?.message) {
-                  errorMessage = error.response.data.error.message;
-                }
-              }
-            } catch {
-              errorMessage = `HTTP ${status}: ${error.message}`;
-            }
-
-            this.logger.error(`Evolink OpenAI stream error: status=${status}, message=${errorMessage}`);
-            yield { content: '', done: true, error: `Evolink: ${status || 'NETWORK'} - ${errorMessage}` };
+          } catch {
+            // Skip malformed JSON line
           }
         }
       }
+
+      // 🆕 Поток кончился без [DONE] — отдаём накопленный usage
+      yield { content: '', done: true, usage: finalUsage };
     } catch (error) {
       const status = error?.response?.status;
       let errorMessage = error.message;
 
-      // Безопасное извлечение ошибки — response.data может быть стримом
       try {
         if (error?.response?.data) {
           if (typeof error.response.data === 'string') {
             errorMessage = error.response.data.substring(0, 500);
           } else if (typeof error.response.data.pipe === 'function') {
-            // Это стрим — читаем его
             const chunks: Buffer[] = [];
             for await (const chunk of error.response.data) {
               chunks.push(Buffer.from(chunk));
