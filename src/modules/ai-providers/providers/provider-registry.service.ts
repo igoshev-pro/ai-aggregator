@@ -617,7 +617,7 @@ export class ProviderRegistryService implements OnModuleInit {
         providerCostPerMillionOutput: 2.5,
         avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
-        minTokenCost: 0.03,
+        minTokenCost: 0.3,
         sortOrder: 4,
         capabilities: ['streaming', 'reasoning', 'function_calling'],
         providerMappings: [
