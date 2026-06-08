@@ -663,7 +663,7 @@ export class ProviderRegistryService implements OnModuleInit {
         providerCostPerMillionOutput: 1.0,
         avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
-        minTokenCost: 1.0,
+        minTokenCost: 0.1,
         sortOrder: 6,
         // 🌐 web_search — пометит модель как "с интернетом" на фронте
         capabilities: ['streaming', 'web_search', 'citations'],
