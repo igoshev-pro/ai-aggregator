@@ -188,8 +188,11 @@ export class AIModel {
   @Prop({ default: 0 })
   providerCostPerMillionOutput!: number;  // $ за 1M выходных у провайдера
 
-
-
+  // 🆕 Фиксированная надбавка за web-search запрос (в спичках 🔥).
+  // Применяется только если > 0. Для Perplexity Sonar = 0.45🔥
+  // (OpenRouter: $0.005/запрос × наценка ×90)
+  @Prop({ default: 0 })
+  webSearchCostInTokens!: number;
 
   // ═══════════════════════════════════════════════════════════════
   // ⚠️ DEPRECATED — оставлены для обратной совместимости и миграции.
