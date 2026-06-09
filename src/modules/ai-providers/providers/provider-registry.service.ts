@@ -355,6 +355,7 @@ export class ProviderRegistryService implements OnModuleInit {
           maxInputImages: 0,
         },
         stats: { totalRequests: 0, avgResponseTime: 0, successRate: 100 },
+        webSearchCostInTokens: (modelData as any).webSearchCostInTokens ?? 0,  // 🆕
       };
 
       const result = await this.modelModel.findOneAndUpdate(
@@ -429,6 +430,7 @@ export class ProviderRegistryService implements OnModuleInit {
               // 🆕 главные поля — их читает реальное списание
               pricePerMillionInputTokens,
               pricePerMillionOutputTokens,
+              webSearchCostInTokens: (modelData as any).webSearchCostInTokens ?? 0,  // 🆕
               avgTokensPerRequest,
               providerCostPerMillionInput,
               providerCostPerMillionOutput,
@@ -656,16 +658,22 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Perplexity Sonar',
         description: 'Поисковая модель с актуальными данными',
         type: 'text',
-        // provider: $1 / $1  →  ×90  →  90 / 90 🔥
         pricePerMillionInputTokens: 90,
         pricePerMillionOutputTokens: 90,
         providerCostPerMillionInput: 1.0,
         providerCostPerMillionOutput: 1.0,
         avgTokensPerRequest: 1500,
         tokensPerDollar: 1000,
-        minTokenCost: 1,
+
+        // 🆕 НАДБАВКА ЗА WEB SEARCH
+        // OpenRouter: $0.005/запрос × 90 (наценка ×3, курс 90₽/$, ÷3₽/спичка) = 0.45🔥
+        webSearchCostInTokens: 0.45,
+
+        // 🆕 minTokenCost поднимаем, чтобы покрыть поиск + минимум токенов
+        // было 1 → должно покрывать хотя бы стоимость поиска + базу
+        minTokenCost: 1.5,
+
         sortOrder: 6,
-        // 🌐 web_search — пометит модель как "с интернетом" на фронте
         capabilities: ['streaming', 'web_search', 'citations'],
         providerMappings: [
           { providerSlug: 'openrouter', modelId: 'perplexity/sonar', priority: 1, isActive: true },
@@ -949,7 +957,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-       {
+      {
         slug: 'midjourney',
         name: 'Midjourney',
         displayName: 'Midjourney V7',
@@ -969,8 +977,8 @@ export class ProviderRegistryService implements OnModuleInit {
         // Таблица: Обычный 1.3, Быстрый 3, Турбо 5.7
         // ⚠️ evolink ждёт model_params.speed = draft|fast|turbo — провайдер маппит mode → speed
         pricingMatrix: [
-          { conditions: { mode: 'turbo' }, costInTokens: 5.7, costInDollars: 0.08,  label: 'Турбо режим' },
-          { conditions: { mode: 'fast' },  costInTokens: 3,   costInDollars: 0.04,  label: 'Быстрый режим' },
+          { conditions: { mode: 'turbo' }, costInTokens: 5.7, costInDollars: 0.08, label: 'Турбо режим' },
+          { conditions: { mode: 'fast' }, costInTokens: 3, costInDollars: 0.04, label: 'Быстрый режим' },
           { conditions: { mode: 'draft' }, costInTokens: 1.3, costInDollars: 0.015, label: 'Обычный режим' },
         ],
         uiParameters: [
@@ -996,7 +1004,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'midjourney-img2img',
         name: 'Midjourney Img2Img',
         displayName: 'Midjourney V7 (Image to Image)',
@@ -1015,8 +1023,8 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         // Таблица: Обычный 1.3, Быстрый 3, Турбо 5.7
         pricingMatrix: [
-          { conditions: { mode: 'turbo' }, costInTokens: 5.7, costInDollars: 0.08,  label: 'Турбо режим' },
-          { conditions: { mode: 'fast' },  costInTokens: 3,   costInDollars: 0.04,  label: 'Быстрый режим' },
+          { conditions: { mode: 'turbo' }, costInTokens: 5.7, costInDollars: 0.08, label: 'Турбо режим' },
+          { conditions: { mode: 'fast' }, costInTokens: 3, costInDollars: 0.04, label: 'Быстрый режим' },
           { conditions: { mode: 'draft' }, costInTokens: 1.3, costInDollars: 0.015, label: 'Обычный режим' },
         ],
         uiParameters: [
@@ -1309,7 +1317,7 @@ export class ProviderRegistryService implements OnModuleInit {
       // ════════════════════════════════════════════════════
       // VIDEO МОДЕЛИ
       // ════════════════════════════════════════════════════
-            {
+      {
         slug: 'veo-3.1-fast',
         name: 'Veo 3.1 Fast',
         displayName: 'Google Veo 3.1 Fast',
@@ -1329,17 +1337,17 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         // Таблица: 720p/1080p 8сек = 15, 4K 8сек = 45.3
         pricingMatrix: [
-          { conditions: { quality: '4k' },    costInTokens: 45.3, costInDollars: 0.5042, label: '4K (8 сек)' },
-          { conditions: { quality: '1080p' }, costInTokens: 15,   costInDollars: 0.1681, label: '1080p (8 сек)' },
-          { conditions: { quality: '720p' },  costInTokens: 15,   costInDollars: 0.1681, label: '720p (8 сек)' },
+          { conditions: { quality: '4k' }, costInTokens: 45.3, costInDollars: 0.5042, label: '4K (8 сек)' },
+          { conditions: { quality: '1080p' }, costInTokens: 15, costInDollars: 0.1681, label: '1080p (8 сек)' },
+          { conditions: { quality: '720p' }, costInTokens: 15, costInDollars: 0.1681, label: '720p (8 сек)' },
         ],
         uiParameters: [
           {
             key: 'quality', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (15🔥)' },
+              { value: '720p', label: '720p (15🔥)' },
               { value: '1080p', label: '1080p (15🔥)' },
-              { value: '4k',    label: '4K (45.3🔥)' },
+              { value: '4k', label: '4K (45.3🔥)' },
             ],
           },
           {
@@ -1358,7 +1366,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'veo-3.1-pro',
         name: 'Veo 3.1 Pro',
         displayName: 'Google Veo 3.1 Pro',
@@ -1379,17 +1387,17 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
         // Таблица: 720p/1080p 8сек = 75, 4K 8сек = 112
         pricingMatrix: [
-          { conditions: { quality: '4k' },    costInTokens: 112, costInDollars: 1.25,   label: '4K (8 сек)' },
-          { conditions: { quality: '1080p' }, costInTokens: 75,  costInDollars: 0.8333, label: '1080p (8 сек)' },
-          { conditions: { quality: '720p' },  costInTokens: 75,  costInDollars: 0.8333, label: '720p (8 сек)' },
+          { conditions: { quality: '4k' }, costInTokens: 112, costInDollars: 1.25, label: '4K (8 сек)' },
+          { conditions: { quality: '1080p' }, costInTokens: 75, costInDollars: 0.8333, label: '1080p (8 сек)' },
+          { conditions: { quality: '720p' }, costInTokens: 75, costInDollars: 0.8333, label: '720p (8 сек)' },
         ],
         uiParameters: [
           {
             key: 'quality', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (75🔥)' },
+              { value: '720p', label: '720p (75🔥)' },
               { value: '1080p', label: '1080p (75🔥)' },
-              { value: '4k',    label: '4K (112🔥)' },
+              { value: '4k', label: '4K (112🔥)' },
             ],
           },
           {
@@ -1408,7 +1416,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'sora-2-pro',
         name: 'Sora 2 Pro',
         displayName: 'OpenAI Sora 2 Pro',
@@ -1430,21 +1438,21 @@ export class ProviderRegistryService implements OnModuleInit {
         // Таблица: 86🔥. 1080p = ×1.667 → 143
         pricingMatrix: [
           { conditions: { quality: '1080p' }, costInTokens: 143, costInDollars: 1.598, label: '1080p HD' },
-          { conditions: { quality: '720p' },  costInTokens: 86,  costInDollars: 0.9583, label: '720p Standard' },
+          { conditions: { quality: '720p' }, costInTokens: 86, costInDollars: 0.9583, label: '720p Standard' },
         ],
         uiParameters: [
           {
             key: 'quality', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (86🔥)' },
+              { value: '720p', label: '720p (86🔥)' },
               { value: '1080p', label: '1080p HD (143🔥)' },
             ],
           },
           {
             key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: false, defaultValue: 12,
             options: [
-              { value: 4,  label: '4 сек' },
-              { value: 8,  label: '8 сек' },
+              { value: 4, label: '4 сек' },
+              { value: 8, label: '8 сек' },
               { value: 12, label: '12 сек' },
             ],
           },
@@ -1457,7 +1465,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'kling-2.5-turbo-pro',
         name: 'Kling 2.5 Turbo Pro',
         displayName: 'Kling 2.5 Turbo Pro',
@@ -1477,17 +1485,17 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         // Таблица Kling 3.0: 4.3🔥/сек → 5сек=21.5, 10сек=43
         pricingMatrix: [
-          { conditions: { duration: '10' }, costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
-          { conditions: { duration: '5' },  costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
+          { conditions: { duration: '10' }, costInTokens: 43, costInDollars: 0.7, label: '10 секунд' },
+          { conditions: { duration: '5' }, costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
           // fallback на числовой тип, если фронт шлёт number
-          { conditions: { duration: 10 },   costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
-          { conditions: { duration: 5 },    costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
+          { conditions: { duration: 10 }, costInTokens: 43, costInDollars: 0.7, label: '10 секунд' },
+          { conditions: { duration: 5 }, costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: '5',
             options: [
-              { value: '5',  label: '5 сек (21.5🔥)' },
+              { value: '5', label: '5 сек (21.5🔥)' },
               { value: '10', label: '10 сек (43🔥)' },
             ],
           },
@@ -1501,7 +1509,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'kling-2.5-turbo-pro-img2video',
         name: 'Kling 2.5 Turbo Pro Img2Video',
         displayName: 'Kling 2.5 Turbo Pro (Image to Video)',
@@ -1521,22 +1529,22 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         // Таблица Kling 3.0: 4.3🔥/сек → 5сек=21.5, 10сек=43
         pricingMatrix: [
-          { conditions: { duration: '10' }, costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
-          { conditions: { duration: '5' },  costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
-          { conditions: { duration: 10 },   costInTokens: 43,   costInDollars: 0.7,  label: '10 секунд' },
-          { conditions: { duration: 5 },    costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
+          { conditions: { duration: '10' }, costInTokens: 43, costInDollars: 0.7, label: '10 секунд' },
+          { conditions: { duration: '5' }, costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
+          { conditions: { duration: 10 }, costInTokens: 43, costInDollars: 0.7, label: '10 секунд' },
+          { conditions: { duration: 5 }, costInTokens: 21.5, costInDollars: 0.35, label: '5 секунд' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: '5',
             options: [
-              { value: '5',  label: '5 сек (21.5🔥)' },
+              { value: '5', label: '5 сек (21.5🔥)' },
               { value: '10', label: '10 сек (43🔥)' },
             ],
           },
         ],
       },
-           {
+      {
         slug: 'wan-2.5',
         name: 'WAN 2.5',
         displayName: 'WAN 2.5 (Alibaba)',
@@ -1556,23 +1564,23 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         // Нет в таблице → 720p: 5сек=70, 10сек=130; 1080p: 5сек=105, 10сек=200
         pricingMatrix: [
-          { conditions: { resolution: '1080p', duration: '10' }, costInTokens: 200, costInDollars: 2.2,  label: '1080p × 10 сек' },
-          { conditions: { resolution: '1080p', duration: '5' },  costInTokens: 105, costInDollars: 1.16, label: '1080p × 5 сек' },
-          { conditions: { resolution: '720p',  duration: '10' }, costInTokens: 130, costInDollars: 1.45, label: '720p × 10 сек' },
-          { conditions: { resolution: '720p',  duration: '5' },  costInTokens: 70,  costInDollars: 0.78, label: '720p × 5 сек' },
+          { conditions: { resolution: '1080p', duration: '10' }, costInTokens: 200, costInDollars: 2.2, label: '1080p × 10 сек' },
+          { conditions: { resolution: '1080p', duration: '5' }, costInTokens: 105, costInDollars: 1.16, label: '1080p × 5 сек' },
+          { conditions: { resolution: '720p', duration: '10' }, costInTokens: 130, costInDollars: 1.45, label: '720p × 10 сек' },
+          { conditions: { resolution: '720p', duration: '5' }, costInTokens: 70, costInDollars: 0.78, label: '720p × 5 сек' },
         ],
         uiParameters: [
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p' },
+              { value: '720p', label: '720p' },
               { value: '1080p', label: '1080p' },
             ],
           },
           {
             key: 'duration', label: 'Длительность (сек)', type: 'select', affectsPrice: true, defaultValue: '5',
             options: [
-              { value: '5',  label: '5 сек' },
+              { value: '5', label: '5 сек' },
               { value: '10', label: '10 сек' },
             ],
           },

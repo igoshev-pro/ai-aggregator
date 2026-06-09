@@ -2332,11 +2332,16 @@ export class BillingService implements OnApplicationBootstrap {
         const cachedCost = (cached * cachedPrice) / 1_000_000;
         const outputCost =
           ((outputTokens || 0) * newOutputPrice) / 1_000_000;
+        // 🆕 Надбавка за web search (фикс за факт запроса).
 
-        // Реальная стоимость в спичках, округлённая до 2 знаков
-        const rawCost = roundTokens(inputCost + cachedCost + outputCost);
+        // Применяется ТОЛЬКО если у модели задан webSearchCostInTokens > 0.
+        const webSearchCost = Number((model as any).webSearchCostInTokens) || 0;
 
-        // Пол по minTokenCost модели
+        // Реальная стоимость в спичках + надбавка за поиск
+        const rawCost = roundTokens(
+          inputCost + cachedCost + outputCost + webSearchCost,  // 🆕 +webSearchCost
+        );
+
         const costInTokens = rawCost < modelMinCost ? modelMinCost : rawCost;
 
         // Себестоимость провайдера (справочно, для аналитики маржи).
