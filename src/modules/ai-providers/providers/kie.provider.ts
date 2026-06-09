@@ -13,7 +13,6 @@ import {
   TaskStatusResult,
 } from './base-provider.abstract';
 
-
 const KIE_MODEL_PARAMS: Record<string, {
   aspectRatios: string[];
   resolutions: string[];
@@ -101,11 +100,10 @@ const KIE_MODEL_PARAMS: Record<string, {
   },
 };
 
-
 interface VideoModelConfig {
   kieModel: string;
-  apiType: 'jobs' | 'runway';
-  statusApiType: 'jobs' | 'runway';
+  apiType: 'jobs' | 'runway' | 'veo';
+  statusApiType: 'jobs' | 'runway' | 'veo';
   hasImageInput: boolean;
   hasSound?: boolean;
   hasMode?: boolean;
@@ -118,8 +116,33 @@ interface VideoModelConfig {
   aspectRatios: string[];
 }
 
-
 const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
+  // ─── Veo 3.1 (KIE /api/v1/veo/generate) ───────────────────────
+  'veo3_lite': {
+    kieModel: 'veo3_lite',
+    apiType: 'veo',
+    statusApiType: 'veo',
+    hasImageInput: true,
+    durations: ['4', '6', '8'],
+    aspectRatios: ['16:9', '9:16'],
+  },
+  'veo3_fast': {
+    kieModel: 'veo3_fast',
+    apiType: 'veo',
+    statusApiType: 'veo',
+    hasImageInput: true,
+    durations: ['4', '6', '8'],
+    aspectRatios: ['16:9', '9:16'],
+  },
+  'veo3': {
+    kieModel: 'veo3',
+    apiType: 'veo',
+    statusApiType: 'veo',
+    hasImageInput: true,
+    durations: ['4', '6', '8'],
+    aspectRatios: ['16:9', '9:16'],
+  },
+  // ─── Kling ──────────────────────────────────────────────────────
   'sora-2-text-to-video': {
     kieModel: 'sora-2-text-to-video',
     apiType: 'jobs',
@@ -204,12 +227,10 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
   },
 };
 
-
 @Injectable()
 export class KieProvider extends BaseProvider {
   private client: AxiosInstance;
   private readonly logger = new Logger(KieProvider.name);
-
 
   constructor(config: ProviderConfig) {
     super('kie', config);
@@ -222,7 +243,6 @@ export class KieProvider extends BaseProvider {
       },
     });
   }
-
 
   // ═══════════════════════════════════════════════════════
   // IMAGE GENERATION
@@ -309,7 +329,6 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-
   // ═══════════════════════════════════════════════════════
   // VIDEO GENERATION
   // ═══════════════════════════════════════════════════════
@@ -355,6 +374,10 @@ export class KieProvider extends BaseProvider {
       if (config.apiType === 'runway') {
         return await this.generateRunwayVideo(request, config, start);
       }
+      // 🆕 Veo 3.1 использует отдельный эндпоинт KIE
+      if (config.apiType === 'veo') {
+        return await this.generateVeoVideo(request, config, start);
+      }
       return await this.generateJobsVideo(request, config, start);
     } catch (error: any) {
       this.logger.error(`KIE generateVideo error: ${error.message}`);
@@ -362,6 +385,61 @@ export class KieProvider extends BaseProvider {
     }
   }
 
+  // ═══════════════════════════════════════════════════════
+  // 🆕 VEO 3.1 VIDEO GENERATION (KIE /api/v1/veo/generate)
+  // ═══════════════════════════════════════════════════════
+  private async generateVeoVideo(
+    request: VideoGenerationRequest,
+    config: VideoModelConfig,
+    start: number,
+  ): Promise<GenerationResult> {
+    const r = request as any;
+
+    const body: Record<string, any> = {
+      prompt: request.prompt,
+      model: config.kieModel,                          // 'veo3_lite' | 'veo3_fast' | 'veo3'
+      aspect_ratio: r.aspectRatio || '16:9',
+      duration: r.duration || 8,
+      enableTranslation: true,                          // поддержка не-английских промптов
+    };
+
+    // resolution → передаётся напрямую в KIE Veo API
+    if (r.resolution) {
+      body.resolution = r.resolution;                  // '720p' | '1080p' | '4k'
+    }
+
+    // image-to-video: KIE Veo принимает imageUrls (массив)
+    if (r.imageUrl) {
+      body.imageUrls = [r.imageUrl];
+    } else if (r.imageUrls?.length > 0) {
+      body.imageUrls = r.imageUrls;
+    }
+
+    this.logger.debug(
+      `KIE Veo generate: model=${config.kieModel}, body=${JSON.stringify(body).substring(0, 400)}`,
+    );
+
+    const response = await this.client.post('/api/v1/veo/generate', body);
+    const data = response.data;
+
+    this.logger.debug(
+      `KIE Veo response: code=${data.code}, msg="${data.msg}", data=${JSON.stringify(data).substring(0, 400)}`,
+    );
+
+    if (data.code !== 200) {
+      throw new Error(data.msg || `KIE Veo task creation failed (code ${data.code})`);
+    }
+
+    const taskId = data.data?.taskId;
+    if (!taskId) throw new Error('No taskId in KIE Veo response');
+
+    return {
+      success: true,
+      data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: 'veo' } },
+      responseTimeMs: Date.now() - start,
+      providerSlug: this.slug,
+    };
+  }
 
   private async generateJobsVideo(
     request: VideoGenerationRequest,
@@ -429,7 +507,6 @@ export class KieProvider extends BaseProvider {
     };
   }
 
-
   private async generateRunwayVideo(
     request: VideoGenerationRequest,
     config: VideoModelConfig,
@@ -462,7 +539,6 @@ export class KieProvider extends BaseProvider {
     };
   }
 
-
   // ═══════════════════════════════════════════════════════
   // TASK STATUS CHECK
   // ═══════════════════════════════════════════════════════
@@ -476,6 +552,11 @@ export class KieProvider extends BaseProvider {
 
     if (taskId.startsWith('task_elevenlabs_')) {
       return await this.checkElevenLabsTaskStatus(taskId);
+    }
+
+    // 🆕 Veo taskId приходит с префиксом 'veo_task_'
+    if (taskId.startsWith('veo_task_') || taskId.startsWith('veo_')) {
+      return await this.checkVeoTaskStatus(taskId);
     }
 
     const jobsResult = await this.checkJobsTaskStatus(taskId);
@@ -496,6 +577,55 @@ export class KieProvider extends BaseProvider {
     return jobsResult;
   }
 
+  // ═══════════════════════════════════════════════════════
+  // 🆕 VEO TASK STATUS (KIE /api/v1/veo/record-info)
+  // ═══════════════════════════════════════════════════════
+  private async checkVeoTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    try {
+      const response = await this.client.get('/api/v1/veo/record-info', {
+        params: { taskId },
+      });
+      const data = response.data;
+
+      if (data.code !== 200) {
+        return { status: 'failed', error: data.msg || 'Failed to get Veo task status' };
+      }
+
+      const task = data.data;
+      if (!task) {
+        return { status: 'pending' };
+      }
+
+      this.logger.debug(
+        `Veo task ${taskId}: successFlag=${task.successFlag}, response=${JSON.stringify(task.response || {}).substring(0, 400)}`,
+      );
+
+      // successFlag: 0=generating, 1=success, 2=failed, 3=generation_failed
+      switch (task.successFlag) {
+        case 1: {
+          // Вeo возвращает resultUrls в task.response.resultUrls (массив)
+          const resultUrls: string[] = task.response?.resultUrls || [];
+          return {
+            status: 'completed',
+            resultUrls,
+            progress: 100,
+          };
+        }
+        case 2:
+        case 3:
+          return {
+            status: 'failed',
+            error: task.errorMessage || `Veo generation failed (flag=${task.successFlag})`,
+          };
+        case 0:
+        default:
+          return { status: 'processing', progress: 0 };
+      }
+    } catch (error: any) {
+      this.logger.error(`Veo check task status error: ${error.message}`);
+      return { status: 'failed', error: `Status check failed: ${error.message}` };
+    }
+  }
 
   private async checkElevenLabsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
@@ -563,7 +693,6 @@ export class KieProvider extends BaseProvider {
       };
     }
   }
-
 
   private async checkSunoTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
@@ -640,7 +769,6 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-
   private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
@@ -693,7 +821,6 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-
   private async checkJobsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       const response = await this.client.get('/api/v1/jobs/recordInfo', { params: { taskId } });
@@ -733,50 +860,35 @@ export class KieProvider extends BaseProvider {
 
         if (task.resultUrls?.length > 0) {
           resultUrls = task.resultUrls;
-        }
-        else if (task.output?.urls?.length > 0) {
+        } else if (task.output?.urls?.length > 0) {
           resultUrls = task.output.urls;
-        }
-        else if (typeof task.output === 'string' && task.output.startsWith('http')) {
+        } else if (typeof task.output === 'string' && task.output.startsWith('http')) {
           resultUrls = [task.output];
-        }
-        else if (Array.isArray(task.output)) {
+        } else if (Array.isArray(task.output)) {
           resultUrls = task.output.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
-        }
-        else if (task.result?.urls?.length > 0) {
+        } else if (task.result?.urls?.length > 0) {
           resultUrls = task.result.urls;
-        }
-        else if (typeof task.result === 'string' && task.result.startsWith('http')) {
+        } else if (typeof task.result === 'string' && task.result.startsWith('http')) {
           resultUrls = [task.result];
-        }
-        else if (Array.isArray(task.result)) {
+        } else if (Array.isArray(task.result)) {
           resultUrls = task.result.filter((u: any) => typeof u === 'string' && u.startsWith('http'));
-        }
-        else if (task.images?.length > 0) {
+        } else if (task.images?.length > 0) {
           resultUrls = task.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
-        }
-        else if (task.videos?.length > 0) {
+        } else if (task.videos?.length > 0) {
           resultUrls = task.videos.map((v: any) => typeof v === 'string' ? v : v.url).filter(Boolean);
-        }
-        else if (task.url) {
+        } else if (task.url) {
           resultUrls = [task.url];
-        }
-        else if (task.image_url) {
+        } else if (task.image_url) {
           resultUrls = [task.image_url];
-        }
-        else if (task.video_url) {
+        } else if (task.video_url) {
           resultUrls = [task.video_url];
-        }
-        else if (task.audio_url) {
+        } else if (task.audio_url) {
           resultUrls = [task.audio_url];
-        }
-        else if (task.data?.urls?.length > 0) {
+        } else if (task.data?.urls?.length > 0) {
           resultUrls = task.data.urls;
-        }
-        else if (task.data?.url) {
+        } else if (task.data?.url) {
           resultUrls = [task.data.url];
-        }
-        else if (task.resultJson) {
+        } else if (task.resultJson) {
           try {
             const parsed = JSON.parse(task.resultJson);
             if (parsed.resultUrls?.length > 0) {
@@ -822,7 +934,6 @@ export class KieProvider extends BaseProvider {
       };
     }
   }
-
 
   // ═══════════════════════════════════════════════════════
   // AUDIO GENERATION
@@ -1085,7 +1196,6 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-
   async generateLyrics(prompt: string, callBackUrl: string): Promise<string> {
     try {
       const response = await this.client.post('/api/v1/lyrics', {
@@ -1102,7 +1212,6 @@ export class KieProvider extends BaseProvider {
       throw error;
     }
   }
-
 
   async getLyricsTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
@@ -1128,11 +1237,7 @@ export class KieProvider extends BaseProvider {
         return { status: 'failed', error: task.errorMessage || 'Lyrics generation failed' };
       }
       if (status === 'completed') {
-        return {
-          status: 'completed',
-          resultUrls: [],
-          progress: 100,
-        };
+        return { status: 'completed', resultUrls: [], progress: 100 };
       }
       return { status, progress: task.progress || 0 };
     } catch (error: any) {
@@ -1140,7 +1245,6 @@ export class KieProvider extends BaseProvider {
       return { status: 'failed', error: error.message };
     }
   }
-
 
   // ═══════════════════════════════════════════════════════
   // TEXT GENERATION — KIE Gemini models (with VISION support)
@@ -1150,29 +1254,17 @@ export class KieProvider extends BaseProvider {
     'gemini-3-flash': '/gemini-3-flash/v1/chat/completions',
   };
 
-
-  // 🆕 VISION HELPERS — OpenAI-compatible multimodal content
-  private buildOpenAIContent(
-    text: string,
-    imageUrls?: string[],
-  ): string | any[] {
+  private buildOpenAIContent(text: string, imageUrls?: string[]): string | any[] {
     if (!imageUrls || imageUrls.length === 0) {
       return text;
     }
-
     const parts: any[] = [];
-
     if (text && text.trim().length > 0) {
       parts.push({ type: 'text', text });
     }
-
     for (const url of imageUrls) {
-      parts.push({
-        type: 'image_url',
-        image_url: { url },
-      });
+      parts.push({ type: 'image_url', image_url: { url } });
     }
-
     return parts;
   }
 
@@ -1187,7 +1279,6 @@ export class KieProvider extends BaseProvider {
       return { role: msg.role, content: msg.content };
     });
   }
-
 
   async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
@@ -1238,7 +1329,6 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-
   async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
     const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
 
@@ -1263,10 +1353,7 @@ export class KieProvider extends BaseProvider {
           temperature: request.temperature ?? 0.7,
           stream: true,
         },
-        {
-          responseType: 'stream',
-          timeout: 180000,
-        },
+        { responseType: 'stream', timeout: 180000 },
       );
 
       let buffer = '';
@@ -1352,11 +1439,10 @@ export class KieProvider extends BaseProvider {
         errorMessage = `HTTP ${status}: ${error.message}`;
       }
 
-      this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
+            this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
       yield { content: '', done: true, error: `KIE: ${status || 'NETWORK'} - ${errorMessage}` };
     }
   }
-
 
   // ═══════════════════════════════════════════════════════
   // HEALTH CHECK
@@ -1380,7 +1466,6 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-
   // ═══════════════════════════════════════════════════════
   // HELPERS
   // ═══════════════════════════════════════════════════════
@@ -1390,7 +1475,6 @@ export class KieProvider extends BaseProvider {
     const g = gcd(width, height);
     return `${width / g}:${height / g}`;
   }
-
 
   private handleError(error: any, start: number): GenerationResult {
     const status = error?.response?.status;
