@@ -671,7 +671,7 @@ export class ProviderRegistryService implements OnModuleInit {
 
         // 🆕 minTokenCost поднимаем, чтобы покрыть поиск + минимум токенов
         // было 1 → должно покрывать хотя бы стоимость поиска + базу
-        minTokenCost: 1.5,
+        minTokenCost: 1,
 
         sortOrder: 6,
         capabilities: ['streaming', 'web_search', 'citations'],
