@@ -237,7 +237,7 @@ export class ChatService {
     });
     await userMessage.save();
 
-    const contextMessages = await this.buildContext(conversation, dto);
+    const contextMessages = await this.buildContext(conversation, dto, userMessage._id.toString());
 
     try {
       const result = await this.aiProvidersService.generateText(dto.modelSlug, {
@@ -424,7 +424,7 @@ export class ChatService {
       await userMessage.save();
 
       // 6. Построение контекста
-      const contextMessages = await this.buildContext(conversation, dto);
+      const contextMessages = await this.buildContext(conversation, dto, userMessage._id.toString());
 
       // 7. Создание сообщения ассистента (placeholder)
       const assistantMessage = new this.messageModel({
@@ -629,79 +629,93 @@ export class ChatService {
   }
 
   /**
-   * Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
-   */
-  private async buildContext(
-    conversation: ConversationDocument,
-    dto: SendMessageDto,
-  ): Promise<ContextMessage[]> {
-    const messages: ContextMessage[] = [];
+ * Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
+ * 
+ * @param excludeMessageId - ID только что сохранённого user-сообщения,
+ *   которое НЕ нужно включать из истории (оно добавляется явно в конце)
+ */
+private async buildContext(
+  conversation: ConversationDocument,
+  dto: SendMessageDto,
+  excludeMessageId?: string,  // 🆕 новый параметр
+): Promise<ContextMessage[]> {
+  const messages: ContextMessage[] = []
 
-    const systemPrompt = dto.systemPrompt || conversation.systemPrompt;
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-
-    const maxContextMessages = 20;
-    const history = await this.messageModel
-      .find({
-        conversationId: conversation._id,
-        isError: false,
-        isStreaming: false,
-      })
-      .sort({ createdAt: -1 })
-      .limit(maxContextMessages)
-      .exec();
-
-    const orderedHistory = history.reverse();
-
-    for (const msg of orderedHistory) {
-      const contextMsg: ContextMessage = {
-        role: msg.role,
-        content: msg.content,
-      };
-
-      const msgImages = (msg as any).imageUrls;
-      if (Array.isArray(msgImages) && msgImages.length > 0) {
-        contextMsg.imageUrls = msgImages;
-      }
-
-      messages.push(contextMsg);
-    }
-
-    // Встраиваем извлечённый текст документов в content последнего сообщения
-    let lastContent = dto.content || '';
-    if (dto.attachments && dto.attachments.length > 0) {
-      const docBlocks: string[] = [];
-      for (const att of dto.attachments) {
-        if (att.text && att.text.trim()) {
-          docBlocks.push(
-            `Содержимое прикреплённого файла «${att.filename}»:\n` +
-            '```\n' +
-            att.text.trim() +
-            '\n```',
-          );
-        }
-      }
-      if (docBlocks.length > 0) {
-        lastContent =
-          docBlocks.join('\n\n') +
-          '\n\n---\n\n' +
-          (lastContent || 'Проанализируй прикреплённые файлы.');
-      }
-    }
-
-    const lastUserMsg: ContextMessage = {
-      role: 'user',
-      content: lastContent,
-    };
-    if (dto.imageUrls && dto.imageUrls.length > 0) {
-      lastUserMsg.imageUrls = dto.imageUrls;
-    }
-    messages.push(lastUserMsg);
-
-    return messages;
+  const systemPrompt = dto.systemPrompt || conversation.systemPrompt
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt })
   }
+
+  const maxContextMessages = 20
+  
+  // 🔧 ИСПРАВЛЕНИЕ: строим фильтр динамически
+  const historyFilter: any = {
+    conversationId: conversation._id,
+    isError: false,
+    isStreaming: false,
+  }
+  
+  // Исключаем только что сохранённое сообщение пользователя
+  // чтобы избежать дублирования в конце buildContext
+  if (excludeMessageId) {
+    historyFilter._id = { $ne: excludeMessageId }
+  }
+
+  const history = await this.messageModel
+    .find(historyFilter)
+    .sort({ createdAt: -1 })
+    .limit(maxContextMessages)
+    .exec()
+
+  const orderedHistory = history.reverse()
+
+  for (const msg of orderedHistory) {
+    const contextMsg: ContextMessage = {
+      role: msg.role,
+      content: msg.content,
+    }
+
+    const msgImages = (msg as any).imageUrls
+    if (Array.isArray(msgImages) && msgImages.length > 0) {
+      contextMsg.imageUrls = msgImages
+    }
+
+    messages.push(contextMsg)
+  }
+
+  // Встраиваем извлечённый текст документов в content последнего сообщения
+  let lastContent = dto.content || ''
+  if (dto.attachments && dto.attachments.length > 0) {
+    const docBlocks: string[] = []
+    for (const att of dto.attachments) {
+      if (att.text && att.text.trim()) {
+        docBlocks.push(
+          `Содержимое прикреплённого файла «${att.filename}»:\n` +
+          '```\n' +
+          att.text.trim() +
+          '\n```',
+        )
+      }
+    }
+    if (docBlocks.length > 0) {
+      lastContent =
+        docBlocks.join('\n\n') +
+        '\n\n---\n\n' +
+        (lastContent || 'Проанализируй прикреплённые файлы.')
+    }
+  }
+
+  const lastUserMsg: ContextMessage = {
+    role: 'user',
+    content: lastContent,
+  }
+  if (dto.imageUrls && dto.imageUrls.length > 0) {
+    lastUserMsg.imageUrls = dto.imageUrls
+  }
+  messages.push(lastUserMsg)
+
+  return messages
+}
 
   private async getConversationWithAccess(
     userId: string,
