@@ -1237,13 +1237,13 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'video',
         fixedCostPerGeneration: 0.40,
         tokensPerDollar: 90,
-        minTokenCost: 14,
+        minTokenCost: 10,
         sortOrder: 1,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'veo3_lite', priority: 1, isActive: true },
         ],
-        defaultParams: { aspectRatio: '16:9', duration: 8 },
+        defaultParams: { aspectRatio: '16:9', duration: 4 },
         limits: { maxDuration: 8 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
@@ -1251,19 +1251,19 @@ export class ProviderRegistryService implements OnModuleInit {
           { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 14,  costInDollars: 0.40,  label: '8с × 720p'  },
           { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 16,  costInDollars: 0.60,  label: '8с × 1080p' },
           { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 68, costInDollars: 1.20,  label: '8с × 4K'    },
-          // { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 27,  costInDollars: 0.30,  label: '6с × 720p'  },
-          // { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 40,  costInDollars: 0.45,  label: '6с × 1080p' },
-          // { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 81,  costInDollars: 0.90,  label: '6с × 4K'    },
-          // { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 14,  costInDollars: 0.20,  label: '4с × 720p'  },
-          // { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 27,  costInDollars: 0.30,  label: '4с × 1080p' },
-          // { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 54,  costInDollars: 0.60,  label: '4с × 4K'    },
+          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 12,  costInDollars: 0.30,  label: '6с × 720p'  },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 14,  costInDollars: 0.45,  label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 54,  costInDollars: 0.90,  label: '6с × 4K'    },
+          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 10,  costInDollars: 0.20,  label: '4с × 720p'  },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 12,  costInDollars: 0.30,  label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 48,  costInDollars: 0.60,  label: '4с × 4K'    },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
             options: [
-              // { value: 4,  label: '4 секунды' },
-              // { value: 6,  label: '6 секунд'  },
+              { value: 4,  label: '4 секунды' },
+              { value: 6,  label: '6 секунд'  },
               { value: 8,  label: '8 секунд'  },
             ],
           },
@@ -1294,32 +1294,32 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'video',
         fixedCostPerGeneration: 0.70,
         tokensPerDollar: 90,
-        minTokenCost: 27,
+        minTokenCost: 20,
         sortOrder: 2,
         capabilities: ['text_to_video', 'image_to_video', 'audio', 'reference_to_video'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'veo3_fast', priority: 1, isActive: true },
         ],
         defaultParams: { aspectRatio: '16:9', duration: 8 },
-        limits: { maxDuration: 8 },
+        limits: { maxDuration: 4 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 3 },
         pricingMatrix: [
           { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 27,  costInDollars: 0.70,  label: '8с × 720p'  },
           { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 29,  costInDollars: 1.05,  label: '8с × 1080p' },
           { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 81, costInDollars: 2.10,  label: '8с × 4K'    },
-          // { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 47,  costInDollars: 0.525, label: '6с × 720p'  },
-          // { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 71,  costInDollars: 0.788, label: '6с × 1080p' },
-          // { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 142, costInDollars: 1.575, label: '6с × 4K'    },
-          // { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 32,  costInDollars: 0.35,  label: '4с × 720p'  },
-          // { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 47,  costInDollars: 0.525, label: '4с × 1080p' },
-          // { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 95,  costInDollars: 1.05,  label: '4с × 4K'    },
+          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 25,  costInDollars: 0.525, label: '6с × 720p'  },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 27,  costInDollars: 0.788, label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 64, costInDollars: 1.575, label: '6с × 4K'    },
+          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 20,  costInDollars: 0.35,  label: '4с × 720p'  },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 25,  costInDollars: 0.525, label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 52,  costInDollars: 1.05,  label: '4с × 4K'    },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
             options: [
-              // { value: 4, label: '4 секунды' },
-              // { value: 6, label: '6 секунд'  },
+              { value: 4, label: '4 секунды' },
+              { value: 6, label: '6 секунд'  },
               { value: 8, label: '8 секунд'  },
             ],
           },
@@ -1350,33 +1350,33 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'video',
         fixedCostPerGeneration: 2.50,
         tokensPerDollar: 90,
-        minTokenCost: 113,
+        minTokenCost: 76,
         sortOrder: 3,
         isPremium: true,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'veo3', priority: 1, isActive: true },
         ],
-        defaultParams: { aspectRatio: '16:9', duration: 8 },
+        defaultParams: { aspectRatio: '16:9', duration: 4 },
         limits: { maxDuration: 8 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
         pricingMatrix: [
           { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 113, costInDollars: 2.50,  label: '8с × 720p'  },
           { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 115, costInDollars: 3.75,  label: '8с × 1080p' },
           { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 167, costInDollars: 7.50,  label: '8с × 4K'    },
-          // { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 169, costInDollars: 1.875, label: '6с × 720p'  },
-          // { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 253, costInDollars: 2.813, label: '6с × 1080p' },
-          // { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 506, costInDollars: 5.625, label: '6с × 4K'    },
-          // { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 113, costInDollars: 1.25,  label: '4с × 720p'  },
-          // { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 169, costInDollars: 1.875, label: '4с × 1080p' },
-          // { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 338, costInDollars: 3.75,  label: '4с × 4K'    },
+          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 98, costInDollars: 1.875, label: '6с × 720p'  },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 100, costInDollars: 2.813, label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 140, costInDollars: 5.625, label: '6с × 4K'    },
+          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 76, costInDollars: 1.25,  label: '4с × 720p'  },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 80, costInDollars: 1.875, label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 115, costInDollars: 3.75,  label: '4с × 4K'    },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
             options: [
-              // { value: 4, label: '4 секунды' },
-              // { value: 6, label: '6 секунд'  },
+              { value: 4, label: '4 секунды' },
+              { value: 6, label: '6 секунд'  },
               { value: 8, label: '8 секунд'  },
             ],
           },
@@ -1500,31 +1500,48 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Kling 3.0',
         description: 'Мощная китайская видеомодель с поддержкой длинных клипов',
         type: 'video',
-        fixedCostPerGeneration: 0.14,
+        fixedCostPerGeneration: 0.24,
         tokensPerDollar: 90,
-        minTokenCost: 12,
+        minTokenCost: 22,
         sortOrder: 6,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
         ],
-        defaultParams: { aspectRatio: '16:9', duration: 5, mode: 'std' },
+        defaultParams: { aspectRatio: '16:9', duration: 5, mode: 'std', sound: false },
         limits: { maxDuration: 15 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
-          { conditions: { mode: 'std',  duration: 5  }, costInTokens: 12,  costInDollars: 0.14,  label: 'Стандарт × 5с'  },
-          { conditions: { mode: 'std',  duration: 10 }, costInTokens: 24,  costInDollars: 0.28,  label: 'Стандарт × 10с' },
-          { conditions: { mode: 'std',  duration: 15 }, costInTokens: 36,  costInDollars: 0.42,  label: 'Стандарт × 15с' },
-          { conditions: { mode: 'pro',  duration: 5  }, costInTokens: 36,  costInDollars: 0.42,  label: 'Pro × 5с'       },
-          { conditions: { mode: 'pro',  duration: 10 }, costInTokens: 72,  costInDollars: 0.84,  label: 'Pro × 10с'      },
-          { conditions: { mode: 'pro',  duration: 15 }, costInTokens: 108, costInDollars: 1.26,  label: 'Pro × 15с'      },
+          // std (720p) без звука
+          { conditions: { mode: 'std', sound: false, duration: 5  }, costInTokens: 22,  costInDollars: 0.244, label: 'Стандарт × 5с × без звука'  },
+          { conditions: { mode: 'std', sound: false, duration: 10 }, costInTokens: 43,  costInDollars: 0.478, label: 'Стандарт × 10с × без звука' },
+          { conditions: { mode: 'std', sound: false, duration: 15 }, costInTokens: 65,  costInDollars: 0.722, label: 'Стандарт × 15с × без звука' },
+          // std (720p) со звуком
+          { conditions: { mode: 'std', sound: true,  duration: 5  }, costInTokens: 30,  costInDollars: 0.333, label: 'Стандарт × 5с × со звуком'  },
+          { conditions: { mode: 'std', sound: true,  duration: 10 }, costInTokens: 60,  costInDollars: 0.667, label: 'Стандарт × 10с × со звуком' },
+          { conditions: { mode: 'std', sound: true,  duration: 15 }, costInTokens: 90,  costInDollars: 1.000, label: 'Стандарт × 15с × со звуком' },
+          // pro (1080p) без звука
+          { conditions: { mode: 'pro', sound: false, duration: 5  }, costInTokens: 29,  costInDollars: 0.322, label: 'Pro × 5с × без звука'  },
+          { conditions: { mode: 'pro', sound: false, duration: 10 }, costInTokens: 57,  costInDollars: 0.633, label: 'Pro × 10с × без звука' },
+          { conditions: { mode: 'pro', sound: false, duration: 15 }, costInTokens: 86,  costInDollars: 0.956, label: 'Pro × 15с × без звука' },
+          // pro (1080p) со звуком
+          { conditions: { mode: 'pro', sound: true,  duration: 5  }, costInTokens: 42,  costInDollars: 0.467, label: 'Pro × 5с × со звуком'  },
+          { conditions: { mode: 'pro', sound: true,  duration: 10 }, costInTokens: 83,  costInDollars: 0.922, label: 'Pro × 10с × со звуком' },
+          { conditions: { mode: 'pro', sound: true,  duration: 15 }, costInTokens: 125, costInDollars: 1.389, label: 'Pro × 15с × со звуком' },
         ],
         uiParameters: [
           {
             key: 'mode', label: 'Режим качества', type: 'select', affectsPrice: true, defaultValue: 'std',
             options: [
-              { value: 'std', label: 'Стандарт (от 12🔥)' },
-              { value: 'pro', label: 'Pro (от 36🔥)'       },
+              { value: 'std', label: 'Стандарт 720p (от 22🔥)' },
+              { value: 'pro', label: 'Pro 1080p (от 29🔥)'     },
+            ],
+          },
+          {
+            key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: true, defaultValue: false,
+            options: [
+              { value: false, label: 'Без звука' },
+              { value: true,  label: 'Со звуком (+40%)'  },
             ],
           },
           {
@@ -1543,26 +1560,19 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '1:1',  label: 'Квадрат (1:1)'      },
             ],
           },
-          {
-            key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: false, defaultValue: false,
-            options: [
-              { value: false, label: 'Без звука' },
-              { value: true,  label: 'Со звуком' },
-            ],
-          },
         ],
       },
 
-      // ─── Runway (KIE) ────────────────────────────────────
+            // ─── Runway (KIE) ────────────────────────────────────
       {
         slug: 'runway',
         name: 'Runway',
         displayName: 'Runway Gen-4',
         description: 'Профессиональная видеогенерация Runway',
         type: 'video',
-        fixedCostPerGeneration: 0.111,
+        fixedCostPerGeneration: 0.067,
         tokensPerDollar: 90,
-        minTokenCost: 10,
+        minTokenCost: 6,
         sortOrder: 7,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
@@ -1572,24 +1582,23 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
-          { conditions: { duration: 5,  resolution: '720p'  }, costInTokens: 10, costInDollars: 0.111, label: '5с × 720p'  },
-          { conditions: { duration: 5,  resolution: '1080p' }, costInTokens: 20, costInDollars: 0.222, label: '5с × 1080p' },
-          { conditions: { duration: 10, resolution: '720p'  }, costInTokens: 20, costInDollars: 0.222, label: '10с × 720p' },
-          { conditions: { duration: 10, resolution: '1080p' }, costInTokens: 40, costInDollars: 0.444, label: '10с × 1080p'},
+          { conditions: { duration: 5,  resolution: '720p'  }, costInTokens: 6,  costInDollars: 0.067, label: '5с × 720p'  },
+          { conditions: { duration: 10, resolution: '720p'  }, costInTokens: 15, costInDollars: 0.167, label: '10с × 720p' },
+          { conditions: { duration: 5,  resolution: '1080p' }, costInTokens: 15, costInDollars: 0.167, label: '5с × 1080p' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
             options: [
-              { value: 5,  label: '5 секунд (от 10🔥)' },
-              { value: 10, label: '10 секунд (от 20🔥)' },
+              { value: 5,  label: '5 секунд'  },
+              { value: 10, label: '10 секунд' },
             ],
           },
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p'  },
-              { value: '1080p', label: '1080p' },
+              { value: '720p',  label: '720p (от 6🔥)'  },
+              { value: '1080p', label: '1080p (15🔥, только 5с)' },
             ],
           },
           {
@@ -1605,8 +1614,8 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-      // ─── Hailuo 02 (KIE) ─────────────────────────────────
-            {
+            // ─── Hailuo 02 (KIE) ─────────────────────────────────
+      {
         slug: 'hailuo-02',
         name: 'Hailuo 02',
         displayName: 'Hailuo 02',
@@ -1620,21 +1629,20 @@ export class ProviderRegistryService implements OnModuleInit {
         providerMappings: [
           { providerSlug: 'kie', modelId: 'hailuo/02-text-to-video-standard', priority: 1, isActive: true },
         ],
-        defaultParams: { duration: 6 },
+        defaultParams: { duration: 6, tier: 'standard' },
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
           { conditions: { tier: 'standard', duration: 6  }, costInTokens: 12, costInDollars: 0.133, label: 'Standard × 6с' },
           { conditions: { tier: 'standard', duration: 10 }, costInTokens: 20, costInDollars: 0.222, label: 'Standard × 10с' },
-          { conditions: { tier: 'pro',      duration: 6  }, costInTokens: 24, costInDollars: 0.267, label: 'Pro × 6с'       },
-          { conditions: { tier: 'pro',      duration: 10 }, costInTokens: 40, costInDollars: 0.444, label: 'Pro × 10с'      },
+          { conditions: { tier: 'pro'                    }, costInTokens: 35, costInDollars: 0.389, label: 'Pro (фикс.)'    },
         ],
         uiParameters: [
           {
             key: 'tier', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'standard',
             options: [
               { value: 'standard', label: 'Standard (от 12🔥)' },
-              { value: 'pro',      label: 'Pro (от 24🔥)'      },
+              { value: 'pro',      label: 'Pro (35🔥)'         },
             ],
           },
           {
