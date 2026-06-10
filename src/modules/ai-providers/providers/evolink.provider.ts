@@ -44,6 +44,9 @@ const KLING_I2V_MODELS = ['kling-v3-image-to-video'];
 // Kling motion control требует image_urls + video_urls
 const KLING_MOTION_MODELS = ['kling-v3-motion-control'];
 
+// Sora 2 / 2 Pro — отдельный строгий формат (Evolink)
+const SORA_MODELS = ['sora-2-preview', 'sora-2-pro-preview'];
+
 const DEEPSEEK_V4_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
 
 export class EvolinkProvider extends BaseProvider {
@@ -673,12 +676,14 @@ export class EvolinkProvider extends BaseProvider {
   // VIDEO GENERATION
   // ========================================
 
-  async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
+    async generateVideo(request: VideoGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
       let body: any;
 
-      if (KLING_I2V_MODELS.includes(request.model)) {
+      if (SORA_MODELS.includes(request.model)) {
+        body = this.buildSoraBody(request);
+      } else if (KLING_I2V_MODELS.includes(request.model)) {
         body = this.buildKlingI2VBody(request);
       } else if (KLING_MOTION_MODELS.includes(request.model)) {
         body = this.buildKlingMotionBody(request);
@@ -686,8 +691,19 @@ export class EvolinkProvider extends BaseProvider {
         body = this.buildVideoBody(request);
       }
 
+      // 🔍 ЛОГ запроса
+      this.logger.debug(
+        `Evolink generateVideo: model=${request.model}, body=${JSON.stringify(body).substring(0, 400)}`,
+      );
+
       const response = await this.client.post('/videos/generations', body);
       const data = response.data;
+
+      // 🔍 ЛОГ ответа
+      this.logger.debug(
+        `Evolink video response: id=${data.id}, status=${data.status}, ` +
+        `full=${JSON.stringify(data).substring(0, 400)}`,
+      );
 
       return {
         success: true,
@@ -700,6 +716,12 @@ export class EvolinkProvider extends BaseProvider {
         providerSlug: this.slug,
       };
     } catch (error) {
+      // 🔍 ЛОГ ошибки
+      this.logger.error(
+        `Evolink generateVideo error: model=${request.model}, ` +
+        `status=${error?.response?.status}, ` +
+        `data=${JSON.stringify(error?.response?.data)?.substring(0, 400)}`,
+      );
       return this.handleError(error, start);
     }
   }
@@ -736,6 +758,43 @@ export class EvolinkProvider extends BaseProvider {
     // image_urls для img-to-video (Sora 2 Pro / Veo поддерживают 1 изображение)
     if (request.imageUrl) {
       body.image_urls = [request.imageUrl];
+    }
+
+    return body;
+  }
+
+    /**
+   * Sora 2 / 2 Pro (Evolink) — строгая схема:
+   *   model, prompt (≤5000), aspect_ratio (16:9|9:16),
+   *   duration (4|8|12), quality (720p|1080p), image_urls (max 1).
+   * Поля negative_prompt / seed / generate_audio НЕ поддерживаются.
+   */
+  private buildSoraBody(request: VideoGenerationRequest): any {
+    const body: any = {
+      model: request.model,
+      prompt: (request.prompt || '').substring(0, 5000),
+    };
+
+    // aspect_ratio: только 16:9 / 9:16
+    const ar = request.aspectRatio;
+    body.aspect_ratio = ar === '9:16' ? '9:16' : '16:9';
+
+    // duration: округляем к ближайшему из 4/8/12
+    const allowedDur = [4, 8, 12];
+    const reqDur = Number(request.duration) || 4;
+    body.duration = allowedDur.reduce((prev, cur) =>
+      Math.abs(cur - reqDur) < Math.abs(prev - reqDur) ? cur : prev,
+    );
+
+    // quality: только 720p / 1080p
+    const q = request.resolution;
+    body.quality = q === '1080p' ? '1080p' : '720p';
+
+    // image-to-video: максимум 1 изображение
+    if (request.imageUrl) {
+      body.image_urls = [request.imageUrl];
+    } else if ((request as any).imageUrls?.length > 0) {
+      body.image_urls = [(request as any).imageUrls[0]];
     }
 
     return body;
