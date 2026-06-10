@@ -1300,7 +1300,7 @@ export class ProviderRegistryService implements OnModuleInit {
         providerMappings: [
           { providerSlug: 'kie', modelId: 'veo3_fast', priority: 1, isActive: true },
         ],
-        defaultParams: { aspectRatio: '16:9', duration: 8 },
+        defaultParams: { aspectRatio: '16:9', duration: 4 },
         limits: { maxDuration: 4 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 3 },
         pricingMatrix: [

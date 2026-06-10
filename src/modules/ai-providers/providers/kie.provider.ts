@@ -433,9 +433,10 @@ export class KieProvider extends BaseProvider {
     const taskId = data.data?.taskId;
     if (!taskId) throw new Error('No taskId in KIE Veo response');
 
+    // 🔧 префикс для корректной маршрутизации в checkTaskStatus
     return {
       success: true,
-      data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: 'veo' } },
+      data: { taskId: `veo:${taskId}`, urls: [], metadata: { model: config.kieModel, apiType: 'veo' } },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
@@ -528,21 +529,31 @@ export class KieProvider extends BaseProvider {
       throw new Error(data.msg || `Runway video creation failed (code ${data.code})`);
     }
 
-    const taskId = data.data?.taskId;
+        const taskId = data.data?.taskId;
     if (!taskId) throw new Error('No taskId in Runway response');
 
+    // 🔧 префикс для корректной маршрутизации в checkTaskStatus
     return {
       success: true,
-      data: { taskId, urls: [], metadata: { model: 'runway', apiType: 'runway' } },
+      data: { taskId: `runway:${taskId}`, urls: [], metadata: { model: 'runway', apiType: 'runway' } },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
   }
 
-  // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════
   // TASK STATUS CHECK
   // ═══════════════════════════════════════════════════════
   async checkTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    // 🔧 Новая маршрутизация по префиксу (надёжно, не зависит от формата taskId)
+    if (taskId.startsWith('veo:')) {
+      return await this.checkVeoTaskStatus(taskId.slice(4));
+    }
+    if (taskId.startsWith('runway:')) {
+      return await this.checkRunwayTaskStatus(taskId.slice(7));
+    }
+
+    // ─── FALLBACK: старая эвристика (для зависших задач без префикса) ───
     const isRunway = taskId.includes('runway') ||
       /^[0-9a-f]{8}-[0-9a-f]{4}-/.test(taskId);
 
@@ -554,7 +565,7 @@ export class KieProvider extends BaseProvider {
       return await this.checkElevenLabsTaskStatus(taskId);
     }
 
-    // 🆕 Veo taskId приходит с префиксом 'veo_task_'
+    // Veo taskId со старым префиксом 'veo_task_'
     if (taskId.startsWith('veo_task_') || taskId.startsWith('veo_')) {
       return await this.checkVeoTaskStatus(taskId);
     }
