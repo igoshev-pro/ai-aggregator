@@ -860,12 +860,22 @@ export class KieProvider extends BaseProvider {
 
       if (status === 'completed') {
         let resultUrls: string[] = task.resultUrls || [];
+
         if (resultUrls.length === 0) {
-          if (task.output?.url) resultUrls = [task.output.url];
-          else if (task.url) resultUrls = [task.url];
-          else if (task.video_url) resultUrls = [task.video_url];
-          else if (task.videoUrl) resultUrls = [task.videoUrl];
+          // 🔧 KIE Runway: URL лежит в videoInfo.videoUrl
+          if (task.videoInfo?.videoUrl) {
+            resultUrls = [task.videoInfo.videoUrl];
+          } else if (task.output?.url) {
+            resultUrls = [task.output.url];
+          } else if (task.url) {
+            resultUrls = [task.url];
+          } else if (task.video_url) {
+            resultUrls = [task.video_url];
+          } else if (task.videoUrl) {
+            resultUrls = [task.videoUrl];
+          }
         }
+
         this.logger.warn(
           `Runway task ${taskId} completed. Keys: ${Object.keys(task).join(', ')}. URLs: ${resultUrls.length}`,
         );
