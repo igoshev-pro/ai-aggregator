@@ -516,23 +516,34 @@ export class KieProvider extends BaseProvider {
     const r = request as any;
     const body: Record<string, any> = {
       prompt: request.prompt,
-      duration: r.duration || 5,
+      duration: Number(r.duration) || 5,
       quality: r.resolution || '720p',
       aspectRatio: r.aspectRatio || '16:9',
       waterMark: r.waterMark || '',
     };
     if (r.imageUrl) body.imageUrl = r.imageUrl;
 
+    // 🔍 ЛОГ запроса
+    this.logger.debug(
+      `KIE Runway generate: body=${JSON.stringify(body).substring(0, 400)}`,
+    );
+
     const response = await this.client.post('/api/v1/runway/generate', body);
     const data = response.data;
+
+    // 🔍 ЛОГ ответа
+    this.logger.debug(
+      `KIE Runway response: code=${data.code}, msg="${data.msg}", ` +
+      `data=${JSON.stringify(data).substring(0, 400)}`,
+    );
+
     if (data.code !== 200) {
       throw new Error(data.msg || `Runway video creation failed (code ${data.code})`);
     }
 
-        const taskId = data.data?.taskId;
+    const taskId = data.data?.taskId;
     if (!taskId) throw new Error('No taskId in Runway response');
 
-    // 🔧 префикс для корректной маршрутизации в checkTaskStatus
     return {
       success: true,
       data: { taskId: `runway:${taskId}`, urls: [], metadata: { model: 'runway', apiType: 'runway' } },
@@ -784,6 +795,13 @@ export class KieProvider extends BaseProvider {
     try {
       const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
       const data = response.data;
+
+      // 🔍 ЛОГ
+      this.logger.debug(
+        `KIE Runway status RAW: code=${data.code}, msg="${data.msg}", ` +
+        `fullData=${JSON.stringify(data).substring(0, 600)}`,
+      );
+
       if (data.code !== 200) {
         return { status: 'failed', error: data.msg || 'Failed to get runway task status' };
       }
@@ -792,36 +810,62 @@ export class KieProvider extends BaseProvider {
         return { status: 'pending' };
       }
 
-      this.logger.debug(
-        `Runway task ${taskId} FULL RESPONSE: ${JSON.stringify(task).substring(0, 1000)}`,
-      );
+      // ── Формат 1: successFlag (как Veo): 0=gen, 1=success, 2/3=fail ──
+      if (task.successFlag !== undefined) {
+        switch (task.successFlag) {
+          case 1: {
+            let urls: string[] =
+              task.response?.resultUrls ||
+              task.resultUrls ||
+              [];
+            if (urls.length === 0) {
+              if (task.videoUrl) urls = [task.videoUrl];
+              else if (task.response?.videoUrl) urls = [task.response.videoUrl];
+            }
+            return { status: 'completed', resultUrls: urls, progress: 100 };
+          }
+          case 2:
+          case 3:
+            return {
+              status: 'failed',
+              error: task.errorMessage || `Runway failed (flag=${task.successFlag})`,
+            };
+          default:
+            return { status: 'processing', progress: 0 };
+        }
+      }
 
+      // ── Формат 2: state (строковый статус) ──
       const stateMap: Record<string, TaskStatusResult['status']> = {
         waiting: 'pending',
         queued: 'pending',
+        pending: 'pending',
         running: 'processing',
+        generating: 'processing',
+        processing: 'processing',
         succeeded: 'completed',
+        success: 'completed',
+        completed: 'completed',
         failed: 'failed',
+        fail: 'failed',
       };
       const status = stateMap[task.state] || 'pending';
 
       if (status === 'failed') {
-        return { status: 'failed', error: task.errorMessage || 'Runway generation failed' };
+        return { status: 'failed', error: task.errorMessage || task.failMsg || 'Runway generation failed' };
       }
 
       if (status === 'completed') {
         let resultUrls: string[] = task.resultUrls || [];
-
         if (resultUrls.length === 0) {
           if (task.output?.url) resultUrls = [task.output.url];
           else if (task.url) resultUrls = [task.url];
           else if (task.video_url) resultUrls = [task.video_url];
-
-          this.logger.warn(
-            `Runway task ${taskId} completed. Keys: ${Object.keys(task).join(', ')}. Found URLs: ${resultUrls.length}`,
-          );
+          else if (task.videoUrl) resultUrls = [task.videoUrl];
         }
-
+        this.logger.warn(
+          `Runway task ${taskId} completed. Keys: ${Object.keys(task).join(', ')}. URLs: ${resultUrls.length}`,
+        );
         return { status: 'completed', resultUrls, progress: 100 };
       }
 
