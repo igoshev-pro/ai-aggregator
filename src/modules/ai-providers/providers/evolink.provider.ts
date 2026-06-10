@@ -49,6 +49,9 @@ const SORA_MODELS = ['sora-2-preview', 'sora-2-pro-preview'];
 
 const DEEPSEEK_V4_MODELS = ['deepseek-v4-flash', 'deepseek-v4-pro'];
 
+// Seedance 1.5 Pro — формат как Sora (Evolink)
+const SEEDANCE_MODELS = ['seedance-1.5-pro'];
+
 export class EvolinkProvider extends BaseProvider {
   private client: AxiosInstance;
   private readonly logger = new Logger(EvolinkProvider.name);
@@ -683,6 +686,8 @@ export class EvolinkProvider extends BaseProvider {
 
       if (SORA_MODELS.includes(request.model)) {
         body = this.buildSoraBody(request);
+      } else if (SEEDANCE_MODELS.includes(request.model)) {   // 🆕
+        body = this.buildSeedanceBody(request);  
       } else if (KLING_I2V_MODELS.includes(request.model)) {
         body = this.buildKlingI2VBody(request);
       } else if (KLING_MOTION_MODELS.includes(request.model)) {
@@ -804,6 +809,54 @@ export class EvolinkProvider extends BaseProvider {
       body.image_urls = [request.imageUrl];
     } else if ((request as any).imageUrls?.length > 0) {
       body.image_urls = [(request as any).imageUrls[0]];
+    }
+
+    return body;
+  }
+
+    /**
+   * 🆕 Seedance 1.5 Pro (Evolink) — формат /v1/videos/generations.
+   * quality: 480p | 720p | 1080p
+   * duration: 4..12
+   * aspect_ratio: 16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9 / adaptive
+   * image_urls: 0=t2v, 1=i2v, 2=first-last-frame
+   * generate_audio: bool
+   */
+  private buildSeedanceBody(request: VideoGenerationRequest): any {
+    const body: any = {
+      model: request.model,
+      prompt: (request.prompt || '').substring(0, 2000),
+    };
+
+    body.aspect_ratio = request.aspectRatio || '16:9';
+
+    // duration: clamp 4..12
+    const reqDur = Number(request.duration) || 5;
+    body.duration = Math.min(12, Math.max(4, reqDur));
+
+    // quality: 480p / 720p / 1080p
+    const q = request.resolution;
+    body.quality = (q === '480p' || q === '1080p') ? q : '720p';
+
+    // audio (по умолчанию true у API; уважаем флаг если пришёл)
+    const audioFlag =
+      (request as any).generateAudio !== undefined
+        ? (request as any).generateAudio
+        : (request as any).sound;
+    if (audioFlag !== undefined) {
+      body.generate_audio = audioFlag;
+    }
+
+    // image_urls: до 2 (first-last-frame)
+    const imgs: string[] = [];
+    if (request.imageUrl) imgs.push(request.imageUrl);
+    if ((request as any).imageUrls?.length) {
+      for (const u of (request as any).imageUrls) {
+        if (u && !imgs.includes(u)) imgs.push(u);
+      }
+    }
+    if (imgs.length > 0) {
+      body.image_urls = imgs.slice(0, 2);
     }
 
     return body;

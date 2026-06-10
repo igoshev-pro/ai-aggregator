@@ -189,6 +189,23 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['5', '10'],
     aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
   },
+  // ─── Wan 2.7 (KIE jobs) ──────────────────────────────────────
+  'wan/2-7-text-to-video': {
+    kieModel: 'wan/2-7-text-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    durations: ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+  },
+  'wan/2-7-image-to-video': {
+    kieModel: 'wan/2-7-image-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    durations: ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
+    aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
+  },
   'hailuo/02-text-to-video-standard': {
     kieModel: 'hailuo/02-text-to-video-standard',
     apiType: 'jobs',
@@ -371,6 +388,9 @@ export class KieProvider extends BaseProvider {
     this.logger.log(`KIE generateVideo: slug=${modelSlug}, kieModel=${config.kieModel}, hasImage=${hasImage}`);
 
     try {
+      if (config.kieModel.startsWith('wan/')) {
+        return await this.generateWanVideo(request, config, start, hasImage);
+      }
       if (config.apiType === 'runway') {
         return await this.generateRunwayVideo(request, config, start);
       }
@@ -503,6 +523,73 @@ export class KieProvider extends BaseProvider {
     return {
       success: true,
       data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: config.statusApiType } },
+      responseTimeMs: Date.now() - start,
+      providerSlug: this.slug,
+    };
+  }
+
+    // ═══════════════════════════════════════════════════════
+  // 🆕 WAN 2.7 VIDEO GENERATION (KIE jobs, свой формат полей)
+  // ═══════════════════════════════════════════════════════
+  private async generateWanVideo(
+    request: VideoGenerationRequest,
+    config: VideoModelConfig,
+    start: number,
+    hasImage: boolean,
+  ): Promise<GenerationResult> {
+    const r = request as any;
+
+    // авто-переключение t2v ↔ i2v по наличию картинки
+    let kieModel = config.kieModel;
+    if (hasImage && kieModel === 'wan/2-7-text-to-video') {
+      kieModel = 'wan/2-7-image-to-video';
+    } else if (!hasImage && kieModel === 'wan/2-7-image-to-video') {
+      kieModel = 'wan/2-7-text-to-video';
+    }
+
+    const input: Record<string, any> = {
+      prompt: request.prompt,
+      resolution: r.resolution === '480p' ? '720p' : (r.resolution || '720p'), // Wan: только 720p/1080p
+      duration: Number(r.duration) || 5,
+    };
+
+    if (r.negativePrompt) input.negative_prompt = r.negativePrompt;
+
+    if (kieModel === 'wan/2-7-text-to-video') {
+      // t2v использует ratio
+      input.ratio = r.aspectRatio || '16:9';
+    } else {
+      // i2v использует first_frame_url
+      const img = r.imageUrl || r.imageUrls?.[0];
+      if (img) input.first_frame_url = img;
+      if (r.imageUrls?.length > 1) input.last_frame_url = r.imageUrls[1];
+    }
+
+    this.logger.debug(
+      `KIE Wan generate: model=${kieModel}, input=${JSON.stringify(input).substring(0, 400)}`,
+    );
+
+    const response = await this.client.post('/api/v1/jobs/createTask', {
+      model: kieModel,
+      input,
+    });
+
+    const data = response.data;
+    this.logger.debug(
+      `KIE Wan response: code=${data.code}, msg="${data.msg}", data=${JSON.stringify(data).substring(0, 400)}`,
+    );
+
+    if (data.code !== 200) {
+      throw new Error(data.msg || `KIE Wan task creation failed (code ${data.code})`);
+    }
+
+    const taskId = data.data?.taskId;
+    if (!taskId) throw new Error('No taskId in KIE Wan response');
+
+    // jobs API → статус через checkJobsTaskStatus (без префикса)
+    return {
+      success: true,
+      data: { taskId, urls: [], metadata: { model: kieModel, apiType: 'jobs' } },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };

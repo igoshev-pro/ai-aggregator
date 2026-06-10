@@ -1664,28 +1664,27 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── WanX 2.2 (KIE) ─────────────────────────────────
-      {
-        slug: 'wanx-2.2',
-        name: 'WanX 2.2',
-        displayName: 'WanX 2.2',
-        description: 'Видеогенерация от Alibaba с отличной детализацией',
+            {
+        slug: 'wan-2.7',
+        name: 'Wan 2.7',
+        displayName: 'Wan 2.7',
+        description: 'Видеогенерация от Alibaba с аудио и высокой детализацией',
         type: 'video',
-        fixedCostPerGeneration: 0.044,
+        fixedCostPerGeneration: 0.067,
         tokensPerDollar: 90,
-        minTokenCost: 4,
+        minTokenCost: 6,
         sortOrder: 9,
-        capabilities: ['text_to_video', 'image_to_video'],
+        capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'wan-x-2.2/text-to-video', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'wan/2-7-text-to-video', priority: 1, isActive: true },
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p' },
-        limits: { maxDuration: 10 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        limits: { maxDuration: 15 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
         pricingMatrix: [
-          { conditions: { duration: 5,  resolution: '480p'  }, costInTokens: 4,  costInDollars: 0.044, label: '5с × 480p'  },
+          // Wan 2.7 поддерживает только 720p / 1080p (480p НЕТ)
           { conditions: { duration: 5,  resolution: '720p'  }, costInTokens: 6,  costInDollars: 0.067, label: '5с × 720p'  },
           { conditions: { duration: 5,  resolution: '1080p' }, costInTokens: 10, costInDollars: 0.111, label: '5с × 1080p' },
-          { conditions: { duration: 10, resolution: '480p'  }, costInTokens: 8,  costInDollars: 0.089, label: '10с × 480p' },
           { conditions: { duration: 10, resolution: '720p'  }, costInTokens: 12, costInDollars: 0.133, label: '10с × 720p' },
           { conditions: { duration: 10, resolution: '1080p' }, costInTokens: 20, costInDollars: 0.222, label: '10с × 1080p'},
         ],
@@ -1700,7 +1699,6 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '480p',  label: '480p (от 4🔥)'  },
               { value: '720p',  label: '720p (от 6🔥)'  },
               { value: '1080p', label: '1080p (от 10🔥)' },
             ],
@@ -1711,6 +1709,8 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)'   },
               { value: '1:1',  label: 'Квадрат (1:1)'      },
+              { value: '4:3',  label: 'Стандарт (4:3)'     },
+              { value: '3:4',  label: 'Портрет (3:4)'      },
             ],
           },
         ],
@@ -1718,10 +1718,10 @@ export class ProviderRegistryService implements OnModuleInit {
 
       // ─── Seedance 1.0 (KIE) ──────────────────────────────
       {
-        slug: 'seedance-1.0',
-        name: 'Seedance 1.0',
-        displayName: 'Seedance 1.0',
-        description: 'Видеогенерация от ByteDance — плавное движение и высокая детализация',
+        slug: 'seedance-1.5-pro',
+        name: 'Seedance 1.5 Pro',
+        displayName: 'Seedance 1.5 Pro',
+        description: 'Видеогенерация от ByteDance с аудио — плавное движение',
         type: 'video',
         fixedCostPerGeneration: 0.111,
         tokensPerDollar: 90,
@@ -1729,7 +1729,7 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 10,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'seedance-1.0/lite-text-to-video', priority: 1, isActive: true },
+          { providerSlug: 'evolink', modelId: 'seedance-1.5-pro', priority: 1, isActive: true },
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p' },
         limits: { maxDuration: 10 },
