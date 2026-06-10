@@ -763,21 +763,23 @@ export class EvolinkProvider extends BaseProvider {
     return body;
   }
 
-    /**
-   * Sora 2 / 2 Pro (Evolink) — строгая схема:
-   *   model, prompt (≤5000), aspect_ratio (16:9|9:16),
-   *   duration (4|8|12), quality (720p|1080p), image_urls (max 1).
+     /**
+   * Sora 2 / 2 Pro (Evolink) — строгая схема.
+   * ВАЖНО: quality enum РАЗНЫЙ для pro и не-pro:
+   *   sora-2-preview      → standard | high
+   *   sora-2-pro-preview  → 720p | 1080p
    * Поля negative_prompt / seed / generate_audio НЕ поддерживаются.
    */
   private buildSoraBody(request: VideoGenerationRequest): any {
+    const isPro = request.model === 'sora-2-pro-preview';
+
     const body: any = {
       model: request.model,
       prompt: (request.prompt || '').substring(0, 5000),
     };
 
     // aspect_ratio: только 16:9 / 9:16
-    const ar = request.aspectRatio;
-    body.aspect_ratio = ar === '9:16' ? '9:16' : '16:9';
+    body.aspect_ratio = request.aspectRatio === '9:16' ? '9:16' : '16:9';
 
     // duration: округляем к ближайшему из 4/8/12
     const allowedDur = [4, 8, 12];
@@ -786,9 +788,16 @@ export class EvolinkProvider extends BaseProvider {
       Math.abs(cur - reqDur) < Math.abs(prev - reqDur) ? cur : prev,
     );
 
-    // quality: только 720p / 1080p
+    // quality: маппинг зависит от модели
     const q = request.resolution;
-    body.quality = q === '1080p' ? '1080p' : '720p';
+    if (isPro) {
+      // sora-2-pro-preview: 720p | 1080p
+      body.quality = q === '1080p' ? '1080p' : '720p';
+    } else {
+      // sora-2-preview: standard | high
+      // 1080p/high → high, иначе standard
+      body.quality = (q === 'high' || q === '1080p') ? 'high' : 'standard';
+    }
 
     // image-to-video: максимум 1 изображение
     if (request.imageUrl) {
