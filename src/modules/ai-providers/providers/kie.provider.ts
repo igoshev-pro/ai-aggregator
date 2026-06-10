@@ -791,12 +791,15 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
+    private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
-      const response = await this.client.get('/api/v1/runway/status', { params: { taskId } });
+      // 🔧 БЫЛО: '/api/v1/runway/status' → давало 404
+      const response = await this.client.get('/api/v1/runway/record-detail', {
+        params: { taskId },
+      });
       const data = response.data;
 
-      // 🔍 ЛОГ
+      // 🔍 ЛОГ (оставь для проверки формата ответа)
       this.logger.debug(
         `KIE Runway status RAW: code=${data.code}, msg="${data.msg}", ` +
         `fullData=${JSON.stringify(data).substring(0, 600)}`,
