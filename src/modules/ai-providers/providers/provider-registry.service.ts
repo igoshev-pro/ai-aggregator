@@ -1237,7 +1237,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'video',
         fixedCostPerGeneration: 0.40,
         tokensPerDollar: 90,
-        minTokenCost: 10,
+        minTokenCost: 9,
         sortOrder: 1,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
@@ -1248,15 +1248,15 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
           // duration × resolution
-          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 14,  costInDollars: 0.40,  label: '8с × 720p'  },
-          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 16,  costInDollars: 0.60,  label: '8с × 1080p' },
-          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 68, costInDollars: 1.20,  label: '8с × 4K'    },
-          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 12,  costInDollars: 0.30,  label: '6с × 720p'  },
-          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 14,  costInDollars: 0.45,  label: '6с × 1080p' },
-          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 54,  costInDollars: 0.90,  label: '6с × 4K'    },
-          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 10,  costInDollars: 0.20,  label: '4с × 720p'  },
-          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 12,  costInDollars: 0.30,  label: '4с × 1080p' },
-          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 48,  costInDollars: 0.60,  label: '4с × 4K'    },
+          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 9,  costInDollars: 0.40,  label: '8с × 720p'  },
+          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 12.7,  costInDollars: 0.60,  label: '8с × 1080p' },
+          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 45.4, costInDollars: 1.20,  label: '8с × 4K'    },
+          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 9,  costInDollars: 0.30,  label: '6с × 720p'  },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 12.7,  costInDollars: 0.45,  label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 45.4,  costInDollars: 0.90,  label: '6с × 4K'    },
+          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 9,  costInDollars: 0.20,  label: '4с × 720p'  },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 12.7,  costInDollars: 0.30,  label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 45.4,  costInDollars: 0.60,  label: '4с × 4K'    },
         ],
         uiParameters: [
           {
@@ -1270,9 +1270,9 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 14🔥)'  },
-              { value: '1080p', label: '1080p (от 16🔥)' },
-              { value: '4k',    label: '4K (от 68🔥)'    },
+              { value: '720p',  label: '720p (от 9🔥)'  },
+              { value: '1080p', label: '1080p (от 12.7🔥)' },
+              { value: '4k',    label: '4K (от 45.4🔥)'    },
             ],
           },
           {
@@ -1294,7 +1294,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'video',
         fixedCostPerGeneration: 0.70,
         tokensPerDollar: 90,
-        minTokenCost: 20,
+        minTokenCost: 18,
         sortOrder: 2,
         capabilities: ['text_to_video', 'image_to_video', 'audio', 'reference_to_video'],
         providerMappings: [
@@ -1304,15 +1304,15 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 4 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 3 },
         pricingMatrix: [
-          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 27,  costInDollars: 0.70,  label: '8с × 720p'  },
-          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 29,  costInDollars: 1.05,  label: '8с × 1080p' },
-          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 81, costInDollars: 2.10,  label: '8с × 4K'    },
-          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 25,  costInDollars: 0.525, label: '6с × 720p'  },
-          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 27,  costInDollars: 0.788, label: '6с × 1080p' },
-          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 64, costInDollars: 1.575, label: '6с × 4K'    },
-          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 20,  costInDollars: 0.35,  label: '4с × 720p'  },
-          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 25,  costInDollars: 0.525, label: '4с × 1080p' },
-          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 52,  costInDollars: 1.05,  label: '4с × 4K'    },
+          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 18,  costInDollars: 0.70,  label: '8с × 720p'  },
+          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 19.7,  costInDollars: 1.05,  label: '8с × 1080p' },
+          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 54, costInDollars: 2.10,  label: '8с × 4K'    },
+          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 18,  costInDollars: 0.525, label: '6с × 720p'  },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 19.4,  costInDollars: 0.788, label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 54, costInDollars: 1.575, label: '6с × 4K'    },
+          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 18,  costInDollars: 0.35,  label: '4с × 720p'  },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 19.7,  costInDollars: 0.525, label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 54,  costInDollars: 1.05,  label: '4с × 4K'    },
         ],
         uiParameters: [
           {
@@ -1326,9 +1326,9 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 27🔥)'  },
-              { value: '1080p', label: '1080p (от 29🔥)' },
-              { value: '4k',    label: '4K (от 81🔥)'    },
+              { value: '720p',  label: '720p (от 18🔥)'  },
+              { value: '1080p', label: '1080p (от 19.7🔥)' },
+              { value: '4k',    label: '4K (от 54🔥)'    },
             ],
           },
           {
@@ -1350,7 +1350,7 @@ export class ProviderRegistryService implements OnModuleInit {
         type: 'video',
         fixedCostPerGeneration: 2.50,
         tokensPerDollar: 90,
-        minTokenCost: 76,
+        minTokenCost: 75.4,
         sortOrder: 3,
         isPremium: true,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
@@ -1361,15 +1361,15 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 8 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
         pricingMatrix: [
-          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 113, costInDollars: 2.50,  label: '8с × 720p'  },
-          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 115, costInDollars: 3.75,  label: '8с × 1080p' },
-          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 167, costInDollars: 7.50,  label: '8с × 4K'    },
-          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 98, costInDollars: 1.875, label: '6с × 720p'  },
-          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 100, costInDollars: 2.813, label: '6с × 1080p' },
-          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 140, costInDollars: 5.625, label: '6с × 4K'    },
-          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 76, costInDollars: 1.25,  label: '4с × 720p'  },
-          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 80, costInDollars: 1.875, label: '4с × 1080p' },
-          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 115, costInDollars: 3.75,  label: '4с × 4K'    },
+          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 75.4, costInDollars: 2.50,  label: '8с × 720p'  },
+          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 76.7, costInDollars: 3.75,  label: '8с × 1080p' },
+          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 111.4, costInDollars: 7.50,  label: '8с × 4K'    },
+          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 75.4, costInDollars: 1.875, label: '6с × 720p'  },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 76.7, costInDollars: 2.813, label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 111.4, costInDollars: 5.625, label: '6с × 4K'    },
+          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 75.4, costInDollars: 1.25,  label: '4с × 720p'  },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 76.7, costInDollars: 1.875, label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 111.4, costInDollars: 3.75,  label: '4с × 4K'    },
         ],
         uiParameters: [
           {
@@ -1383,9 +1383,9 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 113🔥)'  },
-              { value: '1080p', label: '1080p (от 115🔥)' },
-              { value: '4k',    label: '4K (от 167🔥)'    },
+              { value: '720p',  label: '720p (от 75.4🔥)'  },
+              { value: '1080p', label: '1080p (от 76.7🔥)' },
+              { value: '4k',    label: '4K (от 111.4🔥)'    },
             ],
           },
           {
