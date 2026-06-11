@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { ReferralModule } from '../referral/referral.module';
 import { AdminBootstrapService } from './admin-bootstrap.service';
+import { BotAuthService } from './bot-auth.service';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { AdminBootstrapService } from './admin-bootstrap.service';
      forwardRef(() => ReferralModule),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AdminBootstrapService, JwtStrategy],
-  exports: [AuthService, AdminBootstrapService],
+  providers: [AuthService, BotAuthService, AdminBootstrapService, JwtStrategy],
+  exports: [AuthService, AdminBootstrapService, BotAuthService],
 })
 export class AuthModule {}

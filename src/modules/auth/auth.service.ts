@@ -10,12 +10,10 @@ import * as crypto from 'crypto';
 import { ReferralService } from '@/modules/referral/referral.service';
 import { AdminBootstrapService } from './admin-bootstrap.service';
 
-
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private readonly isDev: boolean;
-
 
   constructor(
     private jwtService: JwtService,
@@ -27,15 +25,12 @@ export class AuthService {
     this.isDev = this.configService.get('NODE_ENV') !== 'production';
   }
 
-
   // ─── Mini App Auth (initData) ─────────────────────────────────
-
 
   async authenticateWithTelegram(dto: TelegramAuthDto): Promise<AuthResponseDto> {
     if (dto.referralCode) {
       this.logger.log(`🎟️ Telegram auth with referralCode: "${dto.referralCode}"`);
     }
-
 
     // DEV Mode Bypass
     if (this.isDev) {
@@ -45,157 +40,30 @@ export class AuthService {
       }
     }
 
-
     // Production Auth
     const telegramUser = this.validateAndParseInitData(dto.initData);
-
 
     if (!telegramUser) {
       throw new UnauthorizedException('Invalid Telegram authentication data');
     }
 
-
-    // Запоминаем "был ли пользователь" до создания
     const existedBefore = await this.usersService
       .findByTelegramId(telegramUser.id)
       .catch(() => null);
     const isNewUser = !existedBefore;
 
-
     const user = await this.usersService.findOrCreateByTelegram(
       telegramUser,
       dto.referralCode,
     );
 
-
-    // 🆕 Синхронизируем роль из .env (admin/super_admin)
     await this.adminBootstrap.syncRoleFromEnv(user);
-
 
     if (user.isBanned) {
       throw new UnauthorizedException(
         'Account is banned: ' + (user.banReason || 'No reason'),
       );
     }
-
-
-    // Создаём запись в Referral только для НОВЫХ юзеров с referralCode + установленным referredBy
-    if (isNewUser && user.referredBy) {
-      try {
-        await this.referralService.recordReferral(
-          user.referredBy.toString(),
-          user._id.toString(),
-        );
-      } catch (err) {
-        this.logger.warn(`Failed to record referral: ${err.message}`);
-      }
-    }
-
-
-    return this.buildAuthResponse(user);
-  }
-
-
-  // ─── Telegram Login Widget Auth ───────────────────────────────
-
-
-  async authenticateWithTelegramWidget(
-    dto: TelegramWidgetAuthDto,
-  ): Promise<AuthResponseDto> {
-    if (dto.referralCode) {
-      this.logger.log(`🎟️ Widget auth with referralCode: "${dto.referralCode}"`);
-    }
-
-
-    // DEV Mode Bypass
-    if (this.isDev && dto.hash === 'dev_bypass') {
-      this.logger.log('🔧 DEV mode: bypassing Widget validation');
-      const telegramUser: TelegramUser = {
-        id: dto.id,
-        first_name: dto.first_name,
-        last_name: dto.last_name,
-        username: dto.username,
-        photo_url: dto.photo_url,
-      };
-
-
-      const existedBefore = await this.usersService
-        .findByTelegramId(dto.id)
-        .catch(() => null);
-      const isNewUser = !existedBefore;
-
-
-      const user = await this.usersService.findOrCreateByTelegram(
-        telegramUser,
-        dto.referralCode,
-      );
-
-
-      // 🆕 Синхронизируем роль из .env
-      await this.adminBootstrap.syncRoleFromEnv(user);
-
-
-      if (isNewUser && user.referredBy) {
-        await this.referralService
-          .recordReferral(user.referredBy.toString(), user._id.toString())
-          .catch((err) =>
-            this.logger.warn(`Failed to record referral: ${err.message}`),
-          );
-      }
-
-
-      return this.buildAuthResponse(user);
-    }
-
-
-    // Validate widget data
-    const isValid = this.validateWidgetData(dto);
-
-
-    if (!isValid) {
-      throw new UnauthorizedException('Invalid Telegram Login Widget data');
-    }
-
-
-    // Check auth_date freshness
-    const now = Math.floor(Date.now() / 1000);
-    const maxAge = this.isDev ? 86400 * 30 : 86400;
-    if (now - dto.auth_date > maxAge) {
-      throw new UnauthorizedException('Telegram login data has expired');
-    }
-
-
-    const telegramUser: TelegramUser = {
-      id: dto.id,
-      first_name: dto.first_name,
-      last_name: dto.last_name,
-      username: dto.username,
-      photo_url: dto.photo_url,
-    };
-
-
-    const existedBefore = await this.usersService
-      .findByTelegramId(dto.id)
-      .catch(() => null);
-    const isNewUser = !existedBefore;
-
-
-    const user = await this.usersService.findOrCreateByTelegram(
-      telegramUser,
-      dto.referralCode,
-    );
-
-
-    // 🆕 Синхронизируем роль из .env
-    await this.adminBootstrap.syncRoleFromEnv(user);
-
-
-    if (user.isBanned) {
-      throw new UnauthorizedException(
-        'Account is banned: ' + (user.banReason || 'No reason'),
-      );
-    }
-
 
     if (isNewUser && user.referredBy) {
       try {
@@ -208,33 +76,141 @@ export class AuthService {
       }
     }
 
+    return this.buildAuthResponse(user);
+  }
+
+  // ─── Telegram Login Widget Auth ───────────────────────────────
+
+  async authenticateWithTelegramWidget(
+    dto: TelegramWidgetAuthDto,
+  ): Promise<AuthResponseDto> {
+    if (dto.referralCode) {
+      this.logger.log(`🎟️ Widget auth with referralCode: "${dto.referralCode}"`);
+    }
+
+    // DEV Mode Bypass
+    if (this.isDev && dto.hash === 'dev_bypass') {
+      this.logger.log('🔧 DEV mode: bypassing Widget validation');
+      const telegramUser: TelegramUser = {
+        id: dto.id,
+        first_name: dto.first_name,
+        last_name: dto.last_name,
+        username: dto.username,
+        photo_url: dto.photo_url,
+      };
+
+      const existedBefore = await this.usersService
+        .findByTelegramId(dto.id)
+        .catch(() => null);
+      const isNewUser = !existedBefore;
+
+      const user = await this.usersService.findOrCreateByTelegram(
+        telegramUser,
+        dto.referralCode,
+      );
+
+      await this.adminBootstrap.syncRoleFromEnv(user);
+
+      if (isNewUser && user.referredBy) {
+        await this.referralService
+          .recordReferral(user.referredBy.toString(), user._id.toString())
+          .catch((err) =>
+            this.logger.warn(`Failed to record referral: ${err.message}`),
+          );
+      }
+
+      return this.buildAuthResponse(user);
+    }
+
+    // Validate widget data
+    const isValid = this.validateWidgetData(dto);
+
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid Telegram Login Widget data');
+    }
+
+    // Check auth_date freshness
+    const now = Math.floor(Date.now() / 1000);
+    const maxAge = this.isDev ? 86400 * 30 : 86400;
+    if (now - dto.auth_date > maxAge) {
+      throw new UnauthorizedException('Telegram login data has expired');
+    }
+
+    const telegramUser: TelegramUser = {
+      id: dto.id,
+      first_name: dto.first_name,
+      last_name: dto.last_name,
+      username: dto.username,
+      photo_url: dto.photo_url,
+    };
+
+    const existedBefore = await this.usersService
+      .findByTelegramId(dto.id)
+      .catch(() => null);
+    const isNewUser = !existedBefore;
+
+    const user = await this.usersService.findOrCreateByTelegram(
+      telegramUser,
+      dto.referralCode,
+    );
+
+    await this.adminBootstrap.syncRoleFromEnv(user);
+
+    if (user.isBanned) {
+      throw new UnauthorizedException(
+        'Account is banned: ' + (user.banReason || 'No reason'),
+      );
+    }
+
+    if (isNewUser && user.referredBy) {
+      try {
+        await this.referralService.recordReferral(
+          user.referredBy.toString(),
+          user._id.toString(),
+        );
+      } catch (err: any) {
+        this.logger.warn(`Failed to record referral: ${err.message}`);
+      }
+    }
 
     this.logger.log(
       `✅ Telegram Widget auth successful for user ${dto.id} (@${dto.username || 'no-username'})`,
     );
 
-
     return this.buildAuthResponse(user);
   }
 
+  // ─── Bot Auth (сайт через бота) ───────────────────────────────
+
+  /**
+   * 🆕 Выдаёт JWT по userId — используется bot-auth flow и любым другим
+   * сценарием, где пользователь уже идентифицирован.
+   */
+  async buildAuthResponseByUserId(userId: string): Promise<AuthResponseDto> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    if (!user.isActive || user.isBanned) {
+      throw new UnauthorizedException(
+        'Account is not available: ' + (user.banReason || 'inactive/banned'),
+      );
+    }
+    return this.buildAuthResponse(user);
+  }
 
   // ─── Widget Data Validation ───────────────────────────────────
-
 
   private validateWidgetData(dto: TelegramWidgetAuthDto): boolean {
     try {
       const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
-
 
       if (!botToken) {
         this.logger.error('TELEGRAM_BOT_TOKEN is not configured');
         return false;
       }
 
-
-      // Build data_check_string from all fields except hash and referralCode
       const checkData: Record<string, string> = {};
-
 
       if (dto.id !== undefined) checkData['id'] = String(dto.id);
       if (dto.first_name !== undefined) checkData['first_name'] = dto.first_name;
@@ -243,25 +219,20 @@ export class AuthService {
       if (dto.photo_url !== undefined) checkData['photo_url'] = dto.photo_url;
       if (dto.auth_date !== undefined) checkData['auth_date'] = String(dto.auth_date);
 
-
       const dataCheckString = Object.keys(checkData)
         .sort()
         .map((key) => `${key}=${checkData[key]}`)
         .join('\n');
 
-
-      // Login Widget uses SHA256(BOT_TOKEN) as secret (NOT HMAC!)
       const secretKey = crypto
         .createHash('sha256')
         .update(botToken)
         .digest();
 
-
       const calculatedHash = crypto
         .createHmac('sha256', secretKey)
         .update(dataCheckString)
         .digest('hex');
-
 
       if (calculatedHash !== dto.hash) {
         if (this.isDev) {
@@ -271,7 +242,6 @@ export class AuthService {
         return false;
       }
 
-
       return true;
     } catch (error) {
       this.logger.error('Error validating widget data:', error);
@@ -279,9 +249,7 @@ export class AuthService {
     }
   }
 
-
   // ─── Build unified auth response ─────────────────────────────
-
 
   private buildAuthResponse(user: UserDocument): AuthResponseDto {
     const payload: JwtPayload = {
@@ -292,16 +260,13 @@ export class AuthService {
       role: user.role,
     };
 
-
     const token = this.jwtService.sign(payload);
-
 
     const now = new Date();
     const subscriptionActive =
       user.subscriptionPlan !== 'free' &&
       user.subscriptionExpiresAt !== null &&
       user.subscriptionExpiresAt > now;
-
 
     return {
       token,
@@ -331,18 +296,14 @@ export class AuthService {
     };
   }
 
-
   // ─── DEV Methods ─────────────────────────────────────────────
-
 
   async devAuth(userId: number, username?: string, role?: string): Promise<AuthResponseDto> {
     if (!this.isDev) {
       throw new UnauthorizedException('Dev auth is only available in development mode');
     }
 
-
     this.logger.log(`🔧 DEV Auth for user ${userId} (${username})`);
-
 
     const telegramUser: TelegramUser = {
       id: userId,
@@ -352,20 +313,14 @@ export class AuthService {
       language_code: 'en',
     };
 
-
     const user = await this.usersService.findOrCreateByTelegram(telegramUser, undefined);
 
-
-    // 🆕 Синхронизируем роль из .env (приоритет — .env)
     await this.adminBootstrap.syncRoleFromEnv(user);
 
-
-    // Старая логика — оставляем для совместимости, но .env приоритетнее
     if (role && (role === 'admin' || role === 'moderator')) {
       user.role = role as any;
       await user.save();
     }
-
 
     if (user.tokenBalance === 0 && user.bonusTokens <= 50) {
       user.tokenBalance = 10000;
@@ -374,10 +329,8 @@ export class AuthService {
       this.logger.log(`🎁 DEV: Added test tokens to user ${userId}`);
     }
 
-
     return this.buildAuthResponse(user);
   }
-
 
   private async handleDevTelegramAuth(
     initData: string,
@@ -387,10 +340,8 @@ export class AuthService {
       const params = new URLSearchParams(initData);
       const userStr = params.get('user');
 
-
       let userId = 123456789;
       let username = 'testuser';
-
 
       if (userStr) {
         try {
@@ -402,7 +353,6 @@ export class AuthService {
         }
       }
 
-
       return this.devAuth(userId, username);
     } catch (error) {
       this.logger.error('Error in handleDevTelegramAuth:', error);
@@ -410,14 +360,11 @@ export class AuthService {
     }
   }
 
-
   // ─── Mini App Telegram Validation ────────────────────────────
-
 
   private validateAndParseInitData(initData: string): TelegramUser | null {
     try {
       const botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
-
 
       if (!botToken) {
         if (this.isDev) {
@@ -426,34 +373,27 @@ export class AuthService {
         return null;
       }
 
-
       const params = new URLSearchParams(initData);
       const hash = params.get('hash');
 
-
       if (!hash) return null;
 
-
       params.delete('hash');
-
 
       const dataCheckString = Array.from(params.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, value]) => `${key}=${value}`)
         .join('\n');
 
-
       const secretKey = crypto
         .createHmac('sha256', 'WebAppData')
         .update(botToken)
         .digest();
 
-
       const calculatedHash = crypto
         .createHmac('sha256', secretKey)
         .update(dataCheckString)
         .digest('hex');
-
 
       if (calculatedHash !== hash) {
         if (this.isDev) {
@@ -462,10 +402,8 @@ export class AuthService {
         return null;
       }
 
-
       const authDate = parseInt(params.get('auth_date') || '0', 10);
       const now = Math.floor(Date.now() / 1000);
-
 
       const maxAge = this.isDev ? 86400 * 30 : 86400;
       if (now - authDate > maxAge) {
@@ -475,10 +413,8 @@ export class AuthService {
         return null;
       }
 
-
       const userStr = params.get('user');
       if (!userStr) return null;
-
 
       return JSON.parse(decodeURIComponent(userStr));
     } catch (error) {
@@ -488,7 +424,6 @@ export class AuthService {
       return null;
     }
   }
-
 
   async refreshToken(userId: string): Promise<{ token: string }> {
     const user = await this.usersService.findById(userId);

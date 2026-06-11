@@ -4,6 +4,7 @@ import { Context, Markup } from 'telegraf';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { ReferralService } from '../referral/referral.service';
+import { BotAuthService } from '../auth/bot-auth.service';
 import { TelegramUser } from '@/common/interfaces';
 
 @Update()
@@ -14,6 +15,7 @@ export class TelegramBotUpdate {
     private readonly config: ConfigService,
     private readonly usersService: UsersService,
     private readonly referralService: ReferralService,
+    private readonly botAuthService: BotAuthService, // 🆕
   ) {}
 
   @Start()
@@ -29,9 +31,13 @@ export class TelegramBotUpdate {
       `📩 /start tg=${from.id} (@${from.username || '—'}) payload="${payload}"`,
     );
 
-    // Реферальный код из payload "ref_XXXXXXXX"
+    // 🆕 Разбираем тип payload
+    let authCode: string | undefined;
     let referralCode: string | undefined;
-    if (payload.startsWith('ref_')) {
+
+    if (payload.startsWith('auth_')) {
+      authCode = payload.replace(/^auth_/, '').trim();
+    } else if (payload.startsWith('ref_')) {
       referralCode = payload.replace(/^ref_/, '').trim().toUpperCase();
     }
 
@@ -43,12 +49,9 @@ export class TelegramBotUpdate {
       username: from.username,
       language_code: from.language_code,
       is_premium: (from as any).is_premium,
-      photo_url: undefined, // у /start не приходит, фронт обновит
+      photo_url: undefined,
     } as TelegramUser;
 
-    // Создаём/обновляем юзера. Если код есть и юзер новый — UsersService сам:
-    //  - привяжет referredBy
-    //  - начислит инвайтеру +10 bonusTokens
     let user;
     let wasNew = false;
     try {
@@ -64,7 +67,28 @@ export class TelegramBotUpdate {
       return;
     }
 
-    // Если юзер новый и реферал привязался — пишем запись в Referral
+    // 🆕 Bot Auth: подтверждаем сессию входа на сайте
+    if (authCode) {
+      let ok = false;
+      try {
+        ok = await this.botAuthService.confirmSession(
+          authCode,
+          user._id.toString(),
+        );
+      } catch (e: any) {
+        this.logger.warn(`confirmSession failed: ${e?.message}`);
+      }
+
+      await ctx.reply(
+        ok
+          ? '✅ Вход на сайте подтверждён!\n\nМожешь вернуться в браузер — там уже всё готово.'
+          : '⚠️ Ссылка для входа устарела или уже использована.\n\nПопробуй войти заново на сайте.',
+        { parse_mode: 'Markdown' },
+      );
+      return; // не показываем стандартное приветствие
+    }
+
+    // Реферал: запись для новых юзеров
     if (wasNew && referralCode && user.referredBy) {
       try {
         await this.referralService.recordReferral(
@@ -133,7 +157,8 @@ export class TelegramBotUpdate {
           `💸 Кэшбек: *${user.cashbackBalance ?? 0}* 🔥`,
         { parse_mode: 'Markdown' },
       );
-    } catch {
+    } catch (e: any) {
+      this.logger.warn(`/balance failed for tg=${from.id}: ${e?.message}`);
       await ctx.reply('Сначала нажми /start');
     }
   }
@@ -155,7 +180,8 @@ export class TelegramBotUpdate {
           `Делись ссылкой — получай +10 🔥 за каждого друга и 10% кэшбека с их покупок!`,
         { parse_mode: 'Markdown' },
       );
-    } catch {
+    } catch (e: any) {
+      this.logger.warn(`/ref failed for tg=${from.id}: ${e?.message}`);
       await ctx.reply('Сначала нажми /start');
     }
   }

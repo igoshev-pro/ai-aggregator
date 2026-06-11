@@ -1,6 +1,7 @@
-import { Controller, Post, Body, Get, UseGuards, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, Get, Param, UseGuards, HttpCode } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { BotAuthService } from './bot-auth.service';
 import { TelegramAuthDto, TelegramWidgetAuthDto } from './dto/telegram-auth.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -8,7 +9,10 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly botAuthService: BotAuthService,
+  ) {}
 
   @Post('telegram')
   @ApiOperation({ summary: 'Authenticate with Telegram WebApp initData' })
@@ -26,7 +30,30 @@ export class AuthController {
     return { success: true, data: result };
   }
 
-  @Post('dev')
+  // ─── Bot Auth (сайт через бота) ─────────────────────────────
+
+  @Post('bot/init')
+  @ApiOperation({ summary: 'Bot Auth: create login session, returns deep link' })
+  @HttpCode(200)
+  async botInit(@Body() body: { referralCode?: string }) {
+    const result = await this.botAuthService.createSession(body?.referralCode);
+    return { success: true, data: result };
+  }
+
+  @Get('bot/poll/:code')
+  @ApiOperation({ summary: 'Bot Auth: poll session status, returns JWT when confirmed' })
+  async botPoll(@Param('code') code: string) {
+    const result = await this.botAuthService.pollSession(code);
+
+    if (result.status !== 'confirmed' || !result.userId) {
+      return { success: true, data: { status: result.status } };
+    }
+
+    const auth = await this.authService.buildAuthResponseByUserId(result.userId);
+    return { success: true, data: { status: 'confirmed', ...auth } };
+  }
+
+    @Post('dev')
   @ApiOperation({ summary: 'DEV: Test authentication (development only)' })
   @HttpCode(200)
   async devAuth(@Body() dto: { userId: number; username?: string }) {
