@@ -213,6 +213,29 @@ export class VideoGenerationDto {
   @IsString()
   @IsOptional()
   style?: string;
+
+  // 🆕 Reference images for Veo REFERENCE_2_VIDEO (1-3 URLs)
+  @ApiPropertyOptional({
+    description: 'Reference image URLs for Veo reference-to-video (1-3)',
+  })
+  @IsOptional()
+  @IsArray()
+  referenceImages?: string[];
+
+  // 🆕 Veo generation mode override
+  @ApiPropertyOptional({
+    enum: ['TEXT_2_VIDEO', 'FIRST_AND_LAST_FRAMES_2_VIDEO', 'REFERENCE_2_VIDEO'],
+    description: 'Veo generation mode (auto-detected if omitted)',
+  })
+  @IsOptional()
+  @IsString()
+  generationType?: string;
+
+  // 🆕 Veo watermark text
+  @ApiPropertyOptional({ description: 'Watermark text (Veo)' })
+  @IsOptional()
+  @IsString()
+  watermark?: string;
 }
 
 export class DialogueLineDto {

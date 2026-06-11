@@ -146,12 +146,11 @@ export class GenerationService {
     };
   }
 
-  // ─── VIDEO ──────────────────────────────────────────────────────
+    // ─── VIDEO ──────────────────────────────────────────────────────
 
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    // 🆕 Расчёт через PricingService
     const priceParams = {
       mode: dto.mode,
       duration: dto.duration,
@@ -159,10 +158,12 @@ export class GenerationService {
       aspectRatio: dto.aspectRatio,
       quality: dto.quality,
       sound: dto.sound,
-      generateAudio: dto.generateAudio,   // 🆕 Veo audio
+      generateAudio: dto.generateAudio,
       stable: dto.stable,
-      hasInputImage: !!dto.imageUrl || !!(dto.imageUrls && dto.imageUrls.length > 0),
-      hasInputVideo: !!(dto.videoUrls && dto.videoUrls.length > 0),
+      hasInputImage:
+        !!dto.imageUrl ||
+        !!(dto.imageUrls && dto.imageUrls.length > 0) ||
+        !!(dto.referenceImages && dto.referenceImages.length > 0), // 🆕
     };
 
     const priceCalc = await this.pricingService.calculatePrice(
@@ -183,23 +184,26 @@ export class GenerationService {
       params: {
         imageUrl: dto.imageUrl,
         imageUrls: dto.imageUrls,
-        videoUrls: dto.videoUrls,                                        // 🆕
+        referenceImages: dto.referenceImages,    // 🆕 Veo reference
+        videoUrls: dto.videoUrls,
+        generationType: dto.generationType,      // 🆕 Veo mode override
         duration: dto.duration || (model.defaultParams as any)?.duration || 5,
         aspectRatio: dto.aspectRatio || (model.defaultParams as any)?.aspectRatio || '16:9',
         resolution: dto.resolution || (model.defaultParams as any)?.resolution || '720p',
         mode: dto.mode,
         quality: dto.quality,
         sound: dto.sound,
-        generateAudio: dto.generateAudio,   // 🆕 Veo audio
-        stable: dto.stable,                                              // 🆕
+        generateAudio: dto.generateAudio,
+        stable: dto.stable,
         removeWatermark: dto.removeWatermark,
         promptOptimizer: dto.promptOptimizer,
         waterMark: dto.waterMark,
+        watermark: dto.watermark,                // 🆕 Veo watermark
         style: dto.style,
       },
       tokensCost: costInTokens,
       costInDollars: priceCalc.costInDollars,
-      pricingBreakdown: priceCalc.breakdown,  // 🆕
+      pricingBreakdown: priceCalc.breakdown,
     });
     await generation.save();
 
@@ -223,17 +227,21 @@ export class GenerationService {
           negativePrompt: dto.negativePrompt,
           imageUrl: p.imageUrl,
           imageUrls: p.imageUrls,
-          videoUrls: p.videoUrls,                  // 🆕
+          referenceImages: p.referenceImages,    // 🆕
+          videoUrls: p.videoUrls,
+          generationType: p.generationType,       // 🆕
           duration: p.duration,
           aspectRatio: p.aspectRatio,
           resolution: p.resolution,
           mode: p.mode,
           quality: p.quality,
           sound: p.sound,
-          stable: p.stable,                        // 🆕
+          generateAudio: p.generateAudio,
+          stable: p.stable,
           removeWatermark: p.removeWatermark,
           promptOptimizer: p.promptOptimizer,
           waterMark: p.waterMark,
+          watermark: p.watermark,                  // 🆕
           style: p.style,
         },
       },
@@ -249,8 +257,8 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
-      costInDollars: priceCalc.costInDollars,    // 🆕
-      pricingBreakdown: priceCalc.breakdown,     // 🆕
+      costInDollars: priceCalc.costInDollars,
+      pricingBreakdown: priceCalc.breakdown,
     };
   }
 

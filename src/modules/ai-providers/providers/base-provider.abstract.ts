@@ -51,14 +51,23 @@ export interface ImageGenerationRequest {
 export interface VideoGenerationRequest {
   model: string;
   prompt: string;
-  imageUrl?: string; // for image-to-video
+  imageUrl?: string; // for image-to-video (single)
+  imageUrls?: string[];        // 🆕 start/end frames (Veo FIRST_AND_LAST), multi-image
+  referenceImages?: string[];  // 🆕 reference-to-video (Veo REFERENCE_2_VIDEO, 1-3 img)
+  videoUrls?: string[];        // 🆕 motion-control / extend
+  generationType?: string;     // 🆕 explicit override (TEXT_2_VIDEO / FIRST_AND_LAST_FRAMES_2_VIDEO / REFERENCE_2_VIDEO)
   duration?: number; // seconds
   fps?: number;
-  resolution?: string; // '720p', '1080p'
-  aspectRatio?: string; // '16:9', '9:16', '1:1'
+  resolution?: string; // '720p', '1080p', '4k'
+  aspectRatio?: string; // '16:9', '9:16', '1:1', 'Auto'
   style?: string;
   negativePrompt?: string;
   seed?: number;
+  watermark?: string;          // 🆕 Veo watermark text
+  sound?: boolean;             // 🆕 Kling/Wan sound
+  generateAudio?: boolean;     // 🆕 Veo audio flag (alias)
+  mode?: string;               // 🆕 Kling std/pro
+  removeWatermark?: boolean;
 }
 
 export interface AudioGenerationRequest {

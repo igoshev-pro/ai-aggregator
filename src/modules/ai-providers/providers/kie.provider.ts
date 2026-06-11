@@ -405,8 +405,9 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-  // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════
   // 🆕 VEO 3.1 VIDEO GENERATION (KIE /api/v1/veo/generate)
+  // Три режима: TEXT_2_VIDEO / FIRST_AND_LAST_FRAMES_2_VIDEO / REFERENCE_2_VIDEO
   // ═══════════════════════════════════════════════════════
   private async generateVeoVideo(
     request: VideoGenerationRequest,
@@ -415,28 +416,93 @@ export class KieProvider extends BaseProvider {
   ): Promise<GenerationResult> {
     const r = request as any;
 
-    const body: Record<string, any> = {
-      prompt: request.prompt,
-      model: config.kieModel,                          // 'veo3_lite' | 'veo3_fast' | 'veo3'
-      aspect_ratio: r.aspectRatio || '16:9',
-      duration: r.duration || 8,
-      enableTranslation: true,                          // поддержка не-английских промптов
-    };
+    // ─── Нормализация входных изображений ───
+    const referenceImages: string[] = Array.isArray(r.referenceImages)
+      ? r.referenceImages.filter(Boolean)
+      : [];
 
-    // resolution → передаётся напрямую в KIE Veo API
-    if (r.resolution) {
-      body.resolution = r.resolution;                  // '720p' | '1080p' | '4k'
+    // start/end frame: imageUrls (массив) ИЛИ одиночный imageUrl
+    let frameImages: string[] = [];
+    if (Array.isArray(r.imageUrls) && r.imageUrls.length > 0) {
+      frameImages = r.imageUrls.filter(Boolean);
+    } else if (r.imageUrl) {
+      frameImages = [r.imageUrl];
     }
 
-    // image-to-video: KIE Veo принимает imageUrls (массив)
-    if (r.imageUrl) {
-      body.imageUrls = [r.imageUrl];
-    } else if (r.imageUrls?.length > 0) {
-      body.imageUrls = r.imageUrls;
+    // ─── Определение режима генерации ───
+    // Приоритет: явный generationType → referenceImages → frameImages → text
+    let generationType: string;
+    if (
+      r.generationType === 'TEXT_2_VIDEO' ||
+      r.generationType === 'FIRST_AND_LAST_FRAMES_2_VIDEO' ||
+      r.generationType === 'REFERENCE_2_VIDEO'
+    ) {
+      generationType = r.generationType;
+    } else if (referenceImages.length > 0) {
+      generationType = 'REFERENCE_2_VIDEO';
+    } else if (frameImages.length > 0) {
+      generationType = 'FIRST_AND_LAST_FRAMES_2_VIDEO';
+    } else {
+      generationType = 'TEXT_2_VIDEO';
+    }
+
+    // ─── REFERENCE_2_VIDEO ограничения (по доке KIE) ───
+    // только veo3_fast / veo3_lite, только duration=8
+    let model = config.kieModel; // veo3 | veo3_fast | veo3_lite
+    if (generationType === 'REFERENCE_2_VIDEO' && model === 'veo3') {
+      this.logger.warn(
+        `Veo REFERENCE_2_VIDEO не поддерживается на veo3 (Quality) — переключаю на veo3_fast`,
+      );
+      model = 'veo3_fast';
+    }
+
+    // ─── duration ───
+    let duration = Number(r.duration) || 8;
+    if (![4, 6, 8].includes(duration)) duration = 8;
+    if (generationType === 'REFERENCE_2_VIDEO') {
+      duration = 8; // KIE: reference mode только 8 сек
+    }
+
+    // ─── resolution: 720p | 1080p | 4k ───
+    let resolution = String(r.resolution || '720p').toLowerCase();
+    if (resolution === '4К' || resolution === '4К') resolution = '4k';
+    if (!['720p', '1080p', '4k'].includes(resolution)) resolution = '720p';
+
+    // ─── aspect_ratio: 16:9 | 9:16 | Auto ───
+    let aspectRatio = r.aspectRatio || '16:9';
+    if (aspectRatio === 'auto') aspectRatio = 'Auto';
+    if (!['16:9', '9:16', 'Auto'].includes(aspectRatio)) aspectRatio = '16:9';
+
+    // ─── Сборка body ───
+    const body: Record<string, any> = {
+      prompt: request.prompt,
+      model,
+      generationType,
+      aspect_ratio: aspectRatio,
+      duration,
+      resolution,
+      enableTranslation: true, // поддержка не-английских промптов
+    };
+
+    // imageUrls для image/reference режимов
+    if (generationType === 'REFERENCE_2_VIDEO') {
+      // 1-3 референс-картинки
+      body.imageUrls = referenceImages.slice(0, 3);
+    } else if (generationType === 'FIRST_AND_LAST_FRAMES_2_VIDEO') {
+      // 1 кадр (старт) или 2 кадра (старт + конец)
+      body.imageUrls = frameImages.slice(0, 2);
+    }
+
+    // watermark (опционально)
+    if (r.watermark && typeof r.watermark === 'string' && r.watermark.trim()) {
+      body.watermark = r.watermark.trim();
     }
 
     this.logger.debug(
-      `KIE Veo generate: model=${config.kieModel}, body=${JSON.stringify(body).substring(0, 400)}`,
+      `KIE Veo generate: model=${model}, type=${generationType}, ` +
+      `dur=${duration}, res=${resolution}, ar=${aspectRatio}, ` +
+      `imgs=${body.imageUrls?.length ?? 0}, ` +
+      `body=${JSON.stringify(body).substring(0, 400)}`,
     );
 
     const response = await this.client.post('/api/v1/veo/generate', body);
@@ -453,10 +519,14 @@ export class KieProvider extends BaseProvider {
     const taskId = data.data?.taskId;
     if (!taskId) throw new Error('No taskId in KIE Veo response');
 
-    // 🔧 префикс для корректной маршрутизации в checkTaskStatus
+    // 🔧 префикс для маршрутизации в checkTaskStatus → checkVeoTaskStatus
     return {
       success: true,
-      data: { taskId: `veo:${taskId}`, urls: [], metadata: { model: config.kieModel, apiType: 'veo' } },
+      data: {
+        taskId: `veo:${taskId}`,
+        urls: [],
+        metadata: { model, apiType: 'veo', generationType },
+      },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
