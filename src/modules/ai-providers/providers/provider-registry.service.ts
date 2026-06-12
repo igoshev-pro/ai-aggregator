@@ -1245,7 +1245,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { aspectRatio: '16:9', duration: 4 },
         limits: { maxDuration: 8 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 3 },
         pricingMatrix: [
           // duration × resolution
           { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 9,  costInDollars: 0.40,  label: '8с × 720p'  },

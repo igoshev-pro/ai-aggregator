@@ -153,7 +153,7 @@ export class VideoGenerationDto {
   aspectRatio?: string;
 
   @ApiPropertyOptional({
-    enum: ['720p', '1080p', '768P', '1080P', 'std', 'pro'],
+    enum: ['720p', '1080p', '4k', '768P', '1080P', 'std', 'pro'],
   })
   @IsString()
   @IsOptional()
