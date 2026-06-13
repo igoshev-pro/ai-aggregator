@@ -818,9 +818,7 @@ private buildSoraBody(request: VideoGenerationRequest): any {
   // resize_mode: crop | pad — только при наличии image_urls
   if (hasImage) {
     const resizeMode = (request as any).resizeMode || (request as any).resize_mode;
-    if (resizeMode === 'crop' || resizeMode === 'pad') {
-      body.resize_mode = resizeMode;
-    }
+    body.resize_mode = resizeMode === 'pad' ? 'pad' : 'crop';
     // default: не передаём (API сам выберет)
   }
 

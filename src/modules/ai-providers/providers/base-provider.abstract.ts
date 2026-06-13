@@ -68,6 +68,7 @@ export interface VideoGenerationRequest {
   generateAudio?: boolean;     // 🆕 Veo audio flag (alias)
   mode?: string;               // 🆕 Kling std/pro
   removeWatermark?: boolean;
+  resizeMode?: string;
 }
 
 export interface AudioGenerationRequest {
