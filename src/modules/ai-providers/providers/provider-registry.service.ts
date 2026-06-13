@@ -1399,99 +1399,115 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── Sora 2 (Evolink) ────────────────────────────────
-      {
-        slug: 'sora-2',
-        name: 'Sora 2',
-        displayName: 'OpenAI Sora 2',
-        description: 'Видеогенерация нового поколения от OpenAI — реалистичная физика и движение',
-        type: 'video',
-        fixedCostPerGeneration: 0.222,
-        tokensPerDollar: 90,
-        minTokenCost: 20,
-        sortOrder: 4,
-        capabilities: ['text_to_video', 'image_to_video'],
-        providerMappings: [
-          { providerSlug: 'evolink', modelId: 'sora-2-preview', priority: 1, isActive: true },
-        ],
-        defaultParams: { aspectRatio: '16:9', duration: 4, resolution: '1080p' },
-        limits: { maxDuration: 12 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-        pricingMatrix: [
-          { conditions: { duration: 4  }, costInTokens: 20, costInDollars: 0.222, label: '4 секунды'  },
-          { conditions: { duration: 8  }, costInTokens: 41, costInDollars: 0.456, label: '8 секунд'   },
-          { conditions: { duration: 12 }, costInTokens: 61, costInDollars: 0.678, label: '12 секунд'  },
-        ],
-        uiParameters: [
-          {
-            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
-            options: [
-              { value: 4,  label: '4 секунды (20🔥)'  },
-              { value: 8,  label: '8 секунд (41🔥)'   },
-              { value: 12, label: '12 секунд (61🔥)'  },
-            ],
-          },
-          {
-            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
-            options: [
-              { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
-            ],
-          },
-        ],
-      },
+{
+  slug: 'sora-2',
+  name: 'Sora 2',
+  displayName: 'OpenAI Sora 2',
+  description: 'Видеогенерация нового поколения от OpenAI — реалистичная физика и движение',
+  type: 'video',
+  fixedCostPerGeneration: 0.222,
+  tokensPerDollar: 90,
+  minTokenCost: 20,
+  sortOrder: 4,
+  capabilities: ['text_to_video', 'image_to_video'],
+  providerMappings: [
+    { providerSlug: 'evolink', modelId: 'sora-2-preview', priority: 1, isActive: true },
+  ],
+  defaultParams: { aspectRatio: '16:9', duration: 4 },
+  limits: { maxDuration: 12 },
+  inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+  pricingMatrix: [
+    { conditions: { duration: 4  }, costInTokens: 20, costInDollars: 0.222, label: '4 секунды'  },
+    { conditions: { duration: 8  }, costInTokens: 41, costInDollars: 0.456, label: '8 секунд'   },
+    { conditions: { duration: 12 }, costInTokens: 61, costInDollars: 0.678, label: '12 секунд'  },
+  ],
+  uiParameters: [
+    {
+      key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
+      options: [
+        { value: 4,  label: '4 секунды (20🔥)'  },
+        { value: 8,  label: '8 секунд (41🔥)'   },
+        { value: 12, label: '12 секунд (61🔥)'  },
+      ],
+    },
+    {
+      key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+      options: [
+        { value: '16:9', label: 'Горизонталь (16:9)' },
+        { value: '9:16', label: 'Вертикаль (9:16)'   },
+      ],
+    },
+    {
+      key: 'resizeMode', label: 'Вписывание изображения', type: 'select', affectsPrice: false, defaultValue: 'crop',
+      description: 'Применяется только при загрузке изображения',
+      options: [
+        { value: 'crop', label: 'Обрезать (Crop)' },
+        { value: 'pad',  label: 'Вписать с полями (Pad)' },
+      ],
+    },
+  ],
+},
 
-      // ─── Sora 2 Pro (Evolink) ────────────────────────────
-      {
-        slug: 'sora-2-pro',
-        name: 'Sora 2 Pro',
-        displayName: 'OpenAI Sora 2 Pro',
-        description: 'Профессиональная версия Sora 2 — максимальное качество 1080p',
-        type: 'video',
-        fixedCostPerGeneration: 0.444,
-        tokensPerDollar: 90,
-        minTokenCost: 61,
-        sortOrder: 5,
-        isPremium: true,
-        capabilities: ['text_to_video', 'image_to_video'],
-        providerMappings: [
-          { providerSlug: 'evolink', modelId: 'sora-2-pro-preview', priority: 1, isActive: true },
-        ],
-        defaultParams: { aspectRatio: '16:9', duration: 4, resolution: '720p' },
-        limits: { maxDuration: 12 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-        pricingMatrix: [
-          { conditions: { duration: 4,  resolution: '720p'  }, costInTokens: 61,  costInDollars: 0.444, label: '4с × 720p'  },
-          { conditions: { duration: 4,  resolution: '1080p' }, costInTokens: 102,  costInDollars: 0.741, label: '4с × 1080p' },
-          { conditions: { duration: 8,  resolution: '720p'  }, costInTokens: 122,  costInDollars: 0.889, label: '8с × 720p'  },
-          { conditions: { duration: 8,  resolution: '1080p' }, costInTokens: 203, costInDollars: 1.481, label: '8с × 1080p' },
-          { conditions: { duration: 12, resolution: '720p'  }, costInTokens: 183, costInDollars: 1.333, label: '12с × 720p' },
-          { conditions: { duration: 12, resolution: '1080p' }, costInTokens: 305, costInDollars: 2.222, label: '12с × 1080p'},
-        ],
-        uiParameters: [
-          {
-            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
-            options: [
-              { value: 4,  label: '4 секунды'  },
-              { value: 8,  label: '8 секунд'   },
-              { value: 12, label: '12 секунд'  },
-            ],
-          },
-          {
-            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
-            options: [
-              { value: '720p',  label: '720p (от 61🔥)'  },
-              { value: '1080p', label: '1080p (от 102🔥)' },
-            ],
-          },
-          {
-            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
-            options: [
-              { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
-            ],
-          },
-        ],
-      },
+// ─── Sora 2 Pro (Evolink) ────────────────────────────
+{
+  slug: 'sora-2-pro',
+  name: 'Sora 2 Pro',
+  displayName: 'OpenAI Sora 2 Pro',
+  description: 'Профессиональная версия Sora 2 — максимальное качество 1080p',
+  type: 'video',
+  fixedCostPerGeneration: 0.444,
+  tokensPerDollar: 90,
+  minTokenCost: 61,
+  sortOrder: 5,
+  isPremium: true,
+  capabilities: ['text_to_video', 'image_to_video'],
+  providerMappings: [
+    { providerSlug: 'evolink', modelId: 'sora-2-pro-preview', priority: 1, isActive: true },
+  ],
+  defaultParams: { aspectRatio: '16:9', duration: 4, resolution: '720p' },
+  limits: { maxDuration: 12 },
+  inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+  pricingMatrix: [
+    { conditions: { duration: 4,  resolution: '720p'  }, costInTokens: 61,  costInDollars: 0.444, label: '4с × 720p'  },
+    { conditions: { duration: 4,  resolution: '1080p' }, costInTokens: 102, costInDollars: 0.741, label: '4с × 1080p' },
+    { conditions: { duration: 8,  resolution: '720p'  }, costInTokens: 122, costInDollars: 0.889, label: '8с × 720p'  },
+    { conditions: { duration: 8,  resolution: '1080p' }, costInTokens: 203, costInDollars: 1.481, label: '8с × 1080p' },
+    { conditions: { duration: 12, resolution: '720p'  }, costInTokens: 183, costInDollars: 1.333, label: '12с × 720p' },
+    { conditions: { duration: 12, resolution: '1080p' }, costInTokens: 305, costInDollars: 2.222, label: '12с × 1080p'},
+  ],
+  uiParameters: [
+    {
+      key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
+      options: [
+        { value: 4,  label: '4 секунды'  },
+        { value: 8,  label: '8 секунд'   },
+        { value: 12, label: '12 секунд'  },
+      ],
+    },
+    {
+      key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+      options: [
+        { value: '720p',  label: '720p (от 61🔥)'  },
+        { value: '1080p', label: '1080p (от 102🔥)' },
+      ],
+    },
+    {
+      key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+      options: [
+        { value: '16:9', label: 'Горизонталь (16:9)' },
+        { value: '9:16', label: 'Вертикаль (9:16)'   },
+      ],
+    },
+    {
+      key: 'resizeMode', label: 'Вписывание изображения', type: 'select', affectsPrice: false, defaultValue: 'crop',
+      description: 'Применяется только при загрузке изображения',
+      options: [
+        { value: 'crop', label: 'Обрезать (Crop)' },
+        { value: 'pad',  label: 'Вписать с полями (Pad)' },
+      ],
+    },
+  ],
+},
 
       // ─── Kling 3.0 (KIE) ────────────────────────────────
       {

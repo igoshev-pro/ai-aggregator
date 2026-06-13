@@ -768,51 +768,64 @@ export class EvolinkProvider extends BaseProvider {
     return body;
   }
 
-     /**
-   * Sora 2 / 2 Pro (Evolink) — строгая схема.
-   * ВАЖНО: quality enum РАЗНЫЙ для pro и не-pro:
-   *   sora-2-preview      → standard | high
-   *   sora-2-pro-preview  → 720p | 1080p
-   * Поля negative_prompt / seed / generate_audio НЕ поддерживаются.
-   */
-  private buildSoraBody(request: VideoGenerationRequest): any {
-    const isPro = request.model === 'sora-2-pro-preview';
+/**
+ * Sora 2 / 2 Pro (Evolink) — строгая схема.
+ * ВАЖНО: quality enum ТОЛЬКО у pro:
+ *   sora-2-preview      → без quality параметра
+ *   sora-2-pro-preview  → 720p | 1080p
+ * resize_mode: crop | pad — только при image-to-video
+ * Поля negative_prompt / seed / generate_audio НЕ поддерживаются.
+ */
+private buildSoraBody(request: VideoGenerationRequest): any {
+  const isPro = request.model === 'sora-2-pro-preview';
 
-    const body: any = {
-      model: request.model,
-      prompt: (request.prompt || '').substring(0, 5000),
-    };
+  const body: any = {
+    model: request.model,
+    prompt: (request.prompt || '').substring(0, 5000),
+  };
 
-    // aspect_ratio: только 16:9 / 9:16
-    body.aspect_ratio = request.aspectRatio === '9:16' ? '9:16' : '16:9';
-
-    // duration: округляем к ближайшему из 4/8/12
-    const allowedDur = [4, 8, 12];
-    const reqDur = Number(request.duration) || 4;
-    body.duration = allowedDur.reduce((prev, cur) =>
-      Math.abs(cur - reqDur) < Math.abs(prev - reqDur) ? cur : prev,
-    );
-
-    // quality: маппинг зависит от модели
-    const q = request.resolution;
-    if (isPro) {
-      // sora-2-pro-preview: 720p | 1080p
-      body.quality = q === '1080p' ? '1080p' : '720p';
-    } else {
-      // sora-2-preview: standard | high
-      // 1080p/high → high, иначе standard
-      body.quality = (q === 'high' || q === '1080p') ? 'high' : 'standard';
-    }
-
-    // image-to-video: максимум 1 изображение
-    if (request.imageUrl) {
-      body.image_urls = [request.imageUrl];
-    } else if ((request as any).imageUrls?.length > 0) {
-      body.image_urls = [(request as any).imageUrls[0]];
-    }
-
-    return body;
+  // aspect_ratio: только 16:9 / 9:16
+  // Evolink также принимает пиксельные форматы 1280x720 / 720x1280,
+  // но мы нормализуем их к строковым значениям
+  const ar = request.aspectRatio;
+  if (ar === '9:16' || ar === '720x1280') {
+    body.aspect_ratio = '9:16';
+  } else {
+    body.aspect_ratio = '16:9';
   }
+
+  // duration: округляем к ближайшему из 4/8/12
+  const allowedDur = [4, 8, 12];
+  const reqDur = Number(request.duration) || 4;
+  body.duration = allowedDur.reduce((prev, cur) =>
+    Math.abs(cur - reqDur) < Math.abs(prev - reqDur) ? cur : prev,
+  );
+
+  // quality: только у sora-2-pro-preview
+  if (isPro) {
+    const q = request.resolution;
+    body.quality = q === '1080p' ? '1080p' : '720p';
+  }
+
+  // image-to-video: максимум 1 изображение
+  const hasImage = !!(request.imageUrl || (request as any).imageUrls?.length);
+  if (request.imageUrl) {
+    body.image_urls = [request.imageUrl];
+  } else if ((request as any).imageUrls?.length > 0) {
+    body.image_urls = [(request as any).imageUrls[0]];
+  }
+
+  // resize_mode: crop | pad — только при наличии image_urls
+  if (hasImage) {
+    const resizeMode = (request as any).resizeMode || (request as any).resize_mode;
+    if (resizeMode === 'crop' || resizeMode === 'pad') {
+      body.resize_mode = resizeMode;
+    }
+    // default: не передаём (API сам выберет)
+  }
+
+  return body;
+}
 
     /**
    * 🆕 Seedance 1.5 Pro (Evolink) — формат /v1/videos/generations.
