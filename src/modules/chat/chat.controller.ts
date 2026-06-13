@@ -205,7 +205,7 @@ export class ChatController {
           (res as any).flush();
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       // Отправляем ошибку как SSE event
       res.write(`event: error\n`);
       res.write(`data: ${JSON.stringify({ message: error.message })}\n\n`);

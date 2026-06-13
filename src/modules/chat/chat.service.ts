@@ -45,9 +45,13 @@ interface ContextMessage {
 
 const MIN_REQUIRED_BALANCE = 0.01;
 
-// 🆕 Грубая оценка: сколько символов ≈ 1 токен.
+// Грубая оценка: сколько символов ≈ 1 токен.
 // Для кириллицы токенизатор плотнее (~2-3 симв/токен), берём 3 как компромисс.
 const CHARS_PER_TOKEN = 3;
+
+// Сколько последних сообщений передаём провайдеру как контекст.
+// После этого числа окно стабилизируется и рост токенов на запрос прекращается.
+const MAX_CONTEXT_MESSAGES = 20;
 
 @Injectable()
 export class ChatService {
@@ -65,7 +69,7 @@ export class ChatService {
     private billingService: BillingService,
     @Inject(forwardRef(() => ProviderRegistryService))
     private providerRegistry: ProviderRegistryService,
-  ) { }
+  ) {}
 
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -110,7 +114,7 @@ export class ChatService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 🆕 Helper: оценка токенов когда провайдер не вернул usage
+  // Helper: оценка токенов когда провайдер не вернул usage
   // ═══════════════════════════════════════════════════════════════
 
   private resolveUsageTokens(
@@ -124,7 +128,7 @@ export class ChatService {
     let inputTokens = rawInput;
     let outputTokens = rawOutput;
 
-        if (inputTokens == null || inputTokens <= 0) {
+    if (inputTokens == null || inputTokens <= 0) {
       const promptChars = contextMessages.reduce(
         (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0),
         0,
@@ -142,7 +146,8 @@ export class ChatService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 🆕 Helper: проверка достаточности баланса по preview-цене
+  // Helper: проверка достаточности баланса по preview-цене.
+  // Учитывает все три кошелька: tokenBalance + bonusTokens + cashbackBalance.
   // ═══════════════════════════════════════════════════════════════
 
   private async checkSufficientBalance(
@@ -150,7 +155,10 @@ export class ChatService {
     modelSlug: string,
   ): Promise<{ ok: true; balance: number } | { ok: false; balance: number; required: number }> {
     const user = await this.usersService.findById(userId);
-    const totalBalance = user.tokenBalance + user.bonusTokens;
+
+    // ✅ Включаем cashbackBalance — он тратится третьим по приоритету
+    // после bonusTokens и tokenBalance, но всё равно является доступным балансом
+    const totalBalance = (user.tokenBalance ?? 0) + (user.bonusTokens ?? 0) + (user.cashbackBalance ?? 0);
 
     try {
       const preview = await this.billingService.getModelPreviewCost(modelSlug);
@@ -264,7 +272,7 @@ export class ChatService {
 
       const responseContent = result.data?.content || '';
 
-      // 🆕 Fallback оценка токенов, если провайдер не вернул usage
+      // Fallback оценка токенов, если провайдер не вернул usage
       const { inputTokens, outputTokens, estimated } = this.resolveUsageTokens(
         result.usage?.inputTokens,
         result.usage?.outputTokens,
@@ -275,22 +283,25 @@ export class ChatService {
       if (estimated) {
         this.logger.warn(
           `⚠️ [non-stream] usage missing from provider for ${dto.modelSlug}, ` +
-          `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
-          `(rawUsage=${JSON.stringify(result.usage)})`,
+            `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
+            `(rawUsage=${JSON.stringify(result.usage)})`,
         );
       }
 
       const { costInTokens, costInDollars } = await this.billingService.chargeForGeneration(
-        userId, dto.modelSlug, 'text', conversation._id.toString(),
+        userId,
+        dto.modelSlug,
+        'text',
+        conversation._id.toString(),
         inputTokens,
         outputTokens,
-        undefined,                       // params
-        result.usage?.cachedTokens,      // 🆕 cachedTokens
+        undefined,
+        result.usage?.cachedTokens,
       );
 
       this.logger.log(
         `💸 Charged: ${costInTokens}🔥 (in=${inputTokens}, out=${outputTokens}, ` +
-        `estimated=${estimated}, providerCost=$${costInDollars})`,
+          `estimated=${estimated}, providerCost=$${costInDollars})`,
       );
 
       const assistantMessage = new this.messageModel({
@@ -309,7 +320,7 @@ export class ChatService {
       await assistantMessage.save();
 
       conversation.messageCount += 2;
-      conversation.totalTokensUsed += result.usage?.totalTokens || (inputTokens + outputTokens);
+      conversation.totalTokensUsed += result.usage?.totalTokens || inputTokens + outputTokens;
       conversation.lastMessageAt = new Date();
 
       if (conversation.messageCount <= 2) {
@@ -424,7 +435,11 @@ export class ChatService {
       await userMessage.save();
 
       // 6. Построение контекста
-      const contextMessages = await this.buildContext(conversation, dto, userMessage._id.toString());
+      const contextMessages = await this.buildContext(
+        conversation,
+        dto,
+        userMessage._id.toString(),
+      );
 
       // 7. Создание сообщения ассистента (placeholder)
       const assistantMessage = new this.messageModel({
@@ -460,10 +475,7 @@ export class ChatService {
           const chunkError = (chunk as any).error;
           if (chunkError) {
             this.logger.error(`Stream error in chunk: ${chunkError}`);
-            yield {
-              type: 'error',
-              data: { message: chunkError },
-            };
+            yield { type: 'error', data: { message: chunkError } };
             success = false;
             break;
           }
@@ -471,19 +483,13 @@ export class ChatService {
           if (chunk.content) {
             if (chunk.content.startsWith('Error:') && chunk.done) {
               this.logger.error(`Stream returned legacy error: ${chunk.content}`);
-              yield {
-                type: 'error',
-                data: { message: chunk.content },
-              };
+              yield { type: 'error', data: { message: chunk.content } };
               success = false;
               break;
             }
 
             fullContent += chunk.content;
-            yield {
-              type: 'text_delta',
-              data: { content: chunk.content },
-            };
+            yield { type: 'text_delta', data: { content: chunk.content } };
           }
 
           if (chunk.done) {
@@ -501,16 +507,13 @@ export class ChatService {
         }
       } catch (error: any) {
         this.logger.error(`Stream error: ${error.message}`);
-        yield {
-          type: 'error',
-          data: { message: error.message || 'Stream generation failed' },
-        };
+        yield { type: 'error', data: { message: error.message || 'Stream generation failed' } };
         success = false;
       }
 
       // 9. Сохранение результата
       if (success && fullContent) {
-        // 🆕 Fallback оценка токенов, если провайдер не вернул usage
+        // Fallback оценка токенов, если провайдер не вернул usage
         const { inputTokens, outputTokens, estimated } = this.resolveUsageTokens(
           lastUsage?.inputTokens,
           lastUsage?.outputTokens,
@@ -521,8 +524,8 @@ export class ChatService {
         if (estimated) {
           this.logger.warn(
             `⚠️ [stream] usage missing from provider for ${dto.modelSlug}, ` +
-            `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
-            `(rawUsage=${JSON.stringify(lastUsage)})`,
+              `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
+              `(rawUsage=${JSON.stringify(lastUsage)})`,
           );
         }
 
@@ -534,18 +537,18 @@ export class ChatService {
             conversation._id.toString(),
             inputTokens,
             outputTokens,
-            undefined,                  // params
-            lastUsage?.cachedTokens,    // 🆕 cachedTokens
+            undefined,
+            lastUsage?.cachedTokens,
           );
 
         costInTokens = billedTokens;
 
         this.logger.log(
           `💸 [stream] Charged: ${costInTokens}🔥 (in=${inputTokens}, out=${outputTokens}, ` +
-          `estimated=${estimated}, providerCost=$${costInDollars})`,
+            `estimated=${estimated}, providerCost=$${costInDollars})`,
         );
 
-        // ✅ Обновляем сообщение ассистента
+        // Обновляем сообщение ассистента
         assistantMessage.content = fullContent;
         assistantMessage.isStreaming = false;
         assistantMessage.providerSlug = (model as any).providerSlug;
@@ -555,9 +558,9 @@ export class ChatService {
         assistantMessage.outputTokens = outputTokens;
         await assistantMessage.save();
 
-        // ✅ Обновляем conversation
+        // Обновляем conversation
         conversation.messageCount += 2;
-        conversation.totalTokensUsed += lastUsage?.totalTokens || (inputTokens + outputTokens);
+        conversation.totalTokensUsed += lastUsage?.totalTokens || inputTokens + outputTokens;
         conversation.lastMessageAt = new Date();
 
         if (conversation.messageCount <= 2) {
@@ -571,22 +574,42 @@ export class ChatService {
         await this.messageModel.findByIdAndDelete(assistantMessage._id);
       }
 
+      // ✅ Читаем актуальный баланс из БД после списания и передаём фронту.
+      // Это позволяет фронту обновить баланс точно, без клиентского расчёта.
+      // Включает все три кошелька: tokenBalance + bonusTokens + cashbackBalance.
+      let newTokenBalance: number | undefined;
+      let newBonusTokens: number | undefined;
+      let newCashbackBalance: number | undefined;
+
+      if (success) {
+        try {
+          const updatedUser = await this.usersService.findById(userId);
+          newTokenBalance = updatedUser.tokenBalance ?? 0;
+          newBonusTokens = updatedUser.bonusTokens ?? 0;
+          newCashbackBalance = updatedUser.cashbackBalance ?? 0;
+        } catch (e) {
+          this.logger.warn(`Could not fetch updated balance for user ${userId}: ${(e as any).message}`);
+        }
+      }
+
       yield {
         type: 'message_end',
         data: {
           messageId: assistantMessage._id.toString(),
           usage: lastUsage,
           tokensCost: success ? costInTokens : 0,
+          // ✅ Актуальные балансы с сервера — фронт использует их напрямую
+          // вместо клиентского вычитания
+          newTokenBalance,
+          newBonusTokens,
+          newCashbackBalance,
         },
       };
 
       this.logger.debug('=== END STREAM MESSAGE ===');
     } catch (error: any) {
       this.logger.error(`FATAL ERROR in streamMessage: ${error.message}`, error.stack);
-      yield {
-        type: 'error',
-        data: { message: 'Internal server error' },
-      };
+      yield { type: 'error', data: { message: 'Internal server error' } };
     }
   }
 
@@ -629,93 +652,91 @@ export class ChatService {
   }
 
   /**
- * Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
- * 
- * @param excludeMessageId - ID только что сохранённого user-сообщения,
- *   которое НЕ нужно включать из истории (оно добавляется явно в конце)
- */
-private async buildContext(
-  conversation: ConversationDocument,
-  dto: SendMessageDto,
-  excludeMessageId?: string,  // 🆕 новый параметр
-): Promise<ContextMessage[]> {
-  const messages: ContextMessage[] = []
+   * Строит контекст для AI-провайдера с поддержкой vision (imageUrls).
+   *
+   * @param excludeMessageId - ID только что сохранённого user-сообщения,
+   *   которое НЕ нужно включать из истории (оно добавляется явно в конце)
+   */
+  private async buildContext(
+    conversation: ConversationDocument,
+    dto: SendMessageDto,
+    excludeMessageId?: string,
+  ): Promise<ContextMessage[]> {
+    const messages: ContextMessage[] = [];
 
-  const systemPrompt = dto.systemPrompt || conversation.systemPrompt
-  if (systemPrompt) {
-    messages.push({ role: 'system', content: systemPrompt })
-  }
-
-  const maxContextMessages = 20
-  
-  // 🔧 ИСПРАВЛЕНИЕ: строим фильтр динамически
-  const historyFilter: any = {
-    conversationId: conversation._id,
-    isError: false,
-    isStreaming: false,
-  }
-  
-  // Исключаем только что сохранённое сообщение пользователя
-  // чтобы избежать дублирования в конце buildContext
-  if (excludeMessageId) {
-    historyFilter._id = { $ne: excludeMessageId }
-  }
-
-  const history = await this.messageModel
-    .find(historyFilter)
-    .sort({ createdAt: -1 })
-    .limit(maxContextMessages)
-    .exec()
-
-  const orderedHistory = history.reverse()
-
-  for (const msg of orderedHistory) {
-    const contextMsg: ContextMessage = {
-      role: msg.role,
-      content: msg.content,
+    const systemPrompt = dto.systemPrompt || conversation.systemPrompt;
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
     }
 
-    const msgImages = (msg as any).imageUrls
-    if (Array.isArray(msgImages) && msgImages.length > 0) {
-      contextMsg.imageUrls = msgImages
+    // Строим фильтр динамически
+    const historyFilter: any = {
+      conversationId: conversation._id,
+      isError: false,
+      isStreaming: false,
+    };
+
+    // Исключаем только что сохранённое сообщение пользователя
+    // чтобы избежать дублирования в конце buildContext
+    if (excludeMessageId) {
+      historyFilter._id = { $ne: excludeMessageId };
     }
 
-    messages.push(contextMsg)
-  }
+    const history = await this.messageModel
+      .find(historyFilter)
+      .sort({ createdAt: -1 })
+      .limit(MAX_CONTEXT_MESSAGES)
+      .exec();
 
-  // Встраиваем извлечённый текст документов в content последнего сообщения
-  let lastContent = dto.content || ''
-  if (dto.attachments && dto.attachments.length > 0) {
-    const docBlocks: string[] = []
-    for (const att of dto.attachments) {
-      if (att.text && att.text.trim()) {
-        docBlocks.push(
-          `Содержимое прикреплённого файла «${att.filename}»:\n` +
-          '```\n' +
-          att.text.trim() +
-          '\n```',
-        )
+    const orderedHistory = history.reverse();
+
+    for (const msg of orderedHistory) {
+      const contextMsg: ContextMessage = {
+        role: msg.role,
+        content: msg.content,
+      };
+
+      const msgImages = (msg as any).imageUrls;
+      if (Array.isArray(msgImages) && msgImages.length > 0) {
+        contextMsg.imageUrls = msgImages;
+      }
+
+      messages.push(contextMsg);
+    }
+
+    // Встраиваем извлечённый текст документов в content последнего сообщения
+    let lastContent = dto.content || '';
+    if (dto.attachments && dto.attachments.length > 0) {
+      const docBlocks: string[] = [];
+      for (const att of dto.attachments) {
+        if (att.text && att.text.trim()) {
+          docBlocks.push(
+            `Содержимое прикреплённого файла «${att.filename}»:\n` +
+              '```\n' +
+              att.text.trim() +
+              '\n```',
+          );
+        }
+      }
+      if (docBlocks.length > 0) {
+        lastContent =
+          docBlocks.join('\n\n') +
+          '\n\n---\n\n' +
+          (lastContent || 'Проанализируй прикреплённые файлы.');
       }
     }
-    if (docBlocks.length > 0) {
-      lastContent =
-        docBlocks.join('\n\n') +
-        '\n\n---\n\n' +
-        (lastContent || 'Проанализируй прикреплённые файлы.')
+
+    const lastUserMsg: ContextMessage = {
+      role: 'user',
+      content: lastContent,
+    };
+    if (dto.imageUrls && dto.imageUrls.length > 0) {
+      lastUserMsg.imageUrls = dto.imageUrls;
     }
-  }
+    messages.push(lastUserMsg);
 
-  const lastUserMsg: ContextMessage = {
-    role: 'user',
-    content: lastContent,
+    return messages;
   }
-  if (dto.imageUrls && dto.imageUrls.length > 0) {
-    lastUserMsg.imageUrls = dto.imageUrls
-  }
-  messages.push(lastUserMsg)
-
-  return messages
-}
 
   private async getConversationWithAccess(
     userId: string,
