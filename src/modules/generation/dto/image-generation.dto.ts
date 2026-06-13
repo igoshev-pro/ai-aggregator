@@ -204,6 +204,14 @@ export class VideoGenerationDto {
   @IsOptional()
   waterMark?: string;
 
+  @ApiPropertyOptional({
+  enum: ['crop', 'pad'],
+  description: 'Как вписать изображение в видео (только для img2video Sora)',
+})
+@IsOptional()
+@IsString()
+resizeMode?: string;
+
   @ApiPropertyOptional({ description: 'Prompt optimizer (Hailuo)' })
   @IsOptional()
   @IsBoolean()

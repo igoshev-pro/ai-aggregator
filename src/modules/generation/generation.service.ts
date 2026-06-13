@@ -124,6 +124,7 @@ export class GenerationService {
           seed: p.seed,
           numImages: p.numImages,
           style: p.style,
+          resizeMode: p.resizeMode,
           inputUrls: p.inputUrls,
           mode: p.mode,         // 🆕
           version: p.version,   // 🆕
@@ -200,6 +201,7 @@ export class GenerationService {
         waterMark: dto.waterMark,
         watermark: dto.watermark,                // 🆕 Veo watermark
         style: dto.style,
+        resizeMode: dto.resizeMode,  // ← ДОБАВИТЬ
       },
       tokensCost: costInTokens,
       costInDollars: priceCalc.costInDollars,
