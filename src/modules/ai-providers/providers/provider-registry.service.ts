@@ -444,7 +444,7 @@ export class ProviderRegistryService implements OnModuleInit {
       { slug: { $in: DEPRECATED_AUDIO_SLUGS }, isActive: true },
       { $set: { isActive: false } },
     );
-    
+
     if (deactivated.modifiedCount > 0) {
       this.logger.warn(
         `🚫 Deactivated ${deactivated.modifiedCount} deprecated Suno models: ${DEPRECATED_AUDIO_SLUGS.join(', ')}`,
@@ -2459,44 +2459,44 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── ElevenLabs Sound Effect v2 (KIE) ────────────────
-      {
-        slug: 'elevenlabs-sound-effect-v2',
-        name: 'ElevenLabs Sound Effect v2',
-        displayName: 'ElevenLabs Sound Effect v2',
-        description: 'Генерация звуковых эффектов от ElevenLabs',
-        type: 'audio',
-        fixedCostPerGeneration: 0.022,
-        tokensPerDollar: 90,
-        minTokenCost: 2,
-        sortOrder: 5,
-        capabilities: ['text_to_audio', 'sound_effects'],
-        providerMappings: [
-          { providerSlug: 'kie', modelId: 'elevenlabs/sound-effect-v2', priority: 1, isActive: true },
-        ],
-        defaultParams: { duration_seconds: 5, loop: false, prompt_influence: 0.3 },
-        limits: { maxDuration: 22 },
-        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { costInTokens: 2, costInDollars: 0.022, label: 'Стандартная генерация' },
-        ],
-        uiParameters: [
-          {
-            key: 'duration_seconds', label: 'Длительность (сек)', type: 'slider', affectsPrice: false, defaultValue: 5,
-            options: [],
-          },
-          {
-            key: 'loop', label: 'Зацикленный', type: 'boolean', affectsPrice: false, defaultValue: false,
-            options: [
-              { value: false, label: 'Нет' },
-              { value: true, label: 'Да' },
-            ],
-          },
-          {
-            key: 'prompt_influence', label: 'Влияние промпта', type: 'slider', affectsPrice: false, defaultValue: 0.3,
-            options: [],
-          },
-        ],
-      },
+      // {
+      //   slug: 'elevenlabs-sound-effect-v2',
+      //   name: 'ElevenLabs Sound Effect v2',
+      //   displayName: 'ElevenLabs Sound Effect v2',
+      //   description: 'Генерация звуковых эффектов от ElevenLabs',
+      //   type: 'audio',
+      //   fixedCostPerGeneration: 0.022,
+      //   tokensPerDollar: 90,
+      //   minTokenCost: 2,
+      //   sortOrder: 5,
+      //   capabilities: ['text_to_audio', 'sound_effects'],
+      //   providerMappings: [
+      //     { providerSlug: 'kie', modelId: 'elevenlabs/sound-effect-v2', priority: 1, isActive: true },
+      //   ],
+      //   defaultParams: { duration_seconds: 5, loop: false, prompt_influence: 0.3 },
+      //   limits: { maxDuration: 22 },
+      //   inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+      //   pricingMatrix: [
+      //     { costInTokens: 2, costInDollars: 0.022, label: 'Стандартная генерация' },
+      //   ],
+      //   uiParameters: [
+      //     {
+      //       key: 'duration_seconds', label: 'Длительность (сек)', type: 'slider', affectsPrice: false, defaultValue: 5,
+      //       options: [],
+      //     },
+      //     {
+      //       key: 'loop', label: 'Зацикленный', type: 'boolean', affectsPrice: false, defaultValue: false,
+      //       options: [
+      //         { value: false, label: 'Нет' },
+      //         { value: true, label: 'Да' },
+      //       ],
+      //     },
+      //     {
+      //       key: 'prompt_influence', label: 'Влияние промпта', type: 'slider', affectsPrice: false, defaultValue: 0.3,
+      //       options: [],
+      //     },
+      //   ],
+      // },
 
       // ─── ElevenLabs Text-to-Dialogue v3 (KIE) ────────────
       {
@@ -2543,80 +2543,80 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── ElevenLabs Audio Isolation (KIE) ────────────────
-      {
-        slug: 'elevenlabs-audio-isolation',
-        name: 'ElevenLabs Audio Isolation',
-        displayName: 'ElevenLabs Audio Isolation',
-        description: 'Удаление фонового шума и изоляция голоса от ElevenLabs',
-        type: 'audio',
-        fixedCostPerGeneration: 0.033,
-        tokensPerDollar: 90,
-        minTokenCost: 3,
-        sortOrder: 7,
-        capabilities: ['audio_processing', 'noise_removal'],
-        providerMappings: [
-          { providerSlug: 'kie', modelId: 'elevenlabs/audio-isolation', priority: 1, isActive: true },
-        ],
-        defaultParams: {},
-        limits: {},
-        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { costInTokens: 3, costInDollars: 0.033, label: 'Стандартная обработка' },
-        ],
-        uiParameters: [],
-      },
+      // {
+      //   slug: 'elevenlabs-audio-isolation',
+      //   name: 'ElevenLabs Audio Isolation',
+      //   displayName: 'ElevenLabs Audio Isolation',
+      //   description: 'Удаление фонового шума и изоляция голоса от ElevenLabs',
+      //   type: 'audio',
+      //   fixedCostPerGeneration: 0.033,
+      //   tokensPerDollar: 90,
+      //   minTokenCost: 3,
+      //   sortOrder: 7,
+      //   capabilities: ['audio_processing', 'noise_removal'],
+      //   providerMappings: [
+      //     { providerSlug: 'kie', modelId: 'elevenlabs/audio-isolation', priority: 1, isActive: true },
+      //   ],
+      //   defaultParams: {},
+      //   limits: {},
+      //   inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+      //   pricingMatrix: [
+      //     { costInTokens: 3, costInDollars: 0.033, label: 'Стандартная обработка' },
+      //   ],
+      //   uiParameters: [],
+      // },
 
       // ─── ElevenLabs Speech-to-Text (KIE) ─────────────────
-      {
-        slug: 'elevenlabs-speech-to-text',
-        name: 'ElevenLabs Speech-to-Text',
-        displayName: 'ElevenLabs Speech-to-Text',
-        description: 'Точное распознавание речи с диаризацией от ElevenLabs',
-        type: 'audio',
-        fixedCostPerGeneration: 0.033,
-        tokensPerDollar: 90,
-        minTokenCost: 3,
-        sortOrder: 8,
-        capabilities: ['speech_to_text', 'transcription'],
-        providerMappings: [
-          { providerSlug: 'kie', modelId: 'elevenlabs/speech-to-text', priority: 1, isActive: true },
-        ],
-        defaultParams: { diarize: false, tag_audio_events: false },
-        limits: {},
-        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { costInTokens: 3, costInDollars: 0.033, label: 'Стандартная транскрипция' },
-        ],
-        uiParameters: [
-          {
-            key: 'diarize', label: 'Диаризация', type: 'boolean', affectsPrice: false, defaultValue: false,
-            options: [
-              { value: false, label: 'Выкл' },
-              { value: true, label: 'Вкл' },
-            ],
-          },
-          {
-            key: 'tag_audio_events', label: 'Аудио-события', type: 'boolean', affectsPrice: false, defaultValue: false,
-            options: [
-              { value: false, label: 'Выкл' },
-              { value: true, label: 'Вкл' },
-            ],
-          },
-          {
-            key: 'language_code', label: 'Язык', type: 'select', affectsPrice: false, defaultValue: '',
-            options: [
-              { value: '', label: 'Авто' },
-              { value: 'en', label: 'English' },
-              { value: 'ru', label: 'Русский' },
-              { value: 'de', label: 'Deutsch' },
-              { value: 'fr', label: 'Français' },
-              { value: 'es', label: 'Español' },
-              { value: 'zh', label: '中文' },
-              { value: 'ja', label: '日本語' },
-            ],
-          },
-        ],
-      },
+  //     {
+  //       slug: 'elevenlabs-speech-to-text',
+  //       name: 'ElevenLabs Speech-to-Text',
+  //       displayName: 'ElevenLabs Speech-to-Text',
+  //       description: 'Точное распознавание речи с диаризацией от ElevenLabs',
+  //       type: 'audio',
+  //       fixedCostPerGeneration: 0.033,
+  //       tokensPerDollar: 90,
+  //       minTokenCost: 3,
+  //       sortOrder: 8,
+  //       capabilities: ['speech_to_text', 'transcription'],
+  //       providerMappings: [
+  //         { providerSlug: 'kie', modelId: 'elevenlabs/speech-to-text', priority: 1, isActive: true },
+  //       ],
+  //       defaultParams: { diarize: false, tag_audio_events: false },
+  //       limits: {},
+  //       inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+  //       pricingMatrix: [
+  //         { costInTokens: 3, costInDollars: 0.033, label: 'Стандартная транскрипция' },
+  //       ],
+  //       uiParameters: [
+  //         {
+  //           key: 'diarize', label: 'Диаризация', type: 'boolean', affectsPrice: false, defaultValue: false,
+  //           options: [
+  //             { value: false, label: 'Выкл' },
+  //             { value: true, label: 'Вкл' },
+  //           ],
+  //         },
+  //         {
+  //           key: 'tag_audio_events', label: 'Аудио-события', type: 'boolean', affectsPrice: false, defaultValue: false,
+  //           options: [
+  //             { value: false, label: 'Выкл' },
+  //             { value: true, label: 'Вкл' },
+  //           ],
+  //         },
+  //         {
+  //           key: 'language_code', label: 'Язык', type: 'select', affectsPrice: false, defaultValue: '',
+  //           options: [
+  //             { value: '', label: 'Авто' },
+  //             { value: 'en', label: 'English' },
+  //             { value: 'ru', label: 'Русский' },
+  //             { value: 'de', label: 'Deutsch' },
+  //             { value: 'fr', label: 'Français' },
+  //             { value: 'es', label: 'Español' },
+  //             { value: 'zh', label: '中文' },
+  //             { value: 'ja', label: '日本語' },
+  //           ],
+  //         },
+  //       ],
+  //     },
     ];
   }
 }
