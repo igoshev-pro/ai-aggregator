@@ -169,11 +169,20 @@ export class VideoGenerationDto {
   @IsArray()
   videoUrls?: string[];
 
+  // 🆕 Motion Control: ориентация персонажа (image=до 10с / video=до 30с)
+  @ApiPropertyOptional({
+    enum: ['image', 'video'],
+    description: 'Motion Control: character orientation source',
+  })
+  @IsOptional()
+  @IsString()
+  characterOrientation?: string;
+
   @ApiPropertyOptional({ default: 5, description: 'Duration in seconds' })
   @IsNumber()
   @IsOptional()
   @Min(3)
-  @Max(20)
+  @Max(30)
   duration?: number;
 
   @ApiPropertyOptional({

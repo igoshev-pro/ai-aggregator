@@ -187,6 +187,7 @@ export class GenerationService {
         imageUrls: dto.imageUrls,
         referenceImages: dto.referenceImages,    // 🆕 Veo reference
         videoUrls: dto.videoUrls,
+        characterOrientation: dto.characterOrientation,  // 🆕 motion-control
         generationType: dto.generationType,      // 🆕 Veo mode override
         duration: dto.duration || (model.defaultParams as any)?.duration || 5,
         aspectRatio: dto.aspectRatio || (model.defaultParams as any)?.aspectRatio || '16:9',
@@ -236,6 +237,7 @@ export class GenerationService {
           imageUrls: p.imageUrls,
           referenceImages: p.referenceImages,    // 🆕
           videoUrls: p.videoUrls,
+          characterOrientation: p.characterOrientation,   // 🆕 motion-control
           generationType: p.generationType,       // 🆕
           duration: p.duration,
           aspectRatio: p.aspectRatio,

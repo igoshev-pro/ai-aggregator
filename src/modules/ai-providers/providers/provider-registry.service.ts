@@ -1637,6 +1637,67 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
+            // ─── Kling 3.0 Motion Control (KIE) ─────────────────
+      {
+        slug: 'motion-control',
+        name: 'Motion Control',
+        displayName: 'Kling Motion Control',
+        description: 'Перенос движений из видео на персонажа с фото',
+        type: 'video',
+        fixedCostPerGeneration: 0.1, // справочно (реальная цена из pricingMatrix)
+        tokensPerDollar: 90,
+        minTokenCost: 27, // 720p × 3с
+        sortOrder: 6.7,
+        capabilities: ['image_to_video', 'motion_transfer'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'kling-3.0/motion-control', priority: 1, isActive: true },
+        ],
+        defaultParams: { mode: '720p', characterOrientation: 'video', duration: 5 },
+        limits: { maxDuration: 30 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: (() => {
+          const rows: any[] = [];
+          const rate: Record<string, number> = { '720p': 9, '1080p': 12.3 };
+          const dollarsPerToken = 1 / 90;
+          for (const mode of ['720p', '1080p']) {
+            for (let d = 3; d <= 30; d++) {
+              const tokens = Math.round(rate[mode] * d * 10) / 10;
+              rows.push({
+                conditions: { mode, duration: d },
+                costInTokens: tokens,
+                costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+                label: `${mode} × ${d}с`,
+              });
+            }
+          }
+          return rows;
+        })(),
+        uiParameters: [
+          {
+            key: 'characterOrientation', label: 'Источник ориентации', type: 'select', affectsPrice: false, defaultValue: 'video',
+            options: [
+              { value: 'video', label: 'По видео (до 30 сек)' },
+              { value: 'image', label: 'По фото (до 10 сек)' },
+            ],
+          },
+          {
+            key: 'mode', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '720p', label: '720p (9🔥/сек)' },
+              { value: '1080p', label: '1080p (12.3🔥/сек)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность (из видео)', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: (() => {
+              const opts: any[] = [];
+              for (let d = 3; d <= 30; d++) opts.push({ value: d, label: `${d} сек` });
+              return opts;
+            })(),
+          },
+        ],
+      },
+
       // ─── Runway (KIE) ────────────────────────────────────
       {
         slug: 'runway',

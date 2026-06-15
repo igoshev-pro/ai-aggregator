@@ -17,11 +17,16 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB (audio/image)
 const MAX_DOC_SIZE = 20 * 1024 * 1024; // 20 MB (документы)
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100 MB (video для motion-control)
 
 const ALLOWED_AUDIO_MIMES = [
   'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/wave', 'audio/x-wav',
   'audio/ogg', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/flac',
   'audio/x-m4a', 'audio/m4a',
+];
+
+const ALLOWED_VIDEO_MIMES = [
+  'video/mp4', 'video/quicktime', 'video/mov', 'video/x-quicktime',
 ];
 
 const ALLOWED_IMAGE_MIMES = [
@@ -111,6 +116,7 @@ export class UploadController {
       },
     }),
   )
+  
   async uploadImage(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
     if (!file) throw new BadRequestException('Файл не передан');
     const userId = req.user?.sub || req.user?.id || req.user?._id || 'anonymous';
@@ -126,6 +132,70 @@ export class UploadController {
     } catch (error: any) {
       this.logger.error(`Image upload failed: ${error.message}`, error.stack);
       throw new BadRequestException('Ошибка загрузки файла');
+    }
+  }
+
+    // ─────────────────────────────────────────────────────
+  // 🆕 VIDEO (для Kling Motion Control) — mp4/mov, до 100MB
+  // ─────────────────────────────────────────────────────
+  @Post('video')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_VIDEO_SIZE },
+      fileFilter: (_req, file, cb) => {
+        const ext = (file.originalname.split('.').pop() || '').toLowerCase();
+        if (
+          ALLOWED_VIDEO_MIMES.includes(file.mimetype) ||
+          ['mp4', 'mov'].includes(ext)
+        ) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              `Недопустимый тип видео: ${file.mimetype}. Поддерживаются MP4, MOV`,
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  async uploadVideo(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
+    if (!file) throw new BadRequestException('Файл не передан');
+
+    const userId = req.user?.sub || req.user?.id || req.user?._id || 'anonymous';
+
+    if (!file.buffer || file.buffer.length === 0) {
+      this.logger.error('[VIDEO] ПУСТОЙ БУФЕР — проверьте multer storage');
+      throw new BadRequestException('Файл получен пустым');
+    }
+
+    try {
+      const ext = this.getExtension(file.mimetype, file.originalname);
+      const key = `uploads/video/${userId}/${uuidv4()}.${ext}`;
+      const url = await this.storage.uploadBuffer(file.buffer, key, file.mimetype);
+
+      // видео нужно дольше для генерации → удаляем через 2 часа
+      this.scheduleDelete(key, 2 * 60 * 60 * 1000);
+
+      this.logger.log(
+        `[VIDEO] uploaded: name=${file.originalname} | size=${file.size} | by=${userId}`,
+      );
+
+      return {
+        success: true,
+        data: {
+          url,
+          key,
+          size: file.size,
+          mimetype: file.mimetype,
+          originalName: file.originalname,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(`Video upload failed: ${error.message}`, error.stack);
+      throw new BadRequestException('Ошибка загрузки видео');
     }
   }
 
@@ -227,6 +297,9 @@ export class UploadController {
       'audio/flac': 'flac', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a',
       'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg',
       'image/webp': 'webp', 'image/gif': 'gif',
+      // 🆕 video
+      'video/mp4': 'mp4', 'video/quicktime': 'mov',
+      'video/mov': 'mov', 'video/x-quicktime': 'mov',
       'application/pdf': 'pdf',
       'application/msword': 'doc',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',

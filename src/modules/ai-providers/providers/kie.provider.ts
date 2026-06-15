@@ -175,7 +175,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['5', '10'],
     aspectRatios: ['16:9', '9:16', '1:1'],
   },
-    'kling/v2-5-turbo-image-to-video-pro': {
+  'kling/v2-5-turbo-image-to-video-pro': {
     kieModel: 'kling/v2-5-turbo-image-to-video-pro',
     apiType: 'jobs',
     statusApiType: 'jobs',
@@ -201,10 +201,8 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     apiType: 'jobs',
     statusApiType: 'jobs',
     hasImageInput: true,
-    hasSound: false,
-    hasMode: true,
-    durations: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
-    aspectRatios: ['16:9', '9:16', '1:1'],
+    durations: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30'],
+    aspectRatios: [], // формат берётся из видео/фото
   },
   'runway': {
     kieModel: 'runway',
@@ -409,7 +407,7 @@ export class KieProvider extends BaseProvider {
     if (modelSlug === 'sora-2-image-to-video' && !hasImage && VIDEO_MODEL_MAP['sora-2-text-to-video']) {
       config = VIDEO_MODEL_MAP['sora-2-text-to-video'];
     }
-        // 🆕 Kling 2.5 Turbo: t2v ↔ i2v по наличию изображения
+    // 🆕 Kling 2.5 Turbo: t2v ↔ i2v по наличию изображения
     if (modelSlug === 'kling/v2-5-turbo-text-to-video-pro' && hasImage && VIDEO_MODEL_MAP['kling/v2-5-turbo-image-to-video-pro']) {
       config = VIDEO_MODEL_MAP['kling/v2-5-turbo-image-to-video-pro'];
     }
@@ -437,7 +435,7 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-    // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
   // 🆕 VEO 3.1 VIDEO GENERATION (KIE /api/v1/veo/generate)
   // Три режима: TEXT_2_VIDEO / FIRST_AND_LAST_FRAMES_2_VIDEO / REFERENCE_2_VIDEO
   // ═══════════════════════════════════════════════════════
@@ -569,7 +567,7 @@ export class KieProvider extends BaseProvider {
     config: VideoModelConfig,
     start: number,
   ): Promise<GenerationResult> {
-        const r = request as any;
+    const r = request as any;
     const input: Record<string, any> = { prompt: request.prompt };
 
     const isKling = config.kieModel.startsWith('kling-3.0');
@@ -634,6 +632,72 @@ export class KieProvider extends BaseProvider {
       };
     }
 
+    // ─── Kling 3.0 Motion Control ───
+    const isMotionControl = config.kieModel === 'kling-3.0/motion-control';
+    if (isMotionControl) {
+      const mcInput: Record<string, any> = {
+        prompt:
+          request.prompt && request.prompt.trim()
+            ? request.prompt.trim()
+            : "No distortion, the character's movements are consistent with the video.",
+      };
+
+      // input_urls (референс-изображение, обязательно) — массив
+      const imgs: string[] = [];
+      if (Array.isArray(r.imageUrls) && r.imageUrls.length > 0) {
+        imgs.push(...r.imageUrls.filter(Boolean));
+      } else if (r.imageUrl) {
+        imgs.push(r.imageUrl);
+      }
+      if (imgs.length === 0) {
+        throw new Error('input_urls (reference image) is required for Motion Control');
+      }
+      mcInput.input_urls = [imgs[0]];
+
+      // video_urls (референс-видео, обязательно) — массив
+      const vids: string[] = Array.isArray(r.videoUrls)
+        ? r.videoUrls.filter(Boolean)
+        : [];
+      if (vids.length === 0) {
+        throw new Error('video_urls (reference video) is required for Motion Control');
+      }
+      mcInput.video_urls = [vids[0]];
+
+      // character_orientation: image | video
+      const co = r.characterOrientation === 'image' ? 'image' : 'video';
+      mcInput.character_orientation = co;
+
+      // mode: 720p | 1080p (KIE docs: '720p' / '1080p')
+      let mcMode = String(r.mode || '720p');
+      if (mcMode === 'std') mcMode = '720p';
+      if (mcMode === 'pro') mcMode = '1080p';
+      if (!['720p', '1080p'].includes(mcMode)) mcMode = '720p';
+      mcInput.mode = mcMode;
+
+      this.logger.debug(
+        `KIE MotionControl generate: input=${JSON.stringify(mcInput).substring(0, 400)}`,
+      );
+
+      const response = await this.client.post('/api/v1/jobs/createTask', {
+        model: config.kieModel,
+        input: mcInput,
+      });
+
+      const data = response.data;
+      if (data.code !== 200) {
+        throw new Error(data.msg || `KIE MotionControl task creation failed (code ${data.code})`);
+      }
+      const taskId = data.data?.taskId;
+      if (!taskId) throw new Error('No taskId in KIE MotionControl response');
+
+      return {
+        success: true,
+        data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: 'jobs' } },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    }
+
     if (config.aspectRatios.length > 0) {
       let ar = r.aspectRatio || config.aspectRatios[0];
       if (config.aspectRatios.includes('portrait') && !config.aspectRatios.includes(ar)) {
@@ -685,12 +749,12 @@ export class KieProvider extends BaseProvider {
       if (multiShots) {
         const shots: Array<{ prompt: string; duration: number }> = Array.isArray(r.multiPrompt)
           ? r.multiPrompt
-              .filter((s: any) => s && s.prompt)
-              .slice(0, 5)
-              .map((s: any) => ({
-                prompt: String(s.prompt).substring(0, 500),
-                duration: Math.min(12, Math.max(1, Number(s.duration) || 3)),
-              }))
+            .filter((s: any) => s && s.prompt)
+            .slice(0, 5)
+            .map((s: any) => ({
+              prompt: String(s.prompt).substring(0, 500),
+              duration: Math.min(12, Math.max(1, Number(s.duration) || 3)),
+            }))
           : [];
         input.multi_prompt = shots;
       } else {
@@ -751,7 +815,7 @@ export class KieProvider extends BaseProvider {
     };
   }
 
-    // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
   // 🆕 WAN 2.7 VIDEO GENERATION (KIE jobs, свой формат полей)
   // ═══════════════════════════════════════════════════════
   private async generateWanVideo(
@@ -862,7 +926,7 @@ export class KieProvider extends BaseProvider {
     };
   }
 
-    // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
   // TASK STATUS CHECK
   // ═══════════════════════════════════════════════════════
   async checkTaskStatus(taskId: string): Promise<TaskStatusResult> {
@@ -1101,7 +1165,7 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-    private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
+  private async checkRunwayTaskStatus(taskId: string): Promise<TaskStatusResult> {
     try {
       // 🔧 БЫЛО: '/api/v1/runway/status' → давало 404
       const response = await this.client.get('/api/v1/runway/record-detail', {
@@ -1817,7 +1881,7 @@ export class KieProvider extends BaseProvider {
         errorMessage = `HTTP ${status}: ${error.message}`;
       }
 
-            this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
+      this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
       yield { content: '', done: true, error: `KIE: ${status || 'NETWORK'} - ${errorMessage}` };
     }
   }
