@@ -300,9 +300,23 @@ resizeMode?: string;
   })
   @IsOptional()
   @IsArray()
-  @ValidateNested({ each: true })
+    @ValidateNested({ each: true })
   @Type(() => KlingElementDto)
   klingElements?: KlingElementDto[];
+
+  // 🆕 Kling 2.5 Turbo: cfg scale (креативность) 0-1
+  @ApiPropertyOptional({ description: 'Kling 2.5: CFG scale 0-1 (creativity)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  cfgScale?: number;
+
+  // 🆕 Kling 2.5 Turbo: NSFW checker
+  @ApiPropertyOptional({ description: 'Kling 2.5: NSFW checker' })
+  @IsOptional()
+  @IsBoolean()
+  nsfwChecker?: boolean;
 }
 
 export class DialogueLineDto {

@@ -111,6 +111,9 @@ interface VideoModelConfig {
   hasRemoveWatermark?: boolean;
   hasPromptOptimizer?: boolean;
   hasResolution?: boolean;
+  hasCfgScale?: boolean;        // 🆕 kling 2.5 turbo
+  hasNegativePrompt?: boolean;  // 🆕 kling 2.5 turbo
+  hasNsfwChecker?: boolean;     // 🆕 kling 2.5 turbo
   nFrames?: string[];
   durations?: string[];
   aspectRatios: string[];
@@ -160,6 +163,28 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     hasRemoveWatermark: true,
     nFrames: ['10', '15'],
     aspectRatios: ['portrait', 'landscape'],
+  },
+  'kling/v2-5-turbo-text-to-video-pro': {
+    kieModel: 'kling/v2-5-turbo-text-to-video-pro',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    hasCfgScale: true,
+    hasNegativePrompt: true,
+    hasNsfwChecker: true,
+    durations: ['5', '10'],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+  },
+    'kling/v2-5-turbo-image-to-video-pro': {
+    kieModel: 'kling/v2-5-turbo-image-to-video-pro',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasCfgScale: true,
+    hasNegativePrompt: true,
+    hasNsfwChecker: true,
+    durations: ['5', '10'],
+    aspectRatios: [], // i2v: формат берётся из изображения
   },
   'kling-3.0/video': {
     kieModel: 'kling-3.0/video',
@@ -384,6 +409,13 @@ export class KieProvider extends BaseProvider {
     if (modelSlug === 'sora-2-image-to-video' && !hasImage && VIDEO_MODEL_MAP['sora-2-text-to-video']) {
       config = VIDEO_MODEL_MAP['sora-2-text-to-video'];
     }
+        // 🆕 Kling 2.5 Turbo: t2v ↔ i2v по наличию изображения
+    if (modelSlug === 'kling/v2-5-turbo-text-to-video-pro' && hasImage && VIDEO_MODEL_MAP['kling/v2-5-turbo-image-to-video-pro']) {
+      config = VIDEO_MODEL_MAP['kling/v2-5-turbo-image-to-video-pro'];
+    }
+    if (modelSlug === 'kling/v2-5-turbo-image-to-video-pro' && !hasImage && VIDEO_MODEL_MAP['kling/v2-5-turbo-text-to-video-pro']) {
+      config = VIDEO_MODEL_MAP['kling/v2-5-turbo-text-to-video-pro'];
+    }
 
     this.logger.log(`KIE generateVideo: slug=${modelSlug}, kieModel=${config.kieModel}, hasImage=${hasImage}`);
 
@@ -537,10 +569,70 @@ export class KieProvider extends BaseProvider {
     config: VideoModelConfig,
     start: number,
   ): Promise<GenerationResult> {
-    const r = request as any;
+        const r = request as any;
     const input: Record<string, any> = { prompt: request.prompt };
 
     const isKling = config.kieModel.startsWith('kling-3.0');
+    const isKling25 =
+      config.kieModel === 'kling/v2-5-turbo-text-to-video-pro' ||
+      config.kieModel === 'kling/v2-5-turbo-image-to-video-pro';
+
+    // ─── Kling 2.5 Turbo (text/image-to-video) ───
+    if (isKling25) {
+      const isKling25I2V = config.kieModel === 'kling/v2-5-turbo-image-to-video-pro';
+
+      input.duration = String(r.duration || '5');
+      input.negative_prompt =
+        r.negativePrompt && String(r.negativePrompt).trim()
+          ? String(r.negativePrompt).trim()
+          : 'blur, distort, and low quality';
+      // cfg_scale: креативность 0-1 (чем ниже — тем креативнее)
+      const cfg = Number(r.cfgScale);
+      input.cfg_scale = isNaN(cfg) ? 0.5 : Math.min(1, Math.max(0, cfg));
+      input.nsfw_checker = r.nsfwChecker !== undefined ? !!r.nsfwChecker : true;
+
+      if (isKling25I2V) {
+        // i2v: image_url обязателен + опциональный tail_image_url
+        const frames: string[] = [];
+        if (Array.isArray(r.imageUrls) && r.imageUrls.length > 0) {
+          frames.push(...r.imageUrls.filter(Boolean));
+        } else if (r.imageUrl) {
+          frames.push(r.imageUrl);
+        }
+        if (frames.length === 0) {
+          throw new Error('image_url is required for Kling 2.5 image-to-video');
+        }
+        input.image_url = frames[0];
+        if (frames[1]) input.tail_image_url = frames[1];
+        // i2v не принимает aspect_ratio — формат берётся из изображения
+      } else {
+        // t2v: aspect_ratio обязателен
+        input.aspect_ratio = r.aspectRatio || '16:9';
+      }
+
+      this.logger.debug(
+        `KIE Kling2.5 generate (${isKling25I2V ? 'i2v' : 't2v'}): input=${JSON.stringify(input).substring(0, 400)}`,
+      );
+
+      const response = await this.client.post('/api/v1/jobs/createTask', {
+        model: config.kieModel,
+        input,
+      });
+
+      const data = response.data;
+      if (data.code !== 200) {
+        throw new Error(data.msg || `KIE Kling2.5 task creation failed (code ${data.code})`);
+      }
+      const taskId = data.data?.taskId;
+      if (!taskId) throw new Error('No taskId in KIE Kling2.5 response');
+
+      return {
+        success: true,
+        data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: 'jobs' } },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    }
 
     if (config.aspectRatios.length > 0) {
       let ar = r.aspectRatio || config.aspectRatios[0];

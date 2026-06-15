@@ -205,6 +205,8 @@ export class GenerationService {
         multiShots: dto.multiShots,
         multiPrompt: dto.multiPrompt,
         klingElements: dto.klingElements,
+        cfgScale: dto.cfgScale,         // 🆕 kling 2.5
+        nsfwChecker: dto.nsfwChecker,   // 🆕 kling 2.5
       },
       tokensCost: costInTokens,
       costInDollars: priceCalc.costInDollars,
@@ -253,6 +255,9 @@ export class GenerationService {
           multiShots: p.multiShots,
           multiPrompt: p.multiPrompt,
           klingElements: p.klingElements,
+          // 🆕 Kling 2.5 Turbo
+          cfgScale: p.cfgScale,
+          nsfwChecker: p.nsfwChecker,
         },
       },
       {

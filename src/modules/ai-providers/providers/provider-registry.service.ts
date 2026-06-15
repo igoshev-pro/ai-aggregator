@@ -657,7 +657,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['unlimited'] },
-              },
+      },
       {
         slug: 'claude-opus-4.7',
         name: 'Claude Opus 4.7',
@@ -1172,7 +1172,7 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'nano-banana-pro',
         name: 'Nano Banana Pro',
         displayName: 'Nano Banana Pro',
@@ -1248,38 +1248,38 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 3 },
         pricingMatrix: [
           // duration × resolution
-          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 9,  costInDollars: 0.40,  label: '8с × 720p'  },
-          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 12.7,  costInDollars: 0.60,  label: '8с × 1080p' },
-          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 45.4, costInDollars: 1.20,  label: '8с × 4K'    },
-          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 9,  costInDollars: 0.30,  label: '6с × 720p'  },
-          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 12.7,  costInDollars: 0.45,  label: '6с × 1080p' },
-          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 45.4,  costInDollars: 0.90,  label: '6с × 4K'    },
-          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 9,  costInDollars: 0.20,  label: '4с × 720p'  },
-          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 12.7,  costInDollars: 0.30,  label: '4с × 1080p' },
-          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 45.4,  costInDollars: 0.60,  label: '4с × 4K'    },
+          { conditions: { duration: 8, resolution: '720p' }, costInTokens: 9, costInDollars: 0.40, label: '8с × 720p' },
+          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 12.7, costInDollars: 0.60, label: '8с × 1080p' },
+          { conditions: { duration: 8, resolution: '4k' }, costInTokens: 45.4, costInDollars: 1.20, label: '8с × 4K' },
+          { conditions: { duration: 6, resolution: '720p' }, costInTokens: 9, costInDollars: 0.30, label: '6с × 720p' },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 12.7, costInDollars: 0.45, label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k' }, costInTokens: 45.4, costInDollars: 0.90, label: '6с × 4K' },
+          { conditions: { duration: 4, resolution: '720p' }, costInTokens: 9, costInDollars: 0.20, label: '4с × 720p' },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 12.7, costInDollars: 0.30, label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k' }, costInTokens: 45.4, costInDollars: 0.60, label: '4с × 4K' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
             options: [
-              { value: 4,  label: '4 секунды' },
-              { value: 6,  label: '6 секунд'  },
-              { value: 8,  label: '8 секунд'  },
+              { value: 4, label: '4 секунды' },
+              { value: 6, label: '6 секунд' },
+              { value: 8, label: '8 секунд' },
             ],
           },
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 9🔥)'  },
+              { value: '720p', label: '720p (от 9🔥)' },
               { value: '1080p', label: '1080p (от 12.7🔥)' },
-              { value: '4k',    label: '4K (от 45.4🔥)'    },
+              { value: '4k', label: '4K (от 45.4🔥)' },
             ],
           },
           {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
             ],
           },
         ],
@@ -1304,38 +1304,38 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 4 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 3 },
         pricingMatrix: [
-          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 18,  costInDollars: 0.70,  label: '8с × 720p'  },
-          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 19.7,  costInDollars: 1.05,  label: '8с × 1080p' },
-          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 54, costInDollars: 2.10,  label: '8с × 4K'    },
-          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 18,  costInDollars: 0.525, label: '6с × 720p'  },
-          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 19.4,  costInDollars: 0.788, label: '6с × 1080p' },
-          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 54, costInDollars: 1.575, label: '6с × 4K'    },
-          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 18,  costInDollars: 0.35,  label: '4с × 720p'  },
-          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 19.7,  costInDollars: 0.525, label: '4с × 1080p' },
-          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 54,  costInDollars: 1.05,  label: '4с × 4K'    },
+          { conditions: { duration: 8, resolution: '720p' }, costInTokens: 18, costInDollars: 0.70, label: '8с × 720p' },
+          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 19.7, costInDollars: 1.05, label: '8с × 1080p' },
+          { conditions: { duration: 8, resolution: '4k' }, costInTokens: 54, costInDollars: 2.10, label: '8с × 4K' },
+          { conditions: { duration: 6, resolution: '720p' }, costInTokens: 18, costInDollars: 0.525, label: '6с × 720p' },
+          { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 19.4, costInDollars: 0.788, label: '6с × 1080p' },
+          { conditions: { duration: 6, resolution: '4k' }, costInTokens: 54, costInDollars: 1.575, label: '6с × 4K' },
+          { conditions: { duration: 4, resolution: '720p' }, costInTokens: 18, costInDollars: 0.35, label: '4с × 720p' },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 19.7, costInDollars: 0.525, label: '4с × 1080p' },
+          { conditions: { duration: 4, resolution: '4k' }, costInTokens: 54, costInDollars: 1.05, label: '4с × 4K' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
             options: [
               { value: 4, label: '4 секунды' },
-              { value: 6, label: '6 секунд'  },
-              { value: 8, label: '8 секунд'  },
+              { value: 6, label: '6 секунд' },
+              { value: 8, label: '8 секунд' },
             ],
           },
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 18🔥)'  },
+              { value: '720p', label: '720p (от 18🔥)' },
               { value: '1080p', label: '1080p (от 19.7🔥)' },
-              { value: '4k',    label: '4K (от 54🔥)'    },
+              { value: '4k', label: '4K (от 54🔥)' },
             ],
           },
           {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
             ],
           },
         ],
@@ -1361,153 +1361,198 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 8 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
         pricingMatrix: [
-          { conditions: { duration: 8, resolution: '720p'  }, costInTokens: 75.4, costInDollars: 2.50,  label: '8с × 720p'  },
-          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 76.7, costInDollars: 3.75,  label: '8с × 1080p' },
-          { conditions: { duration: 8, resolution: '4k'   }, costInTokens: 111.4, costInDollars: 7.50,  label: '8с × 4K'    },
-          { conditions: { duration: 6, resolution: '720p'  }, costInTokens: 75.4, costInDollars: 1.875, label: '6с × 720p'  },
+          { conditions: { duration: 8, resolution: '720p' }, costInTokens: 75.4, costInDollars: 2.50, label: '8с × 720p' },
+          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 76.7, costInDollars: 3.75, label: '8с × 1080p' },
+          { conditions: { duration: 8, resolution: '4k' }, costInTokens: 111.4, costInDollars: 7.50, label: '8с × 4K' },
+          { conditions: { duration: 6, resolution: '720p' }, costInTokens: 75.4, costInDollars: 1.875, label: '6с × 720p' },
           { conditions: { duration: 6, resolution: '1080p' }, costInTokens: 76.7, costInDollars: 2.813, label: '6с × 1080p' },
-          { conditions: { duration: 6, resolution: '4k'   }, costInTokens: 111.4, costInDollars: 5.625, label: '6с × 4K'    },
-          { conditions: { duration: 4, resolution: '720p'  }, costInTokens: 75.4, costInDollars: 1.25,  label: '4с × 720p'  },
+          { conditions: { duration: 6, resolution: '4k' }, costInTokens: 111.4, costInDollars: 5.625, label: '6с × 4K' },
+          { conditions: { duration: 4, resolution: '720p' }, costInTokens: 75.4, costInDollars: 1.25, label: '4с × 720p' },
           { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 76.7, costInDollars: 1.875, label: '4с × 1080p' },
-          { conditions: { duration: 4, resolution: '4k'   }, costInTokens: 111.4, costInDollars: 3.75,  label: '4с × 4K'    },
+          { conditions: { duration: 4, resolution: '4k' }, costInTokens: 111.4, costInDollars: 3.75, label: '4с × 4K' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
             options: [
               { value: 4, label: '4 секунды' },
-              { value: 6, label: '6 секунд'  },
-              { value: 8, label: '8 секунд'  },
+              { value: 6, label: '6 секунд' },
+              { value: 8, label: '8 секунд' },
             ],
           },
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 75.4🔥)'  },
+              { value: '720p', label: '720p (от 75.4🔥)' },
               { value: '1080p', label: '1080p (от 76.7🔥)' },
-              { value: '4k',    label: '4K (от 111.4🔥)'    },
+              { value: '4k', label: '4K (от 111.4🔥)' },
             ],
           },
           {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
             ],
           },
         ],
       },
 
       // ─── Sora 2 (Evolink) ────────────────────────────────
-{
-  slug: 'sora-2',
-  name: 'Sora 2',
-  displayName: 'OpenAI Sora 2',
-  description: 'Видеогенерация нового поколения от OpenAI — реалистичная физика и движение',
-  type: 'video',
-  fixedCostPerGeneration: 0.222,
-  tokensPerDollar: 90,
-  minTokenCost: 20,
-  sortOrder: 4,
-  capabilities: ['text_to_video', 'image_to_video'],
-  providerMappings: [
-    { providerSlug: 'evolink', modelId: 'sora-2-preview', priority: 1, isActive: true },
-  ],
-  defaultParams: { aspectRatio: '16:9', duration: 4 },
-  limits: { maxDuration: 12 },
-  inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-  pricingMatrix: [
-    { conditions: { duration: 4  }, costInTokens: 20, costInDollars: 0.222, label: '4 секунды'  },
-    { conditions: { duration: 8  }, costInTokens: 41, costInDollars: 0.456, label: '8 секунд'   },
-    { conditions: { duration: 12 }, costInTokens: 61, costInDollars: 0.678, label: '12 секунд'  },
-  ],
-  uiParameters: [
-    {
-      key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
-      options: [
-        { value: 4,  label: '4 секунды (20🔥)'  },
-        { value: 8,  label: '8 секунд (41🔥)'   },
-        { value: 12, label: '12 секунд (61🔥)'  },
-      ],
-    },
-    {
-      key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
-      options: [
-        { value: '16:9', label: 'Горизонталь (16:9)' },
-        { value: '9:16', label: 'Вертикаль (9:16)'   },
-      ],
-    },
-    {
-      key: 'resizeMode', label: 'Вписывание изображения', type: 'select', affectsPrice: false, defaultValue: 'crop',
-      description: 'Применяется только при загрузке изображения',
-      options: [
-        { value: 'crop', label: 'Обрезать (Crop)' },
-        { value: 'pad',  label: 'Вписать с полями (Pad)' },
-      ],
-    },
-  ],
-},
+      {
+        slug: 'sora-2',
+        name: 'Sora 2',
+        displayName: 'OpenAI Sora 2',
+        description: 'Видеогенерация нового поколения от OpenAI — реалистичная физика и движение',
+        type: 'video',
+        fixedCostPerGeneration: 0.222,
+        tokensPerDollar: 90,
+        minTokenCost: 20,
+        sortOrder: 4,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'sora-2-preview', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 4 },
+        limits: { maxDuration: 12 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { duration: 4 }, costInTokens: 20, costInDollars: 0.222, label: '4 секунды' },
+          { conditions: { duration: 8 }, costInTokens: 41, costInDollars: 0.456, label: '8 секунд' },
+          { conditions: { duration: 12 }, costInTokens: 61, costInDollars: 0.678, label: '12 секунд' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
+            options: [
+              { value: 4, label: '4 секунды (20🔥)' },
+              { value: 8, label: '8 секунд (41🔥)' },
+              { value: 12, label: '12 секунд (61🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+          {
+            key: 'resizeMode', label: 'Вписывание изображения', type: 'select', affectsPrice: false, defaultValue: 'crop',
+            description: 'Применяется только при загрузке изображения',
+            options: [
+              { value: 'crop', label: 'Обрезать (Crop)' },
+              { value: 'pad', label: 'Вписать с полями (Pad)' },
+            ],
+          },
+        ],
+      },
 
-// ─── Sora 2 Pro (Evolink) ────────────────────────────
-{
-  slug: 'sora-2-pro',
-  name: 'Sora 2 Pro',
-  displayName: 'OpenAI Sora 2 Pro',
-  description: 'Профессиональная версия Sora 2 — максимальное качество 1080p',
-  type: 'video',
-  fixedCostPerGeneration: 0.444,
-  tokensPerDollar: 90,
-  minTokenCost: 61,
-  sortOrder: 5,
-  isPremium: true,
-  capabilities: ['text_to_video', 'image_to_video'],
-  providerMappings: [
-    { providerSlug: 'evolink', modelId: 'sora-2-pro-preview', priority: 1, isActive: true },
-  ],
-  defaultParams: { aspectRatio: '16:9', duration: 4, resolution: '720p' },
-  limits: { maxDuration: 12 },
-  inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-  pricingMatrix: [
-    { conditions: { duration: 4,  resolution: '720p'  }, costInTokens: 61,  costInDollars: 0.444, label: '4с × 720p'  },
-    { conditions: { duration: 4,  resolution: '1080p' }, costInTokens: 102, costInDollars: 0.741, label: '4с × 1080p' },
-    { conditions: { duration: 8,  resolution: '720p'  }, costInTokens: 122, costInDollars: 0.889, label: '8с × 720p'  },
-    { conditions: { duration: 8,  resolution: '1080p' }, costInTokens: 203, costInDollars: 1.481, label: '8с × 1080p' },
-    { conditions: { duration: 12, resolution: '720p'  }, costInTokens: 183, costInDollars: 1.333, label: '12с × 720p' },
-    { conditions: { duration: 12, resolution: '1080p' }, costInTokens: 305, costInDollars: 2.222, label: '12с × 1080p'},
-  ],
-  uiParameters: [
-    {
-      key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
-      options: [
-        { value: 4,  label: '4 секунды'  },
-        { value: 8,  label: '8 секунд'   },
-        { value: 12, label: '12 секунд'  },
-      ],
-    },
-    {
-      key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
-      options: [
-        { value: '720p',  label: '720p (от 61🔥)'  },
-        { value: '1080p', label: '1080p (от 102🔥)' },
-      ],
-    },
-    {
-      key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
-      options: [
-        { value: '16:9', label: 'Горизонталь (16:9)' },
-        { value: '9:16', label: 'Вертикаль (9:16)'   },
-      ],
-    },
-    {
-      key: 'resizeMode', label: 'Вписывание изображения', type: 'select', affectsPrice: false, defaultValue: 'crop',
-      description: 'Применяется только при загрузке изображения',
-      options: [
-        { value: 'crop', label: 'Обрезать (Crop)' },
-        { value: 'pad',  label: 'Вписать с полями (Pad)' },
-      ],
-    },
-  ],
-},
+      // ─── Kling 2.5 Turbo Pro (KIE) ──────────────────────
+      {
+        slug: 'kling-2.5-turbo',
+        name: 'Kling 2.5 Turbo',
+        displayName: 'Kling 2.5 Turbo Pro',
+        description: 'Быстрая текстовая видеомодель Kling — кинематографичное 1080p',
+        type: 'video',
+        fixedCostPerGeneration: 0.156,
+        tokensPerDollar: 90,
+        minTokenCost: 14,
+        sortOrder: 6.5,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'kling/v2-5-turbo-text-to-video-pro', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 5, cfgScale: 0.5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
+        pricingMatrix: [
+          { conditions: { duration: 5 }, costInTokens: 14, costInDollars: 0.156, label: '5 секунд' },
+          { conditions: { duration: 10 }, costInTokens: 27, costInDollars: 0.300, label: '10 секунд' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 секунд (14🔥)' },
+              { value: 10, label: '10 секунд (27🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+            ],
+          },
+          {
+            key: 'cfgScale', label: 'Креативность', type: 'slider', affectsPrice: false, defaultValue: 0.5,
+            options: [],
+          },
+        ],
+      },
+
+      // ─── Sora 2 Pro (Evolink) ────────────────────────────
+      {
+        slug: 'sora-2-pro',
+        name: 'Sora 2 Pro',
+        displayName: 'OpenAI Sora 2 Pro',
+        description: 'Профессиональная версия Sora 2 — максимальное качество 1080p',
+        type: 'video',
+        fixedCostPerGeneration: 0.444,
+        tokensPerDollar: 90,
+        minTokenCost: 61,
+        sortOrder: 5,
+        isPremium: true,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'sora-2-pro-preview', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 4, resolution: '720p' },
+        limits: { maxDuration: 12 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { duration: 4, resolution: '720p' }, costInTokens: 61, costInDollars: 0.444, label: '4с × 720p' },
+          { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 102, costInDollars: 0.741, label: '4с × 1080p' },
+          { conditions: { duration: 8, resolution: '720p' }, costInTokens: 122, costInDollars: 0.889, label: '8с × 720p' },
+          { conditions: { duration: 8, resolution: '1080p' }, costInTokens: 203, costInDollars: 1.481, label: '8с × 1080p' },
+          { conditions: { duration: 12, resolution: '720p' }, costInTokens: 183, costInDollars: 1.333, label: '12с × 720p' },
+          { conditions: { duration: 12, resolution: '1080p' }, costInTokens: 305, costInDollars: 2.222, label: '12с × 1080p' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
+            options: [
+              { value: 4, label: '4 секунды' },
+              { value: 8, label: '8 секунд' },
+              { value: 12, label: '12 секунд' },
+            ],
+          },
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '720p', label: '720p (от 61🔥)' },
+              { value: '1080p', label: '1080p (от 102🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+          {
+            key: 'resizeMode', label: 'Вписывание изображения', type: 'select', affectsPrice: false, defaultValue: 'crop',
+            description: 'Применяется только при загрузке изображения',
+            options: [
+              { value: 'crop', label: 'Обрезать (Crop)' },
+              { value: 'pad', label: 'Вписать с полями (Pad)' },
+            ],
+          },
+        ],
+      },
 
       // ─── Kling 3.0 (KIE) ────────────────────────────────
       {
@@ -1558,24 +1603,24 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'mode', label: 'Режим качества', type: 'select', affectsPrice: true, defaultValue: 'std',
             options: [
               { value: 'std', label: 'Стандарт 720p (от 12🔥)' },
-              { value: 'pro', label: 'Pro 1080p (от 18🔥)'     },
-              { value: '4K',  label: '4K Ultra HD (от 60🔥)'   },
+              { value: 'pro', label: 'Pro 1080p (от 18🔥)' },
+              { value: '4K', label: '4K Ultra HD (от 60🔥)' },
             ],
           },
           {
             key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: true, defaultValue: false,
             options: [
               { value: false, label: 'Без звука' },
-              { value: true,  label: 'Со звуком'  },
+              { value: true, label: 'Со звуком' },
             ],
           },
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
             options: [
-              { value: 3,  label: '3 сек'  }, { value: 4,  label: '4 сек' },
-              { value: 5,  label: '5 сек'  }, { value: 6,  label: '6 сек' },
-              { value: 7,  label: '7 сек'  }, { value: 8,  label: '8 сек' },
-              { value: 9,  label: '9 сек'  }, { value: 10, label: '10 сек' },
+              { value: 3, label: '3 сек' }, { value: 4, label: '4 сек' },
+              { value: 5, label: '5 сек' }, { value: 6, label: '6 сек' },
+              { value: 7, label: '7 сек' }, { value: 8, label: '8 сек' },
+              { value: 9, label: '9 сек' }, { value: 10, label: '10 сек' },
               { value: 11, label: '11 сек' }, { value: 12, label: '12 сек' },
               { value: 13, label: '13 сек' }, { value: 14, label: '14 сек' },
               { value: 15, label: '15 сек' },
@@ -1585,14 +1630,14 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
-              { value: '1:1',  label: 'Квадрат (1:1)'      },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
             ],
           },
         ],
       },
 
-            // ─── Runway (KIE) ────────────────────────────────────
+      // ─── Runway (KIE) ────────────────────────────────────
       {
         slug: 'runway',
         name: 'Runway',
@@ -1611,22 +1656,22 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
-          { conditions: { duration: 5,  resolution: '720p'  }, costInTokens: 6,  costInDollars: 0.067, label: '5с × 720p'  },
-          { conditions: { duration: 10, resolution: '720p'  }, costInTokens: 15, costInDollars: 0.167, label: '10с × 720p' },
-          { conditions: { duration: 5,  resolution: '1080p' }, costInTokens: 15, costInDollars: 0.167, label: '5с × 1080p' },
+          { conditions: { duration: 5, resolution: '720p' }, costInTokens: 6, costInDollars: 0.067, label: '5с × 720p' },
+          { conditions: { duration: 10, resolution: '720p' }, costInTokens: 15, costInDollars: 0.167, label: '10с × 720p' },
+          { conditions: { duration: 5, resolution: '1080p' }, costInTokens: 15, costInDollars: 0.167, label: '5с × 1080p' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
             options: [
-              { value: 5,  label: '5 секунд'  },
+              { value: 5, label: '5 секунд' },
               { value: 10, label: '10 секунд' },
             ],
           },
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 6🔥)'  },
+              { value: '720p', label: '720p (от 6🔥)' },
               { value: '1080p', label: '1080p (15🔥, только 5с)' },
             ],
           },
@@ -1634,16 +1679,16 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
-              { value: '1:1',  label: 'Квадрат (1:1)'      },
-              { value: '4:3',  label: 'Стандарт (4:3)'     },
-              { value: '3:4',  label: 'Портрет (3:4)'      },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
             ],
           },
         ],
       },
 
-            // ─── Hailuo 02 (KIE) ─────────────────────────────────
+      // ─── Hailuo 02 (KIE) ─────────────────────────────────
       {
         slug: 'hailuo-02',
         name: 'Hailuo 02',
@@ -1662,22 +1707,22 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
-          { conditions: { tier: 'standard', duration: 6  }, costInTokens: 12, costInDollars: 0.133, label: 'Standard × 6с' },
+          { conditions: { tier: 'standard', duration: 6 }, costInTokens: 12, costInDollars: 0.133, label: 'Standard × 6с' },
           { conditions: { tier: 'standard', duration: 10 }, costInTokens: 20, costInDollars: 0.222, label: 'Standard × 10с' },
-          { conditions: { tier: 'pro'                    }, costInTokens: 35, costInDollars: 0.389, label: 'Pro (фикс.)'    },
+          { conditions: { tier: 'pro' }, costInTokens: 35, costInDollars: 0.389, label: 'Pro (фикс.)' },
         ],
         uiParameters: [
           {
             key: 'tier', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'standard',
             options: [
               { value: 'standard', label: 'Standard (от 12🔥)' },
-              { value: 'pro',      label: 'Pro (35🔥)'         },
+              { value: 'pro', label: 'Pro (35🔥)' },
             ],
           },
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 6,
             options: [
-              { value: 6,  label: '6 секунд'  },
+              { value: 6, label: '6 секунд' },
               { value: 10, label: '10 секунд' },
             ],
           },
@@ -1685,15 +1730,15 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
-              { value: '1:1',  label: 'Квадрат (1:1)'      },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
             ],
           },
         ],
       },
 
       // ─── WanX 2.2 (KIE) ─────────────────────────────────
-            {
+      {
         slug: 'wan-2.7',
         name: 'Wan 2.7',
         displayName: 'Wan 2.7',
@@ -1712,23 +1757,23 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
         pricingMatrix: [
           // Wan 2.7 поддерживает только 720p / 1080p (480p НЕТ)
-          { conditions: { duration: 5,  resolution: '720p'  }, costInTokens: 6,  costInDollars: 0.067, label: '5с × 720p'  },
-          { conditions: { duration: 5,  resolution: '1080p' }, costInTokens: 10, costInDollars: 0.111, label: '5с × 1080p' },
-          { conditions: { duration: 10, resolution: '720p'  }, costInTokens: 12, costInDollars: 0.133, label: '10с × 720p' },
-          { conditions: { duration: 10, resolution: '1080p' }, costInTokens: 20, costInDollars: 0.222, label: '10с × 1080p'},
+          { conditions: { duration: 5, resolution: '720p' }, costInTokens: 6, costInDollars: 0.067, label: '5с × 720p' },
+          { conditions: { duration: 5, resolution: '1080p' }, costInTokens: 10, costInDollars: 0.111, label: '5с × 1080p' },
+          { conditions: { duration: 10, resolution: '720p' }, costInTokens: 12, costInDollars: 0.133, label: '10с × 720p' },
+          { conditions: { duration: 10, resolution: '1080p' }, costInTokens: 20, costInDollars: 0.222, label: '10с × 1080p' },
         ],
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
             options: [
-              { value: 5,  label: '5 секунд'  },
+              { value: 5, label: '5 секунд' },
               { value: 10, label: '10 секунд' },
             ],
           },
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p (от 6🔥)'  },
+              { value: '720p', label: '720p (от 6🔥)' },
               { value: '1080p', label: '1080p (от 10🔥)' },
             ],
           },
@@ -1736,10 +1781,10 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
-              { value: '1:1',  label: 'Квадрат (1:1)'      },
-              { value: '4:3',  label: 'Стандарт (4:3)'     },
-              { value: '3:4',  label: 'Портрет (3:4)'      },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
             ],
           },
         ],
@@ -1764,34 +1809,34 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
-          { conditions: { tier: 'lite', duration: 5,  resolution: '720p'  }, costInTokens: 10, costInDollars: 0.111, label: 'Lite × 5с × 720p'  },
-          { conditions: { tier: 'lite', duration: 5,  resolution: '1080p' }, costInTokens: 15, costInDollars: 0.167, label: 'Lite × 5с × 1080p' },
-          { conditions: { tier: 'lite', duration: 10, resolution: '720p'  }, costInTokens: 20, costInDollars: 0.222, label: 'Lite × 10с × 720p' },
-          { conditions: { tier: 'lite', duration: 10, resolution: '1080p' }, costInTokens: 30, costInDollars: 0.333, label: 'Lite × 10с × 1080p'},
-          { conditions: { tier: 'pro',  duration: 5,  resolution: '720p'  }, costInTokens: 20, costInDollars: 0.222, label: 'Pro × 5с × 720p'   },
-          { conditions: { tier: 'pro',  duration: 5,  resolution: '1080p' }, costInTokens: 30, costInDollars: 0.333, label: 'Pro × 5с × 1080p'  },
-          { conditions: { tier: 'pro',  duration: 10, resolution: '720p'  }, costInTokens: 40, costInDollars: 0.444, label: 'Pro × 10с × 720p'  },
-          { conditions: { tier: 'pro',  duration: 10, resolution: '1080p' }, costInTokens: 60, costInDollars: 0.667, label: 'Pro × 10с × 1080p' },
+          { conditions: { tier: 'lite', duration: 5, resolution: '720p' }, costInTokens: 10, costInDollars: 0.111, label: 'Lite × 5с × 720p' },
+          { conditions: { tier: 'lite', duration: 5, resolution: '1080p' }, costInTokens: 15, costInDollars: 0.167, label: 'Lite × 5с × 1080p' },
+          { conditions: { tier: 'lite', duration: 10, resolution: '720p' }, costInTokens: 20, costInDollars: 0.222, label: 'Lite × 10с × 720p' },
+          { conditions: { tier: 'lite', duration: 10, resolution: '1080p' }, costInTokens: 30, costInDollars: 0.333, label: 'Lite × 10с × 1080p' },
+          { conditions: { tier: 'pro', duration: 5, resolution: '720p' }, costInTokens: 20, costInDollars: 0.222, label: 'Pro × 5с × 720p' },
+          { conditions: { tier: 'pro', duration: 5, resolution: '1080p' }, costInTokens: 30, costInDollars: 0.333, label: 'Pro × 5с × 1080p' },
+          { conditions: { tier: 'pro', duration: 10, resolution: '720p' }, costInTokens: 40, costInDollars: 0.444, label: 'Pro × 10с × 720p' },
+          { conditions: { tier: 'pro', duration: 10, resolution: '1080p' }, costInTokens: 60, costInDollars: 0.667, label: 'Pro × 10с × 1080p' },
         ],
         uiParameters: [
           {
             key: 'tier', label: 'Версия', type: 'select', affectsPrice: true, defaultValue: 'lite',
             options: [
               { value: 'lite', label: 'Lite (от 10🔥)' },
-              { value: 'pro',  label: 'Pro (от 20🔥)'  },
+              { value: 'pro', label: 'Pro (от 20🔥)' },
             ],
           },
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
             options: [
-              { value: 5,  label: '5 секунд'  },
+              { value: 5, label: '5 секунд' },
               { value: 10, label: '10 секунд' },
             ],
           },
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p',  label: '720p'  },
+              { value: '720p', label: '720p' },
               { value: '1080p', label: '1080p' },
             ],
           },
@@ -1799,8 +1844,8 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
             options: [
               { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)'   },
-              { value: '1:1',  label: 'Квадрат (1:1)'      },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
             ],
           },
         ],
@@ -1836,14 +1881,14 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'customMode', label: 'Режим', type: 'boolean', affectsPrice: false, defaultValue: false,
             options: [
               { value: false, label: 'Авто' },
-              { value: true,  label: 'Кастомный' },
+              { value: true, label: 'Кастомный' },
             ],
           },
           {
             key: 'instrumental', label: 'Инструментал', type: 'boolean', affectsPrice: false, defaultValue: false,
             options: [
-              { value: false, label: 'С вокалом'     },
-              { value: true,  label: 'Инструментал'  },
+              { value: false, label: 'С вокалом' },
+              { value: true, label: 'Инструментал' },
             ],
           },
         ],
@@ -1874,15 +1919,15 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'customMode', label: 'Режим', type: 'boolean', affectsPrice: false, defaultValue: false,
             options: [
-              { value: false, label: 'Авто'       },
-              { value: true,  label: 'Кастомный'  },
+              { value: false, label: 'Авто' },
+              { value: true, label: 'Кастомный' },
             ],
           },
           {
             key: 'instrumental', label: 'Инструментал', type: 'boolean', affectsPrice: false, defaultValue: false,
             options: [
-              { value: false, label: 'С вокалом'    },
-              { value: true,  label: 'Инструментал' },
+              { value: false, label: 'С вокалом' },
+              { value: true, label: 'Инструментал' },
             ],
           },
         ],
@@ -1913,15 +1958,15 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'voice', label: 'Голос', type: 'select', affectsPrice: false, defaultValue: 'Rachel',
             options: [
-              { value: 'Rachel',  label: 'Rachel (EN, женский)'  },
-              { value: 'Adam',    label: 'Adam (EN, мужской)'    },
-              { value: 'Antoni',  label: 'Antoni (EN, мужской)'  },
-              { value: 'Arnold',  label: 'Arnold (EN, мужской)'  },
-              { value: 'Bella',   label: 'Bella (EN, женский)'   },
-              { value: 'Domi',    label: 'Domi (EN, женский)'    },
-              { value: 'Elli',    label: 'Elli (EN, женский)'    },
-              { value: 'Josh',    label: 'Josh (EN, мужской)'    },
-              { value: 'Sam',     label: 'Sam (EN, мужской)'     },
+              { value: 'Rachel', label: 'Rachel (EN, женский)' },
+              { value: 'Adam', label: 'Adam (EN, мужской)' },
+              { value: 'Antoni', label: 'Antoni (EN, мужской)' },
+              { value: 'Arnold', label: 'Arnold (EN, мужской)' },
+              { value: 'Bella', label: 'Bella (EN, женский)' },
+              { value: 'Domi', label: 'Domi (EN, женский)' },
+              { value: 'Elli', label: 'Elli (EN, женский)' },
+              { value: 'Josh', label: 'Josh (EN, мужской)' },
+              { value: 'Sam', label: 'Sam (EN, мужской)' },
             ],
           },
           {
@@ -1960,11 +2005,11 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'voice', label: 'Голос', type: 'select', affectsPrice: false, defaultValue: 'Rachel',
             options: [
-              { value: 'Rachel',  label: 'Rachel (EN, женский)' },
-              { value: 'Adam',    label: 'Adam (EN, мужской)'   },
-              { value: 'Josh',    label: 'Josh (EN, мужской)'   },
-              { value: 'Bella',   label: 'Bella (EN, женский)'  },
-              { value: 'Sam',     label: 'Sam (EN, мужской)'    },
+              { value: 'Rachel', label: 'Rachel (EN, женский)' },
+              { value: 'Adam', label: 'Adam (EN, мужской)' },
+              { value: 'Josh', label: 'Josh (EN, мужской)' },
+              { value: 'Bella', label: 'Bella (EN, женский)' },
+              { value: 'Sam', label: 'Sam (EN, мужской)' },
             ],
           },
           {
@@ -2008,7 +2053,7 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'loop', label: 'Зацикленный', type: 'boolean', affectsPrice: false, defaultValue: false,
             options: [
               { value: false, label: 'Нет' },
-              { value: true,  label: 'Да'  },
+              { value: true, label: 'Да' },
             ],
           },
           {
@@ -2047,16 +2092,16 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'language_code', label: 'Язык', type: 'select', affectsPrice: false, defaultValue: '',
             options: [
-              { value: '',    label: 'Авто'    },
-              { value: 'en',  label: 'English' },
-              { value: 'ru',  label: 'Русский' },
-              { value: 'de',  label: 'Deutsch' },
-              { value: 'fr',  label: 'Français'},
-              { value: 'es',  label: 'Español' },
-              { value: 'it',  label: 'Italiano'},
-              { value: 'zh',  label: '中文'    },
-              { value: 'ja',  label: '日本語'   },
-              { value: 'ko',  label: '한국어'   },
+              { value: '', label: 'Авто' },
+              { value: 'en', label: 'English' },
+              { value: 'ru', label: 'Русский' },
+              { value: 'de', label: 'Deutsch' },
+              { value: 'fr', label: 'Français' },
+              { value: 'es', label: 'Español' },
+              { value: 'it', label: 'Italiano' },
+              { value: 'zh', label: '中文' },
+              { value: 'ja', label: '日本語' },
+              { value: 'ko', label: '한국어' },
             ],
           },
         ],
@@ -2112,27 +2157,27 @@ export class ProviderRegistryService implements OnModuleInit {
             key: 'diarize', label: 'Диаризация', type: 'boolean', affectsPrice: false, defaultValue: false,
             options: [
               { value: false, label: 'Выкл' },
-              { value: true,  label: 'Вкл'  },
+              { value: true, label: 'Вкл' },
             ],
           },
           {
             key: 'tag_audio_events', label: 'Аудио-события', type: 'boolean', affectsPrice: false, defaultValue: false,
             options: [
               { value: false, label: 'Выкл' },
-              { value: true,  label: 'Вкл'  },
+              { value: true, label: 'Вкл' },
             ],
           },
           {
             key: 'language_code', label: 'Язык', type: 'select', affectsPrice: false, defaultValue: '',
             options: [
-              { value: '',   label: 'Авто'    },
+              { value: '', label: 'Авто' },
               { value: 'en', label: 'English' },
               { value: 'ru', label: 'Русский' },
               { value: 'de', label: 'Deutsch' },
-              { value: 'fr', label: 'Français'},
+              { value: 'fr', label: 'Français' },
               { value: 'es', label: 'Español' },
-              { value: 'zh', label: '中文'    },
-              { value: 'ja', label: '日本語'   },
+              { value: 'zh', label: '中文' },
+              { value: 'ja', label: '日本語' },
             ],
           },
         ],
