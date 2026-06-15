@@ -229,6 +229,23 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
     aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
   },
+    // ─── Wan 2.5 (KIE jobs) ──────────────────────────────────────
+  'wan/2-5-text-to-video': {
+    kieModel: 'wan/2-5-text-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    durations: ['5', '10'],
+    aspectRatios: ['16:9', '9:16', '1:1'],
+  },
+  'wan/2-5-image-to-video': {
+    kieModel: 'wan/2-5-image-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    durations: ['5', '10'],
+    aspectRatios: [], // i2v: формат берётся из изображения
+  },
     // ─── Seedance (KIE jobs, bytedance/*) ────────────────────────
   'bytedance/seedance-1.5-pro': {
     kieModel: 'bytedance/seedance-1.5-pro',
@@ -847,6 +864,9 @@ export class KieProvider extends BaseProvider {
   // ═══════════════════════════════════════════════════════
   // 🆕 WAN 2.7 VIDEO GENERATION (KIE jobs, свой формат полей)
   // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
+  // 🆕 WAN VIDEO GENERATION (KIE jobs) — 2.5 и 2.7 (разные форматы полей)
+  // ═══════════════════════════════════════════════════════
   private async generateWanVideo(
     request: VideoGenerationRequest,
     config: VideoModelConfig,
@@ -855,7 +875,86 @@ export class KieProvider extends BaseProvider {
   ): Promise<GenerationResult> {
     const r = request as any;
 
-    // авто-переключение t2v ↔ i2v по наличию картинки
+    const isV25 = config.kieModel.startsWith('wan/2-5');
+
+    // ─── Wan 2.5: t2v / i2v, формат полей по доке KIE ───
+    if (isV25) {
+      let kieModel = config.kieModel;
+      if (hasImage && kieModel === 'wan/2-5-text-to-video') {
+        kieModel = 'wan/2-5-image-to-video';
+      } else if (!hasImage && kieModel === 'wan/2-5-image-to-video') {
+        kieModel = 'wan/2-5-text-to-video';
+      }
+
+      const isV25I2V = kieModel === 'wan/2-5-image-to-video';
+
+      // resolution: только 720p / 1080p
+      let resolution = String(r.resolution || '720p').toLowerCase();
+      if (!['720p', '1080p'].includes(resolution)) resolution = '720p';
+
+      // duration: строка "5" | "10"
+      let duration = String(r.duration || '5');
+      if (!['5', '10'].includes(duration)) duration = '5';
+
+      const input: Record<string, any> = {
+        prompt: request.prompt,
+        duration,
+        resolution,
+        enable_prompt_expansion:
+          r.promptOptimizer !== undefined ? !!r.promptOptimizer : true,
+        nsfw_checker: r.nsfwChecker !== undefined ? !!r.nsfwChecker : true,
+      };
+
+      if (r.negativePrompt && String(r.negativePrompt).trim()) {
+        input.negative_prompt = String(r.negativePrompt).trim();
+      }
+
+      if (r.seed !== undefined && r.seed !== null && !isNaN(Number(r.seed))) {
+        input.seed = Number(r.seed);
+      }
+
+      if (isV25I2V) {
+        // i2v: image_url обязателен, aspect_ratio НЕ принимается
+        const img = r.imageUrl || (Array.isArray(r.imageUrls) ? r.imageUrls[0] : undefined);
+        if (!img) {
+          throw new Error('image_url is required for Wan 2.5 image-to-video');
+        }
+        input.image_url = img;
+      } else {
+        // t2v: aspect_ratio
+        input.aspect_ratio = r.aspectRatio || '16:9';
+      }
+
+      this.logger.debug(
+        `KIE Wan2.5 generate (${isV25I2V ? 'i2v' : 't2v'}): model=${kieModel}, input=${JSON.stringify(input).substring(0, 400)}`,
+      );
+
+      const response = await this.client.post('/api/v1/jobs/createTask', {
+        model: kieModel,
+        input,
+      });
+
+      const data = response.data;
+      this.logger.debug(
+        `KIE Wan2.5 response: code=${data.code}, msg="${data.msg}", data=${JSON.stringify(data).substring(0, 400)}`,
+      );
+
+      if (data.code !== 200) {
+        throw new Error(data.msg || `KIE Wan2.5 task creation failed (code ${data.code})`);
+      }
+
+      const taskId = data.data?.taskId;
+      if (!taskId) throw new Error('No taskId in KIE Wan2.5 response');
+
+      return {
+        success: true,
+        data: { taskId, urls: [], metadata: { model: kieModel, apiType: 'jobs' } },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    }
+
+    // ─── Wan 2.7 (существующая логика, без изменений) ───
     let kieModel = config.kieModel;
     if (hasImage && kieModel === 'wan/2-7-text-to-video') {
       kieModel = 'wan/2-7-image-to-video';

@@ -1637,7 +1637,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-            // ─── Kling 3.0 Motion Control (KIE) ─────────────────
+      // ─── Kling 3.0 Motion Control (KIE) ─────────────────
       {
         slug: 'motion-control',
         name: 'Motion Control',
@@ -1749,7 +1749,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-            // ─── Hailuo 02 (KIE) — t2v/i2v standard+pro ──────────
+      // ─── Hailuo 02 (KIE) — t2v/i2v standard+pro ──────────
       {
         slug: 'hailuo-02',
         name: 'Hailuo 02',
@@ -1885,30 +1885,94 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── WanX 2.2 (KIE) ─────────────────────────────────
+      // {
+      //   slug: 'wan-2.7',
+      //   name: 'Wan 2.7',
+      //   displayName: 'Wan 2.7',
+      //   description: 'Видеогенерация от Alibaba с аудио и высокой детализацией',
+      //   type: 'video',
+      //   fixedCostPerGeneration: 0.067,
+      //   tokensPerDollar: 90,
+      //   minTokenCost: 6,
+      //   sortOrder: 11,
+      //   capabilities: ['text_to_video', 'image_to_video', 'audio'],
+      //   providerMappings: [
+      //     { providerSlug: 'kie', modelId: 'wan/2-7-text-to-video', priority: 1, isActive: true },
+      //   ],
+      //   defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p' },
+      //   limits: { maxDuration: 15 },
+      //   inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
+      //   pricingMatrix: [
+      //     // Wan 2.7 поддерживает только 720p / 1080p (480p НЕТ)
+      //     { conditions: { duration: 5, resolution: '720p' }, costInTokens: 6, costInDollars: 0.067, label: '5с × 720p' },
+      //     { conditions: { duration: 5, resolution: '1080p' }, costInTokens: 10, costInDollars: 0.111, label: '5с × 1080p' },
+      //     { conditions: { duration: 10, resolution: '720p' }, costInTokens: 12, costInDollars: 0.133, label: '10с × 720p' },
+      //     { conditions: { duration: 10, resolution: '1080p' }, costInTokens: 20, costInDollars: 0.222, label: '10с × 1080p' },
+      //   ],
+      //   uiParameters: [
+      //     {
+      //       key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+      //       options: [
+      //         { value: 5, label: '5 секунд' },
+      //         { value: 10, label: '10 секунд' },
+      //       ],
+      //     },
+      //     {
+      //       key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+      //       options: [
+      //         { value: '720p', label: '720p (от 6🔥)' },
+      //         { value: '1080p', label: '1080p (от 10🔥)' },
+      //       ],
+      //     },
+      //     {
+      //       key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+      //       options: [
+      //         { value: '16:9', label: 'Горизонталь (16:9)' },
+      //         { value: '9:16', label: 'Вертикаль (9:16)' },
+      //         { value: '1:1', label: 'Квадрат (1:1)' },
+      //         { value: '4:3', label: 'Стандарт (4:3)' },
+      //         { value: '3:4', label: 'Портрет (3:4)' },
+      //       ],
+      //     },
+      //   ],
+      // },
+
+      // ─── Wan 2.5 (KIE) — t2v / i2v, аудио, lip-sync ──────
+      // Цена: 720p=5.4🔥/сек, 1080p=8🔥/сек
       {
-        slug: 'wan-2.7',
-        name: 'Wan 2.7',
-        displayName: 'Wan 2.7',
-        description: 'Видеогенерация от Alibaba с аудио и высокой детализацией',
+        slug: 'wan-2.5',
+        name: 'Wan 2.5',
+        displayName: 'Wan 2.5',
+        description: 'Видеогенерация Alibaba Wan 2.5 — аудио, lip-sync, 720p/1080p',
         type: 'video',
-        fixedCostPerGeneration: 0.067,
+        fixedCostPerGeneration: 0.3,
         tokensPerDollar: 90,
-        minTokenCost: 6,
-        sortOrder: 11,
+        minTokenCost: 27, // 720p × 5с
+        sortOrder: 10.9,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'wan/2-7-text-to-video', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'wan/2-5-text-to-video', priority: 1, isActive: true },
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p' },
-        limits: { maxDuration: 15 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
-        pricingMatrix: [
-          // Wan 2.7 поддерживает только 720p / 1080p (480p НЕТ)
-          { conditions: { duration: 5, resolution: '720p' }, costInTokens: 6, costInDollars: 0.067, label: '5с × 720p' },
-          { conditions: { duration: 5, resolution: '1080p' }, costInTokens: 10, costInDollars: 0.111, label: '5с × 1080p' },
-          { conditions: { duration: 10, resolution: '720p' }, costInTokens: 12, costInDollars: 0.133, label: '10с × 720p' },
-          { conditions: { duration: 10, resolution: '1080p' }, costInTokens: 20, costInDollars: 0.222, label: '10с × 1080p' },
-        ],
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: (() => {
+          const rows: any[] = [];
+          const rate: Record<string, number> = { '720p': 5.4, '1080p': 8 };
+          const dollarsPerToken = 1 / 90;
+          for (const resolution of ['720p', '1080p']) {
+            for (const duration of [5, 10]) {
+              const tokens = Math.round(rate[resolution] * duration * 10) / 10;
+              rows.push({
+                conditions: { resolution, duration },
+                costInTokens: tokens,
+                costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+                label: `${resolution} × ${duration}с`,
+              });
+            }
+          }
+          return rows;
+        })(),
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
@@ -1920,8 +1984,8 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p', label: '720p (от 6🔥)' },
-              { value: '1080p', label: '1080p (от 10🔥)' },
+              { value: '720p', label: '720p (от 27🔥)' },
+              { value: '1080p', label: '1080p (от 40🔥)' },
             ],
           },
           {
@@ -1930,14 +1994,14 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)' },
               { value: '1:1', label: 'Квадрат (1:1)' },
-              { value: '4:3', label: 'Стандарт (4:3)' },
-              { value: '3:4', label: 'Портрет (3:4)' },
             ],
           },
         ],
       },
 
-            // ─── Seedance 1.5 Pro (KIE) — 480/720/1080 × 4/8/12 × звук ─
+
+
+      // ─── Seedance 1.5 Pro (KIE) — 480/720/1080 × 4/8/12 × звук ─
       {
         slug: 'seedance-1.5-pro',
         name: 'Seedance 1.5 Pro',
@@ -2016,7 +2080,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-            // ─── Seedance 2 (KIE) ────────────────────────────────
+      // ─── Seedance 2 (KIE) ────────────────────────────────
       // Цена: resolution × duration × videoRef (есть видео-референс → дешевле)
       {
         slug: 'seedance-2',
@@ -2113,7 +2177,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-            // ─── Seedance 2 Fast (KIE) ───────────────────────────
+      // ─── Seedance 2 Fast (KIE) ───────────────────────────
       // Цена: resolution × duration × videoRef (только 480p/720p)
       {
         slug: 'seedance-2-fast',
