@@ -292,6 +292,7 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: modelData.displayName,
         description: modelData.description,
         type: modelData.type,
+        sortOrder: modelData.sortOrder,           // 🆕 всегда обновляем порядок
         capabilities: modelData.capabilities || [],
         providerMappings: mappings,
         limits: modelData.limits || {},
@@ -301,7 +302,6 @@ export class ProviderRegistryService implements OnModuleInit {
 
       const setOnCreate: Record<string, any> = {
         slug,
-        sortOrder: modelData.sortOrder,
         isActive: true,
         isPremium: (modelData as any).isPremium ?? false,
         tokensPerDollar: modelData.tokensPerDollar,
