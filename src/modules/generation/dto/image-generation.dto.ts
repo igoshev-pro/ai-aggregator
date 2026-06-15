@@ -415,6 +415,20 @@ export class AudioGenerationDto {
   @IsString()
   title?: string;
 
+  // 🆕 Suno extend: ID исходного трека (из metadata.audioIds)
+  @ApiPropertyOptional({ description: 'Source audio track ID for extend (Suno)' })
+  @IsOptional()
+  @IsString()
+  audioId?: string;
+
+  // 🆕 Suno extend: с какой секунды продолжать (только при кастом-режиме)
+  @ApiPropertyOptional({ description: 'Continue at second (Suno extend)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(600)
+  continueAt?: number;
+
   @ApiPropertyOptional({ description: 'Voice ID for ElevenLabs TTS' })
   @IsString()
   @IsOptional()

@@ -1818,7 +1818,88 @@ export class KieProvider extends BaseProvider {
           `operation=${r.operation || 'generate'}`,
         );
 
-        const operation = r.operation || 'generate';
+                const operation = r.operation || 'generate';
+
+        // ═══════════════════════════════════════════════════════
+        // 🆕 EXTEND — отдельный эндпоинт KIE /api/v1/generate/extend
+        // ═══════════════════════════════════════════════════════
+        if (operation === 'extend') {
+          const audioId = r.audioId;
+          if (!audioId) {
+            throw new Error('audioId is required for Suno extend');
+          }
+
+          // KIE: при defaultParamFlag=true ОБЯЗАТЕЛЬНЫ continueAt+prompt+style+title.
+          // Включаем custom-режим только если переданы ВСЕ 4 поля, иначе
+          // безопасно наследуем параметры оригинала (нужен только audioId).
+          const canCustom =
+            r.continueAt !== undefined &&
+            r.continueAt !== null &&
+            !isNaN(Number(r.continueAt)) &&
+            r.prompt && String(r.prompt).trim() &&
+            r.style && String(r.style).trim() &&
+            r.title && String(r.title).trim();
+
+          const defaultParamFlag = !!canCustom;
+
+          const extendBody: any = {
+            defaultParamFlag,
+            audioId,
+            model: sunoModel,
+            callBackUrl:
+              r.callBackUrl ||
+              'https://spichki.tw1.ru/api/v1/webhooks/kie-callback',
+          };
+
+          if (defaultParamFlag) {
+            extendBody.continueAt = Number(r.continueAt);
+            extendBody.prompt = String(r.prompt).trim();
+            extendBody.style = String(r.style).trim();
+            extendBody.title = String(r.title).trim();
+          }
+
+          // Опциональные параметры (можно слать в любом режиме)
+          if (r.negativeTags) extendBody.negativeTags = r.negativeTags;
+          if (r.vocalGender) extendBody.vocalGender = r.vocalGender;
+          if (r.styleWeight !== undefined) extendBody.styleWeight = r.styleWeight;
+          if (r.weirdnessConstraint !== undefined) {
+            extendBody.weirdnessConstraint = r.weirdnessConstraint;
+          }
+          if (r.audioWeight !== undefined) extendBody.audioWeight = r.audioWeight;
+          if (r.personaId) extendBody.personaId = r.personaId;
+
+          this.logger.debug(
+            `Sending request to KIE Suno EXTEND: ${JSON.stringify(extendBody).substring(0, 300)}`,
+          );
+
+          const response = await this.client.post(
+            '/api/v1/generate/extend',
+            extendBody,
+          );
+          const data = response.data;
+
+          if (data.code !== 200) {
+            throw new Error(data.msg || 'KIE Suno extend failed');
+          }
+
+          const taskId = data.data?.taskId;
+          if (!taskId) throw new Error('No taskId in KIE Suno extend response');
+
+          this.logger.log(
+            `KIE Suno EXTEND task created: ${taskId} (model: ${sunoModel}, custom=${defaultParamFlag})`,
+          );
+
+          return {
+            success: true,
+            data: {
+              taskId,
+              urls: [],
+              metadata: { model: sunoModel, apiType: 'suno', operation: 'extend' },
+            },
+            responseTimeMs: Date.now() - start,
+            providerSlug: this.slug,
+          };
+        }
 
         const body: any = {
           prompt: r.prompt || request.prompt,

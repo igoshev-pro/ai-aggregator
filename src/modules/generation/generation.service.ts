@@ -323,6 +323,8 @@ export class GenerationService {
         customMode: dto.customMode,
         operation: dto.operation,
         title: dto.title,
+        audioId: dto.audioId,        // 🆕 extend
+        continueAt: dto.continueAt,  // 🆕 extend
         // 🆕 Suno расширенные
         negativeTags: dto.negativeTags,
         vocalGender: dto.vocalGender,
@@ -363,6 +365,8 @@ export class GenerationService {
       customMode: dto.customMode,
       operation: p.operation,
       title: p.title,
+      audioId: p.audioId,        // 🆕 extend
+      continueAt: p.continueAt,  // 🆕 extend
       // 🆕 Suno расширенные
       negativeTags: p.negativeTags,
       vocalGender: p.vocalGender,
@@ -475,6 +479,7 @@ export class GenerationService {
       errorMessage: generation.errorMessage,
       prompt: generation.prompt,
       params: generation.params,
+      metadata: generation.metadata,   // 🆕 audioIds для extend
       createdAt: generation['createdAt'],
       completedAt: generation.completedAt,
       responseTimeMs: generation.responseTimeMs,
@@ -510,6 +515,7 @@ export class GenerationService {
         status: g.status,
         prompt: g.prompt,
         resultUrls: g.resultUrls,
+        metadata: g.metadata,          // 🆕 audioIds для extend
         tokensCost: g.tokensCost,
         costInDollars: g.costInDollars,    // 🆕
         isFavorite: g.isFavorite,
