@@ -438,6 +438,19 @@ export class ProviderRegistryService implements OnModuleInit {
       }
     }
 
+    // 🆕 Деактивируем устаревшие slug'и Suno (заменены на единый 'suno')
+    const DEPRECATED_AUDIO_SLUGS = ['suno-v4', 'suno-v4_5'];
+    const deactivated = await this.modelModel.updateMany(
+      { slug: { $in: DEPRECATED_AUDIO_SLUGS }, isActive: true },
+      { $set: { isActive: false } },
+    );
+    
+    if (deactivated.modifiedCount > 0) {
+      this.logger.warn(
+        `🚫 Deactivated ${deactivated.modifiedCount} deprecated Suno models: ${DEPRECATED_AUDIO_SLUGS.join(', ')}`,
+      );
+    }
+
     this.logger.log(
       `🌱 Models synced — created: ${created}, updated: ${updated}, ` +
       `legacy-migrated: ${migrated}, prices-forced: ${priceMigrated}`,
@@ -2274,80 +2287,83 @@ export class ProviderRegistryService implements OnModuleInit {
       // AUDIO МОДЕЛИ
       // ════════════════════════════════════════════════════
 
-      // ─── Suno V4.5 (KIE) ─────────────────────────────────
+      // ─── Suno (KIE, V5) ─────────────────────────────────
       {
-        slug: 'suno-v4_5',
-        name: 'Suno V4.5',
-        displayName: 'Suno V4.5',
-        description: 'Генерация музыки с вокалом — Suno V4.5',
+        slug: 'suno',
+        name: 'Suno',
+        displayName: 'Suno AI',
+        description: 'Генерация музыки с вокалом — Suno V5',
         type: 'audio',
-        fixedCostPerGeneration: 0.111,
+        fixedCostPerGeneration: 0.133,
         tokensPerDollar: 90,
-        minTokenCost: 10,
+        minTokenCost: 12,
         sortOrder: 1,
         capabilities: ['text_to_audio', 'music_generation'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'suno-v4_5', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'suno-v5', priority: 1, isActive: true },
         ],
         defaultParams: { customMode: false, instrumental: false },
         limits: {},
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
         pricingMatrix: [
-          { costInTokens: 10, costInDollars: 0.111, label: 'Стандартная генерация' },
+          { conditions: {}, costInTokens: 12, costInDollars: 0.133, label: 'Стандартная генерация' },
         ],
         uiParameters: [
           {
-            key: 'customMode', label: 'Режим', type: 'boolean', affectsPrice: false, defaultValue: false,
+            key: 'customMode', label: 'Режим', type: 'boolean',
+            affectsPrice: false, defaultValue: false,
             options: [
               { value: false, label: 'Авто' },
-              { value: true, label: 'Кастомный' },
+              { value: true, label: 'Custom Mode' },
             ],
           },
           {
-            key: 'instrumental', label: 'Инструментал', type: 'boolean', affectsPrice: false, defaultValue: false,
+            key: 'instrumental', label: 'Инструментал', type: 'boolean',
+            affectsPrice: false, defaultValue: false,
             options: [
               { value: false, label: 'С вокалом' },
               { value: true, label: 'Инструментал' },
             ],
           },
-        ],
-      },
-
-      // ─── Suno V4 (KIE) ───────────────────────────────────
-      {
-        slug: 'suno-v4',
-        name: 'Suno V4',
-        displayName: 'Suno V4',
-        description: 'Генерация музыки с вокалом — Suno V4',
-        type: 'audio',
-        fixedCostPerGeneration: 0.089,
-        tokensPerDollar: 90,
-        minTokenCost: 8,
-        sortOrder: 2,
-        capabilities: ['text_to_audio', 'music_generation'],
-        providerMappings: [
-          { providerSlug: 'kie', modelId: 'suno-v4', priority: 1, isActive: true },
-        ],
-        defaultParams: { customMode: false, instrumental: false },
-        limits: {},
-        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { costInTokens: 8, costInDollars: 0.089, label: 'Стандартная генерация' },
-        ],
-        uiParameters: [
           {
-            key: 'customMode', label: 'Режим', type: 'boolean', affectsPrice: false, defaultValue: false,
-            options: [
-              { value: false, label: 'Авто' },
-              { value: true, label: 'Кастомный' },
-            ],
+            key: 'style', label: 'Стиль', type: 'text',
+            affectsPrice: false, placeholder: 'pop, rock, jazz...',
+            visibleWhen: { customMode: [true] },
           },
           {
-            key: 'instrumental', label: 'Инструментал', type: 'boolean', affectsPrice: false, defaultValue: false,
+            key: 'title', label: 'Название трека', type: 'text',
+            affectsPrice: false, placeholder: 'Название (опц.)',
+            visibleWhen: { customMode: [true] },
+          },
+          {
+            key: 'negativeTags', label: 'Исключить стили', type: 'text',
+            affectsPrice: false, placeholder: 'heavy metal, screamo...',
+            visibleWhen: { customMode: [true] },
+          },
+          {
+            key: 'vocalGender', label: 'Голос', type: 'select',
+            affectsPrice: false, defaultValue: '',
             options: [
-              { value: false, label: 'С вокалом' },
-              { value: true, label: 'Инструментал' },
+              { value: '', label: 'Авто' },
+              { value: 'm', label: 'Мужской' },
+              { value: 'f', label: 'Женский' },
             ],
+            visibleWhen: { customMode: [true], instrumental: [false] },
+          },
+          {
+            key: 'styleWeight', label: 'Вес стиля', type: 'number',
+            affectsPrice: false, defaultValue: 0.65, min: 0, max: 1, step: 0.05,
+            visibleWhen: { customMode: [true] },
+          },
+          {
+            key: 'weirdnessConstraint', label: 'Экспериментальность', type: 'number',
+            affectsPrice: false, defaultValue: 0.5, min: 0, max: 1, step: 0.05,
+            visibleWhen: { customMode: [true] },
+          },
+          {
+            key: 'audioWeight', label: 'Вес аудио', type: 'number',
+            affectsPrice: false, defaultValue: 0.65, min: 0, max: 1, step: 0.05,
+            visibleWhen: { customMode: [true] },
           },
         ],
       },

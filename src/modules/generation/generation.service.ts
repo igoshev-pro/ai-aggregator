@@ -320,9 +320,15 @@ export class GenerationService {
         style: dto.style,
         duration: dto.duration,
         instrumental: dto.instrumental,
-        customMode: dto.customMode,        // 🆕
-        operation: dto.operation,          // 🆕
-        title: dto.title,                  // 🆕
+        customMode: dto.customMode,
+        operation: dto.operation,
+        title: dto.title,
+        // 🆕 Suno расширенные
+        negativeTags: dto.negativeTags,
+        vocalGender: dto.vocalGender,
+        styleWeight: dto.styleWeight,
+        weirdnessConstraint: dto.weirdnessConstraint,
+        audioWeight: dto.audioWeight,
         voiceId: dto.voiceId,
         language: dto.language,
         stability: dto.stability,
@@ -335,7 +341,7 @@ export class GenerationService {
       },
       tokensCost: costInTokens,
       costInDollars: priceCalc.costInDollars,
-      pricingBreakdown: priceCalc.breakdown, // 🆕
+      pricingBreakdown: priceCalc.breakdown,
     });
     await generation.save();
 
@@ -355,8 +361,14 @@ export class GenerationService {
       duration: p.duration,
       instrumental: p.instrumental,
       customMode: dto.customMode,
-      operation: p.operation,    // 🆕 Suno operation type
-      title: p.title,            // 🆕 Suno track title
+      operation: p.operation,
+      title: p.title,
+      // 🆕 Suno расширенные
+      negativeTags: p.negativeTags,
+      vocalGender: p.vocalGender,
+      styleWeight: p.styleWeight,
+      weirdnessConstraint: p.weirdnessConstraint,
+      audioWeight: p.audioWeight,
       voiceId: p.voiceId,
       voice: p.voiceId, // KIE ElevenLabs uses 'voice'
       language: p.language,
@@ -394,8 +406,8 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
-      costInDollars: priceCalc.costInDollars,    // 🆕
-      pricingBreakdown: priceCalc.breakdown,     // 🆕
+      costInDollars: priceCalc.costInDollars,
+      pricingBreakdown: priceCalc.breakdown,
     };
   }
 

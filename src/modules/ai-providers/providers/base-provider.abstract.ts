@@ -80,6 +80,16 @@ export interface AudioGenerationRequest {
   voiceId?: string; // for ElevenLabs TTS
   text?: string; // for TTS
   language?: string;
+
+  // 🆕 Suno
+  title?: string;
+  customMode?: boolean;
+  operation?: string;        // generate | extend | cover | ...
+  negativeTags?: string;     // что исключить (стили)
+  vocalGender?: string;      // 'm' | 'f'
+  styleWeight?: number;      // 0..1
+  weirdnessConstraint?: number; // 0..1
+  audioWeight?: number;      // 0..1
 }
 
 export interface GenerationResult {

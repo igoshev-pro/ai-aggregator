@@ -420,6 +420,42 @@ export class AudioGenerationDto {
   @IsOptional()
   voiceId?: string;
 
+    // 🆕 Suno: что исключить из стиля
+  @ApiPropertyOptional({ description: 'Negative tags — стили для исключения (Suno)' })
+  @IsOptional()
+  @IsString()
+  negativeTags?: string;
+
+  // 🆕 Suno: пол вокала
+  @ApiPropertyOptional({ enum: ['m', 'f'], description: 'Vocal gender (Suno)' })
+  @IsOptional()
+  @IsString()
+  vocalGender?: string;
+
+  // 🆕 Suno: вес стиля 0..1
+  @ApiPropertyOptional({ description: 'Style weight 0-1 (Suno)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  styleWeight?: number;
+
+  // 🆕 Suno: ограничение «странности» 0..1
+  @ApiPropertyOptional({ description: 'Weirdness constraint 0-1 (Suno)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  weirdnessConstraint?: number;
+
+  // 🆕 Suno: вес аудио 0..1
+  @ApiPropertyOptional({ description: 'Audio weight 0-1 (Suno)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(1)
+  audioWeight?: number;
+
   @ApiPropertyOptional({ description: 'Language code: ru, en, etc.' })
   @IsString()
   @IsOptional()
