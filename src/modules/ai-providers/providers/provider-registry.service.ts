@@ -1749,16 +1749,16 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-      // ─── Hailuo 02 (KIE) ─────────────────────────────────
+            // ─── Hailuo 02 (KIE) — t2v/i2v standard+pro ──────────
       {
         slug: 'hailuo-02',
         name: 'Hailuo 02',
         displayName: 'Hailuo 02',
-        description: 'Высококачественная видеогенерация от MiniMax',
+        description: 'Видеогенерация от MiniMax — текст или изображение в видео',
         type: 'video',
-        fixedCostPerGeneration: 0.133,
+        fixedCostPerGeneration: 0.113,
         tokensPerDollar: 90,
-        minTokenCost: 12,
+        minTokenCost: 10.2,
         sortOrder: 10,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
@@ -1768,16 +1768,17 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
         pricingMatrix: [
-          { conditions: { tier: 'standard', duration: 6 }, costInTokens: 12, costInDollars: 0.133, label: 'Standard × 6с' },
-          { conditions: { tier: 'standard', duration: 10 }, costInTokens: 20, costInDollars: 0.222, label: 'Standard × 10с' },
-          { conditions: { tier: 'pro' }, costInTokens: 35, costInDollars: 0.389, label: 'Pro (фикс.)' },
+          { conditions: { tier: 'standard', duration: 6 }, costInTokens: 10.2, costInDollars: 0.113, label: 'Standard × 6с' },
+          { conditions: { tier: 'standard', duration: 10 }, costInTokens: 17, costInDollars: 0.189, label: 'Standard × 10с' },
+          { conditions: { tier: 'pro', duration: 6 }, costInTokens: 20.4, costInDollars: 0.227, label: 'Pro × 6с' },
+          { conditions: { tier: 'pro', duration: 10 }, costInTokens: 34, costInDollars: 0.378, label: 'Pro × 10с' },
         ],
         uiParameters: [
           {
             key: 'tier', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'standard',
             options: [
-              { value: 'standard', label: 'Standard (от 12🔥)' },
-              { value: 'pro', label: 'Pro (35🔥)' },
+              { value: 'standard', label: 'Standard (от 10.2🔥)' },
+              { value: 'pro', label: 'Pro (от 20.4🔥)' },
             ],
           },
           {
@@ -1793,6 +1794,91 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)' },
               { value: '1:1', label: 'Квадрат (1:1)' },
+            ],
+          },
+        ],
+      },
+
+      // ─── Hailuo 2.3 Standard (KIE) — Image to Video ──────
+      {
+        slug: 'hailuo-2.3-standard',
+        name: 'Hailuo 2.3 Standard',
+        displayName: 'Hailuo 2.3 Standard',
+        description: 'Оживление изображения от MiniMax — 768p/1080p, бюджетный',
+        type: 'video',
+        fixedCostPerGeneration: 0.1,
+        tokensPerDollar: 90,
+        minTokenCost: 9,
+        sortOrder: 10.1,
+        capabilities: ['image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'hailuo/2-3-image-to-video-standard', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 6, resolution: '768P' },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          // 1080p×10 НЕ поддерживается (заблокируется на фронте автоматически)
+          { conditions: { resolution: '768P', duration: 6 }, costInTokens: 9, costInDollars: 0.1, label: '768p × 6с' },
+          { conditions: { resolution: '768P', duration: 10 }, costInTokens: 15.8, costInDollars: 0.176, label: '768p × 10с' },
+          { conditions: { resolution: '1080P', duration: 6 }, costInTokens: 15.8, costInDollars: 0.176, label: '1080p × 6с' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '768P',
+            options: [
+              { value: '768P', label: '768p (от 9🔥)' },
+              { value: '1080P', label: '1080p (15.8🔥, только 6с)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 6,
+            options: [
+              { value: 6, label: '6 секунд' },
+              { value: 10, label: '10 секунд' },
+            ],
+          },
+        ],
+      },
+
+      // ─── Hailuo 2.3 Pro (KIE) — Image to Video ───────────
+      {
+        slug: 'hailuo-2.3-pro',
+        name: 'Hailuo 2.3 Pro',
+        displayName: 'Hailuo 2.3 Pro',
+        description: 'Оживление изображения от MiniMax — улучшенное качество',
+        type: 'video',
+        fixedCostPerGeneration: 0.156,
+        tokensPerDollar: 90,
+        minTokenCost: 14,
+        sortOrder: 10.2,
+        isPremium: true,
+        capabilities: ['image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'hailuo/2-3-image-to-video-pro', priority: 1, isActive: true },
+        ],
+        defaultParams: { duration: 6, resolution: '768P' },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          // 1080p×10 НЕ поддерживается (заблокируется на фронте автоматически)
+          { conditions: { resolution: '768P', duration: 6 }, costInTokens: 14, costInDollars: 0.156, label: '768p × 6с' },
+          { conditions: { resolution: '768P', duration: 10 }, costInTokens: 27.3, costInDollars: 0.303, label: '768p × 10с' },
+          { conditions: { resolution: '1080P', duration: 6 }, costInTokens: 30, costInDollars: 0.333, label: '1080p × 6с' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '768P',
+            options: [
+              { value: '768P', label: '768p (от 14🔥)' },
+              { value: '1080P', label: '1080p (30🔥, только 6с)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 6,
+            options: [
+              { value: 6, label: '6 секунд' },
+              { value: 10, label: '10 секунд' },
             ],
           },
         ],
