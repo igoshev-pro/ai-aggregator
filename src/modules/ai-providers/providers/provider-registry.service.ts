@@ -2291,7 +2291,7 @@ export class ProviderRegistryService implements OnModuleInit {
       {
         slug: 'suno',
         name: 'Suno',
-        displayName: 'Suno AI',
+        displayName: 'Suno V5',
         description: 'Генерация музыки с вокалом — Suno V5',
         type: 'audio',
         fixedCostPerGeneration: 0.133,
