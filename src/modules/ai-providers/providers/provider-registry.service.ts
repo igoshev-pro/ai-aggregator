@@ -1448,51 +1448,6 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-      // ─── Kling 2.5 Turbo Pro (KIE) ──────────────────────
-      {
-        slug: 'kling-2.5-turbo',
-        name: 'Kling 2.5 Turbo',
-        displayName: 'Kling 2.5 Turbo Pro',
-        description: 'Быстрая текстовая видеомодель Kling — кинематографичное 1080p',
-        type: 'video',
-        fixedCostPerGeneration: 0.156,
-        tokensPerDollar: 90,
-        minTokenCost: 14,
-        sortOrder: 6.5,
-        capabilities: ['text_to_video', 'image_to_video'],
-        providerMappings: [
-          { providerSlug: 'kie', modelId: 'kling/v2-5-turbo-text-to-video-pro', priority: 1, isActive: true },
-        ],
-        defaultParams: { aspectRatio: '16:9', duration: 5, cfgScale: 0.5 },
-        limits: { maxDuration: 10 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
-        pricingMatrix: [
-          { conditions: { duration: 5 }, costInTokens: 14, costInDollars: 0.156, label: '5 секунд' },
-          { conditions: { duration: 10 }, costInTokens: 27, costInDollars: 0.300, label: '10 секунд' },
-        ],
-        uiParameters: [
-          {
-            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
-            options: [
-              { value: 5, label: '5 секунд (14🔥)' },
-              { value: 10, label: '10 секунд (27🔥)' },
-            ],
-          },
-          {
-            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
-            options: [
-              { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)' },
-              { value: '1:1', label: 'Квадрат (1:1)' },
-            ],
-          },
-          {
-            key: 'cfgScale', label: 'Креативность', type: 'slider', affectsPrice: false, defaultValue: 0.5,
-            options: [],
-          },
-        ],
-      },
-
       // ─── Sora 2 Pro (Evolink) ────────────────────────────
       {
         slug: 'sora-2-pro',
@@ -1554,6 +1509,51 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
+      // ─── Kling 2.5 Turbo Pro (KIE) ──────────────────────
+      {
+        slug: 'kling-2.5-turbo',
+        name: 'Kling 2.5 Turbo',
+        displayName: 'Kling 2.5 Turbo Pro',
+        description: 'Быстрая текстовая видеомодель Kling — кинематографичное 1080p',
+        type: 'video',
+        fixedCostPerGeneration: 0.156,
+        tokensPerDollar: 90,
+        minTokenCost: 14,
+        sortOrder: 6,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'kling/v2-5-turbo-text-to-video-pro', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 5, cfgScale: 0.5 },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
+        pricingMatrix: [
+          { conditions: { duration: 5 }, costInTokens: 14, costInDollars: 0.156, label: '5 секунд' },
+          { conditions: { duration: 10 }, costInTokens: 27, costInDollars: 0.300, label: '10 секунд' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: [
+              { value: 5, label: '5 секунд (14🔥)' },
+              { value: 10, label: '10 секунд (27🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+            ],
+          },
+          {
+            key: 'cfgScale', label: 'Креативность', type: 'slider', affectsPrice: false, defaultValue: 0.5,
+            options: [],
+          },
+        ],
+      },
+
       // ─── Kling 3.0 (KIE) ────────────────────────────────
       {
         slug: 'kling-3.0',
@@ -1564,7 +1564,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.24,
         tokensPerDollar: 90,
         minTokenCost: 12,
-        sortOrder: 6,
+        sortOrder: 7,
         capabilities: ['text_to_video', 'image_to_video', 'audio', 'multi_shots', 'elements'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
@@ -1647,7 +1647,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.1, // справочно (реальная цена из pricingMatrix)
         tokensPerDollar: 90,
         minTokenCost: 27, // 720p × 3с
-        sortOrder: 6.7,
+        sortOrder: 8,
         capabilities: ['image_to_video', 'motion_transfer'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'kling-3.0/motion-control', priority: 1, isActive: true },
@@ -1708,7 +1708,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.067,
         tokensPerDollar: 90,
         minTokenCost: 6,
-        sortOrder: 7,
+        sortOrder: 9,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'runway', priority: 1, isActive: true },
@@ -1759,7 +1759,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.133,
         tokensPerDollar: 90,
         minTokenCost: 12,
-        sortOrder: 8,
+        sortOrder: 10,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'hailuo/02-text-to-video-standard', priority: 1, isActive: true },
@@ -1808,7 +1808,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.067,
         tokensPerDollar: 90,
         minTokenCost: 6,
-        sortOrder: 9,
+        sortOrder: 11,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'wan/2-7-text-to-video', priority: 1, isActive: true },
@@ -1851,7 +1851,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-      // ─── Seedance 1.0 (KIE) ──────────────────────────────
+      // ─── Seedance 1.5 (KIE) ──────────────────────────────
       {
         slug: 'seedance-1.5-pro',
         name: 'Seedance 1.5 Pro',
@@ -1861,7 +1861,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.111,
         tokensPerDollar: 90,
         minTokenCost: 10,
-        sortOrder: 10,
+        sortOrder: 12,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'seedance-1.5-pro', priority: 1, isActive: true },
