@@ -202,6 +202,9 @@ export class GenerationService {
         watermark: dto.watermark,                // 🆕 Veo watermark
         style: dto.style,
         resizeMode: dto.resizeMode,  // ← ДОБАВИТЬ
+        multiShots: dto.multiShots,
+        multiPrompt: dto.multiPrompt,
+        klingElements: dto.klingElements,
       },
       tokensCost: costInTokens,
       costInDollars: priceCalc.costInDollars,
@@ -245,6 +248,11 @@ export class GenerationService {
           waterMark: p.waterMark,
           watermark: p.watermark,                  // 🆕
           style: p.style,
+          resizeMode: p.resizeMode,        // 🔧 fix: ранее не передавался в очередь
+          // 🆕 Kling 3.0
+          multiShots: p.multiShots,
+          multiPrompt: p.multiPrompt,
+          klingElements: p.klingElements,
         },
       },
       {

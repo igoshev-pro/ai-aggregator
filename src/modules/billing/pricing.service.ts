@@ -239,12 +239,23 @@ export class PricingService {
   ): PricingRule | null {
     if (!matrix || matrix.length === 0) return null;
 
-    // Копия массива с сортировкой: более специфичные правила (больше conditions) — раньше
     const sorted = [...matrix].sort(
       (a, b) =>
         Object.keys(b.conditions || {}).length -
         Object.keys(a.conditions || {}).length,
     );
+
+    // 🆕 Нормализация для устойчивого сравнения (число "5" === 5, "true" === true)
+    const norm = (v: any): any => {
+      if (typeof v === 'boolean') return v;
+      if (v === 'true') return true;
+      if (v === 'false') return false;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
+        return Number(v);
+      }
+      return v;
+    };
 
     for (const rule of sorted) {
       if (!rule.conditions) continue;
@@ -253,12 +264,11 @@ export class PricingService {
         ([key, expected]) => {
           const actual = params[key];
 
-          // Массив значений в правиле — params должен быть одним из них
           if (Array.isArray(expected)) {
-            return expected.includes(actual);
+            return expected.some((e) => norm(e) === norm(actual));
           }
 
-          return actual === expected;
+          return norm(expected) === norm(actual);
         },
       );
 

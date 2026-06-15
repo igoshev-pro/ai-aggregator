@@ -1514,58 +1514,71 @@ export class ProviderRegistryService implements OnModuleInit {
         slug: 'kling-3.0',
         name: 'Kling 3.0',
         displayName: 'Kling 3.0',
-        description: 'Мощная китайская видеомодель с поддержкой длинных клипов',
+        description: 'Мощная видеомодель: мультисцены, элементы, старт/конец кадр, 4K',
         type: 'video',
         fixedCostPerGeneration: 0.24,
         tokensPerDollar: 90,
-        minTokenCost: 22,
+        minTokenCost: 12,
         sortOrder: 6,
-        capabilities: ['text_to_video', 'image_to_video', 'audio'],
+        capabilities: ['text_to_video', 'image_to_video', 'audio', 'multi_shots', 'elements'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'kling-3.0/video', priority: 1, isActive: true },
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, mode: 'std', sound: false },
         limits: { maxDuration: 15 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-        pricingMatrix: [
-          // std (720p) без звука
-          { conditions: { mode: 'std', sound: false, duration: 5  }, costInTokens: 22,  costInDollars: 0.244, label: 'Стандарт × 5с × без звука'  },
-          { conditions: { mode: 'std', sound: false, duration: 10 }, costInTokens: 43,  costInDollars: 0.478, label: 'Стандарт × 10с × без звука' },
-          { conditions: { mode: 'std', sound: false, duration: 15 }, costInTokens: 65,  costInDollars: 0.722, label: 'Стандарт × 15с × без звука' },
-          // std (720p) со звуком
-          { conditions: { mode: 'std', sound: true,  duration: 5  }, costInTokens: 30,  costInDollars: 0.333, label: 'Стандарт × 5с × со звуком'  },
-          { conditions: { mode: 'std', sound: true,  duration: 10 }, costInTokens: 60,  costInDollars: 0.667, label: 'Стандарт × 10с × со звуком' },
-          { conditions: { mode: 'std', sound: true,  duration: 15 }, costInTokens: 90,  costInDollars: 1.000, label: 'Стандарт × 15с × со звуком' },
-          // pro (1080p) без звука
-          { conditions: { mode: 'pro', sound: false, duration: 5  }, costInTokens: 29,  costInDollars: 0.322, label: 'Pro × 5с × без звука'  },
-          { conditions: { mode: 'pro', sound: false, duration: 10 }, costInTokens: 57,  costInDollars: 0.633, label: 'Pro × 10с × без звука' },
-          { conditions: { mode: 'pro', sound: false, duration: 15 }, costInTokens: 86,  costInDollars: 0.956, label: 'Pro × 15с × без звука' },
-          // pro (1080p) со звуком
-          { conditions: { mode: 'pro', sound: true,  duration: 5  }, costInTokens: 42,  costInDollars: 0.467, label: 'Pro × 5с × со звуком'  },
-          { conditions: { mode: 'pro', sound: true,  duration: 10 }, costInTokens: 83,  costInDollars: 0.922, label: 'Pro × 10с × со звуком' },
-          { conditions: { mode: 'pro', sound: true,  duration: 15 }, costInTokens: 125, costInDollars: 1.389, label: 'Pro × 15с × со звуком' },
-        ],
+        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
+        pricingMatrix: (() => {
+          const rows: any[] = [];
+          const durations = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+          // [mode][sound] => перекоэффициент за секунду
+          const rate: Record<string, { off: number; on: number; label: string }> = {
+            std: { off: 4, on: 6, label: 'Стандарт' },
+            pro: { off: 6, on: 8, label: 'Pro' },
+            '4K': { off: 20, on: 28, label: '4K' },
+          };
+          const dollarsPerToken = 1 / 90;
+          for (const mode of ['std', 'pro', '4K']) {
+            for (const sound of [false, true]) {
+              const perSec = sound ? rate[mode].on : rate[mode].off;
+              for (const d of durations) {
+                const tokens = perSec * d;
+                rows.push({
+                  conditions: { mode, sound, duration: d },
+                  costInTokens: tokens,
+                  costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+                  label: `${rate[mode].label} × ${d}с × ${sound ? 'со звуком' : 'без звука'}`,
+                });
+              }
+            }
+          }
+          return rows;
+        })(),
         uiParameters: [
           {
             key: 'mode', label: 'Режим качества', type: 'select', affectsPrice: true, defaultValue: 'std',
             options: [
-              { value: 'std', label: 'Стандарт 720p (от 22🔥)' },
-              { value: 'pro', label: 'Pro 1080p (от 29🔥)'     },
+              { value: 'std', label: 'Стандарт 720p (от 12🔥)' },
+              { value: 'pro', label: 'Pro 1080p (от 18🔥)'     },
+              { value: '4K',  label: '4K Ultra HD (от 60🔥)'   },
             ],
           },
           {
             key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: true, defaultValue: false,
             options: [
               { value: false, label: 'Без звука' },
-              { value: true,  label: 'Со звуком (+40%)'  },
+              { value: true,  label: 'Со звуком'  },
             ],
           },
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
             options: [
-              { value: 5,  label: '5 секунд'  },
-              { value: 10, label: '10 секунд' },
-              { value: 15, label: '15 секунд' },
+              { value: 3,  label: '3 сек'  }, { value: 4,  label: '4 сек' },
+              { value: 5,  label: '5 сек'  }, { value: 6,  label: '6 сек' },
+              { value: 7,  label: '7 сек'  }, { value: 8,  label: '8 сек' },
+              { value: 9,  label: '9 сек'  }, { value: 10, label: '10 сек' },
+              { value: 11, label: '11 сек' }, { value: 12, label: '12 сек' },
+              { value: 13, label: '13 сек' }, { value: 14, label: '14 сек' },
+              { value: 15, label: '15 сек' },
             ],
           },
           {

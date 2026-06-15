@@ -540,6 +540,8 @@ export class KieProvider extends BaseProvider {
     const r = request as any;
     const input: Record<string, any> = { prompt: request.prompt };
 
+    const isKling = config.kieModel.startsWith('kling-3.0');
+
     if (config.aspectRatios.length > 0) {
       let ar = r.aspectRatio || config.aspectRatios[0];
       if (config.aspectRatios.includes('portrait') && !config.aspectRatios.includes(ar)) {
@@ -555,27 +557,86 @@ export class KieProvider extends BaseProvider {
       input.duration = String(r.duration || config.durations[0]);
     }
 
-    if (config.hasImageInput && r.imageUrl) {
-      input.image_urls = [r.imageUrl];
+    // ─── Изображения: старт/конец кадр (image_urls) ───
+    if (config.hasImageInput) {
+      const frames: string[] = [];
+      if (Array.isArray(r.imageUrls) && r.imageUrls.length > 0) {
+        frames.push(...r.imageUrls.filter(Boolean));
+      } else if (r.imageUrl) {
+        frames.push(r.imageUrl);
+      }
+      if (frames.length > 0) {
+        // Kling multi_shots=true поддерживает только первый кадр
+        if (isKling && r.multiShots === true) {
+          input.image_urls = [frames[0]];
+        } else {
+          input.image_urls = frames.slice(0, 2);
+        }
+      }
     }
-    if (config.hasImageInput && r.imageUrls?.length > 0) {
-      input.image_urls = r.imageUrls;
-    }
+
     if (r.videoUrls?.length > 0) {
       input.video_urls = r.videoUrls;
     }
 
-    if (config.hasSound) input.sound = r.sound !== undefined ? r.sound : false;
-    if (config.hasMode) {
-      input.mode = r.mode || 'std';
-      input.multi_shots = false;
-      input.multi_prompt = [];
+    // ─── KLING 3.0 specific ───
+    if (isKling) {
+      const multiShots = r.multiShots === true;
+      input.multi_shots = multiShots;
+
+      // mode: std | pro | 4K
+      input.mode = r.mode || 'pro';
+
+      // sound: при multi_shots=true KIE форсит true
+      input.sound = multiShots ? true : (r.sound !== undefined ? r.sound : false);
+
+      if (multiShots) {
+        const shots: Array<{ prompt: string; duration: number }> = Array.isArray(r.multiPrompt)
+          ? r.multiPrompt
+              .filter((s: any) => s && s.prompt)
+              .slice(0, 5)
+              .map((s: any) => ({
+                prompt: String(s.prompt).substring(0, 500),
+                duration: Math.min(12, Math.max(1, Number(s.duration) || 3)),
+              }))
+          : [];
+        input.multi_prompt = shots;
+      } else {
+        input.multi_prompt = [];
+      }
+
+      // kling_elements: до 3, каждый 2-4 картинки
+      if (Array.isArray(r.klingElements) && r.klingElements.length > 0) {
+        input.kling_elements = r.klingElements
+          .filter((e: any) => e && e.name)
+          .slice(0, 3)
+          .map((e: any) => ({
+            name: String(e.name),
+            description: String(e.description || ''),
+            element_input_urls: Array.isArray(e.elementInputUrls)
+              ? e.elementInputUrls.filter(Boolean).slice(0, 4)
+              : [],
+          }));
+      }
+    } else {
+      // ─── Прочие jobs-модели (sora, hailuo) — без изменений ───
+      if (config.hasSound) input.sound = r.sound !== undefined ? r.sound : false;
+      if (config.hasMode) {
+        input.mode = r.mode || 'std';
+        input.multi_shots = false;
+        input.multi_prompt = [];
+      }
     }
+
     if (r.stable !== undefined) input.stable = r.stable;
     if (config.hasSize) input.size = r.quality || 'standard';
     if (config.hasRemoveWatermark) input.remove_watermark = r.removeWatermark !== false;
     if (config.hasPromptOptimizer) input.prompt_optimizer = r.promptOptimizer !== false;
     if (config.hasResolution) input.resolution = r.resolution || '768P';
+
+    this.logger.debug(
+      `KIE Jobs generate: model=${config.kieModel}, input=${JSON.stringify(input).substring(0, 500)}`,
+    );
 
     const response = await this.client.post('/api/v1/jobs/createTask', {
       model: config.kieModel,

@@ -103,6 +103,37 @@ export class ImageGenerationDto {
   version?: string;
 }
 
+// 🆕 Kling 3.0 multi-shot prompt
+export class KlingShotDto {
+  @ApiProperty({ description: 'Shot prompt text (max 500 chars)' })
+  @IsString()
+  @MaxLength(500)
+  prompt: string;
+
+  @ApiProperty({ description: 'Shot duration 1-12 sec' })
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  duration: number;
+}
+
+// 🆕 Kling 3.0 element (named reference)
+export class KlingElementDto {
+  @ApiProperty({ description: 'Element name (referenced via @name in prompt)' })
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  @ApiProperty({ description: 'Element description' })
+  @IsString()
+  @MaxLength(500)
+  description: string;
+
+  @ApiProperty({ description: 'Element image URLs (2-4 required)' })
+  @IsArray()
+  elementInputUrls: string[];
+}
+
 export class VideoGenerationDto {
   @ApiProperty({ example: 'sora-2-txt2vid' })
   @IsString()
@@ -244,6 +275,34 @@ resizeMode?: string;
   @IsOptional()
   @IsString()
   watermark?: string;
+
+    // 🆕 Kling 3.0: multi-shots mode
+  @ApiPropertyOptional({ description: 'Kling: enable multi-shot mode' })
+  @IsOptional()
+  @IsBoolean()
+  multiShots?: boolean;
+
+  // 🆕 Kling 3.0: shots array (up to 5)
+  @ApiPropertyOptional({
+    description: 'Kling: shot prompts array (up to 5)',
+    type: [KlingShotDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => KlingShotDto)
+  multiPrompt?: KlingShotDto[];
+
+  // 🆕 Kling 3.0: referenced elements (up to 3)
+  @ApiPropertyOptional({
+    description: 'Kling: referenced elements (up to 3)',
+    type: [KlingElementDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => KlingElementDto)
+  klingElements?: KlingElementDto[];
 }
 
 export class DialogueLineDto {
