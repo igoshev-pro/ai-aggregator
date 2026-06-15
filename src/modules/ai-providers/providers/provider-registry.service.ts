@@ -2378,7 +2378,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.044,
         tokensPerDollar: 90,
         minTokenCost: 4,
-        sortOrder: 3,
+        sortOrder: 5,
         capabilities: ['text_to_speech'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'elevenlabs/text-to-speech-multilingual-v2', priority: 1, isActive: true },
