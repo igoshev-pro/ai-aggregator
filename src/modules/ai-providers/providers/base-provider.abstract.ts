@@ -134,6 +134,7 @@ export interface TaskStatusResult {
   resultUrls?: string[];
   error?: string;
   eta?: number; // estimated seconds remaining
+  metadata?: Record<string, any>; // 🆕 audioIds для Suno extend/persona
 }
 
 export abstract class BaseProvider {

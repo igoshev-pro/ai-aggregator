@@ -229,7 +229,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
     aspectRatios: ['16:9', '9:16', '1:1', '4:3', '3:4'],
   },
-    // ─── Wan 2.5 (KIE jobs) ──────────────────────────────────────
+  // ─── Wan 2.5 (KIE jobs) ──────────────────────────────────────
   'wan/2-5-text-to-video': {
     kieModel: 'wan/2-5-text-to-video',
     apiType: 'jobs',
@@ -246,7 +246,7 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['5', '10'],
     aspectRatios: [], // i2v: формат берётся из изображения
   },
-    // ─── Seedance (KIE jobs, bytedance/*) ────────────────────────
+  // ─── Seedance (KIE jobs, bytedance/*) ────────────────────────
   'bytedance/seedance-1.5-pro': {
     kieModel: 'bytedance/seedance-1.5-pro',
     apiType: 'jobs',
@@ -1010,7 +1010,7 @@ export class KieProvider extends BaseProvider {
     };
   }
 
-    // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
   // 🆕 SEEDANCE VIDEO GENERATION (KIE jobs)
   // Поддержка: 1.5-pro / 2 / 2-fast — все параметры из доков
   // ═══════════════════════════════════════════════════════
@@ -1360,12 +1360,17 @@ export class KieProvider extends BaseProvider {
 
       if (status === 'completed') {
         let resultUrls: string[] = [];
+        const audioIds: string[] = []; // 🆕 ID треков для extend/persona
 
         const sunoData = task.response?.sunoData;
         if (Array.isArray(sunoData) && sunoData.length > 0) {
           resultUrls = sunoData
             .map((track: any) => track.audioUrl || track.sourceAudioUrl)
             .filter(Boolean);
+          // 🆕 собираем audioId каждого трека
+          for (const track of sunoData) {
+            if (track?.id) audioIds.push(String(track.id));
+          }
           this.logger.log(`Suno task ${taskId}: found ${resultUrls.length} tracks`);
         }
 
@@ -1373,14 +1378,22 @@ export class KieProvider extends BaseProvider {
           resultUrls = task.data
             .map((track: any) => track.audio_url || track.audioUrl || track.url)
             .filter(Boolean);
+          for (const track of task.data) {
+            const id = track?.id || track?.audio_id;
+            if (id) audioIds.push(String(id));
+          }
         }
 
-        this.logger.log(`Suno task ${taskId} completed. URLs: ${JSON.stringify(resultUrls).substring(0, 300)}`);
+        this.logger.log(
+          `Suno task ${taskId} completed. URLs: ${JSON.stringify(resultUrls).substring(0, 300)}` +
+          (audioIds.length ? ` | audioIds: ${audioIds.join(',')}` : ''),
+        );
 
         return {
           status: 'completed',
           resultUrls,
           progress: 100,
+          metadata: audioIds.length > 0 ? { audioIds } : undefined, // 🆕
         };
       }
 

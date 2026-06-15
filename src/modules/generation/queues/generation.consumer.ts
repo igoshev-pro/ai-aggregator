@@ -287,7 +287,8 @@ export class GenerationConsumer {
             type,
           );
 
-          await this.generationService.updateGeneration(generationId, {
+          // 🆕 Собираем апдейт, metadata добавляем только если пришла
+          const completedUpdate: any = {
             status: GenerationStatus.COMPLETED,
             resultUrls: storageUrls.length ? storageUrls : providerUrls,
             storageUrls,
@@ -295,7 +296,18 @@ export class GenerationConsumer {
             savedToStorage: storageUrls.length > 0,
             completedAt: new Date(),
             progress: 100,
-          });
+          };
+          if (
+            taskResult.metadata &&
+            Object.keys(taskResult.metadata).length > 0
+          ) {
+            completedUpdate.metadata = taskResult.metadata; // 🆕 { audioIds }
+          }
+
+          await this.generationService.updateGeneration(
+            generationId,
+            completedUpdate,
+          );
 
           // 🆕 ЗАПИСЫВАЕМ ТРАНЗАКЦИЮ В BILLING
           await this.generationService.recordSuccessfulGeneration(generationId);
