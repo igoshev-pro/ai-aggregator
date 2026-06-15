@@ -1937,54 +1937,69 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-      // ─── Seedance 1.5 (KIE) ──────────────────────────────
+            // ─── Seedance 1.5 Pro (KIE) — 480/720/1080 × 4/8/12 × звук ─
       {
         slug: 'seedance-1.5-pro',
         name: 'Seedance 1.5 Pro',
         displayName: 'Seedance 1.5 Pro',
         description: 'Видеогенерация от ByteDance с аудио — плавное движение',
         type: 'video',
-        fixedCostPerGeneration: 0.111,
+        fixedCostPerGeneration: 0.031,
         tokensPerDollar: 90,
-        minTokenCost: 10,
+        minTokenCost: 2.8,
         sortOrder: 12,
-        capabilities: ['text_to_video', 'image_to_video'],
+        capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'seedance-1.5-pro', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'bytedance/seedance-1.5-pro', priority: 1, isActive: true },
         ],
-        defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p' },
-        limits: { maxDuration: 10 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        defaultParams: { aspectRatio: '16:9', duration: 4, resolution: '480p', sound: false },
+        limits: { maxDuration: 12 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 2 },
         pricingMatrix: [
-          { conditions: { tier: 'lite', duration: 5, resolution: '720p' }, costInTokens: 10, costInDollars: 0.111, label: 'Lite × 5с × 720p' },
-          { conditions: { tier: 'lite', duration: 5, resolution: '1080p' }, costInTokens: 15, costInDollars: 0.167, label: 'Lite × 5с × 1080p' },
-          { conditions: { tier: 'lite', duration: 10, resolution: '720p' }, costInTokens: 20, costInDollars: 0.222, label: 'Lite × 10с × 720p' },
-          { conditions: { tier: 'lite', duration: 10, resolution: '1080p' }, costInTokens: 30, costInDollars: 0.333, label: 'Lite × 10с × 1080p' },
-          { conditions: { tier: 'pro', duration: 5, resolution: '720p' }, costInTokens: 20, costInDollars: 0.222, label: 'Pro × 5с × 720p' },
-          { conditions: { tier: 'pro', duration: 5, resolution: '1080p' }, costInTokens: 30, costInDollars: 0.333, label: 'Pro × 5с × 1080p' },
-          { conditions: { tier: 'pro', duration: 10, resolution: '720p' }, costInTokens: 40, costInDollars: 0.444, label: 'Pro × 10с × 720p' },
-          { conditions: { tier: 'pro', duration: 10, resolution: '1080p' }, costInTokens: 60, costInDollars: 0.667, label: 'Pro × 10с × 1080p' },
+          // 480p
+          { conditions: { resolution: '480p', duration: 4, sound: false }, costInTokens: 2.8, costInDollars: 0.031, label: '480p × 4с' },
+          { conditions: { resolution: '480p', duration: 4, sound: true }, costInTokens: 5, costInDollars: 0.056, label: '480p × 4с + звук' },
+          { conditions: { resolution: '480p', duration: 8, sound: false }, costInTokens: 5.2, costInDollars: 0.058, label: '480p × 8с' },
+          { conditions: { resolution: '480p', duration: 8, sound: true }, costInTokens: 10, costInDollars: 0.111, label: '480p × 8с + звук' },
+          { conditions: { resolution: '480p', duration: 12, sound: false }, costInTokens: 6.3, costInDollars: 0.07, label: '480p × 12с' },
+          { conditions: { resolution: '480p', duration: 12, sound: true }, costInTokens: 12, costInDollars: 0.133, label: '480p × 12с + звук' },
+          // 720p
+          { conditions: { resolution: '720p', duration: 4, sound: false }, costInTokens: 5.2, costInDollars: 0.058, label: '720p × 4с' },
+          { conditions: { resolution: '720p', duration: 4, sound: true }, costInTokens: 10, costInDollars: 0.111, label: '720p × 4с + звук' },
+          { conditions: { resolution: '720p', duration: 8, sound: false }, costInTokens: 10.5, costInDollars: 0.117, label: '720p × 8с' },
+          { conditions: { resolution: '720p', duration: 8, sound: true }, costInTokens: 20, costInDollars: 0.222, label: '720p × 8с + звук' },
+          { conditions: { resolution: '720p', duration: 12, sound: false }, costInTokens: 13.5, costInDollars: 0.15, label: '720p × 12с' },
+          { conditions: { resolution: '720p', duration: 12, sound: true }, costInTokens: 26.2, costInDollars: 0.291, label: '720p × 12с + звук' },
+          // 1080p
+          { conditions: { resolution: '1080p', duration: 4, sound: false }, costInTokens: 11.2, costInDollars: 0.124, label: '1080p × 4с' },
+          { conditions: { resolution: '1080p', duration: 4, sound: true }, costInTokens: 22, costInDollars: 0.244, label: '1080p × 4с + звук' },
+          { conditions: { resolution: '1080p', duration: 8, sound: false }, costInTokens: 22.5, costInDollars: 0.25, label: '1080p × 8с' },
+          { conditions: { resolution: '1080p', duration: 8, sound: true }, costInTokens: 44.4, costInDollars: 0.493, label: '1080p × 8с + звук' },
+          { conditions: { resolution: '1080p', duration: 12, sound: false }, costInTokens: 33.5, costInDollars: 0.372, label: '1080p × 12с' },
+          { conditions: { resolution: '1080p', duration: 12, sound: true }, costInTokens: 66.4, costInDollars: 0.738, label: '1080p × 12с + звук' },
         ],
         uiParameters: [
           {
-            key: 'tier', label: 'Версия', type: 'select', affectsPrice: true, defaultValue: 'lite',
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '480p',
             options: [
-              { value: 'lite', label: 'Lite (от 10🔥)' },
-              { value: 'pro', label: 'Pro (от 20🔥)' },
+              { value: '480p', label: '480p (от 2.8🔥)' },
+              { value: '720p', label: '720p (от 5.2🔥)' },
+              { value: '1080p', label: '1080p (от 11.2🔥)' },
             ],
           },
           {
-            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 4,
             options: [
-              { value: 5, label: '5 секунд' },
-              { value: 10, label: '10 секунд' },
+              { value: 4, label: '4 секунды' },
+              { value: 8, label: '8 секунд' },
+              { value: 12, label: '12 секунд' },
             ],
           },
           {
-            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: true, defaultValue: false,
             options: [
-              { value: '720p', label: '720p' },
-              { value: '1080p', label: '1080p' },
+              { value: false, label: 'Без звука' },
+              { value: true, label: 'Со звуком' },
             ],
           },
           {
@@ -1993,6 +2008,199 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)' },
               { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '21:9', label: 'Кино (21:9)' },
+            ],
+          },
+        ],
+      },
+
+            // ─── Seedance 2 (KIE) ────────────────────────────────
+      // Цена: resolution × duration × videoRef (есть видео-референс → дешевле)
+      {
+        slug: 'seedance-2',
+        name: 'Seedance 2',
+        displayName: 'Seedance 2',
+        description: 'Новое поколение ByteDance — мультиреференс (фото/видео/аудио), 4-15с',
+        type: 'video',
+        fixedCostPerGeneration: 0.063, // справочно (720p×5с без видео ≈ 5.7×5/90)
+        tokensPerDollar: 90,
+        minTokenCost: 13.8, // мин: 480p × 4с + видео (3.45×4)
+        sortOrder: 12.1,
+        isPremium: true,
+        capabilities: ['text_to_video', 'image_to_video', 'audio', 'reference_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'bytedance/seedance-2', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
+        limits: { maxDuration: 15 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        pricingMatrix: (() => {
+          const rows: any[] = [];
+          // [resolution][videoRef] => спичек за секунду
+          const rate: Record<string, { noVideo: number; withVideo: number }> = {
+            '480p': { noVideo: 5.7, withVideo: 3.45 },
+            '720p': { noVideo: 12.3, withVideo: 7.5 },
+            '1080p': { noVideo: 30.6, withVideo: 18.6 },
+          };
+          const dollarsPerToken = 1 / 90;
+          for (const resolution of ['480p', '720p', '1080p']) {
+            for (const videoRef of [false, true]) {
+              const perSec = videoRef ? rate[resolution].withVideo : rate[resolution].noVideo;
+              for (let d = 4; d <= 15; d++) {
+                const tokens = Math.round(perSec * d * 10) / 10;
+                rows.push({
+                  conditions: { resolution, videoRef, duration: d },
+                  costInTokens: tokens,
+                  costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+                  label: `${resolution} × ${d}с${videoRef ? ' (видео-реф)' : ''}`,
+                });
+              }
+            }
+          }
+          return rows;
+        })(),
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '480p', label: '480p (от 13.8🔥)' },
+              { value: '720p', label: '720p (от 30🔥)' },
+              { value: '1080p', label: '1080p (от 74.4🔥)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: (() => {
+              const o: any[] = [];
+              for (let d = 4; d <= 15; d++) o.push({ value: d, label: `${d} сек` });
+              return o;
+            })(),
+          },
+          {
+            key: 'videoRef', label: 'Видео-референс', type: 'boolean', affectsPrice: true, defaultValue: false,
+            options: [
+              { value: false, label: 'Без видео (дороже)' },
+              { value: true, label: 'С видео (дешевле)' },
+            ],
+          },
+          {
+            key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: false, defaultValue: true,
+            options: [
+              { value: false, label: 'Без звука' },
+              { value: true, label: 'Со звуком' },
+            ],
+          },
+          {
+            key: 'webSearch', label: 'Онлайн-поиск', type: 'boolean', affectsPrice: false, defaultValue: false,
+            options: [
+              { value: false, label: 'Выкл' },
+              { value: true, label: 'Вкл' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '21:9', label: 'Кино (21:9)' },
+            ],
+          },
+        ],
+      },
+
+            // ─── Seedance 2 Fast (KIE) ───────────────────────────
+      // Цена: resolution × duration × videoRef (только 480p/720p)
+      {
+        slug: 'seedance-2-fast',
+        name: 'Seedance 2 Fast',
+        displayName: 'Seedance 2 Fast',
+        description: 'Быстрая версия Seedance 2 — 480p/720p, 4-15с',
+        type: 'video',
+        fixedCostPerGeneration: 0.055,
+        tokensPerDollar: 90,
+        minTokenCost: 10.8, // мин: 480p × 4с + видео (2.7×4)
+        sortOrder: 12.2,
+        capabilities: ['text_to_video', 'image_to_video', 'audio'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'bytedance/seedance-2-fast', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
+        limits: { maxDuration: 15 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        pricingMatrix: (() => {
+          const rows: any[] = [];
+          const rate: Record<string, { noVideo: number; withVideo: number }> = {
+            '480p': { noVideo: 4.65, withVideo: 2.7 },
+            '720p': { noVideo: 9.9, withVideo: 6 },
+          };
+          const dollarsPerToken = 1 / 90;
+          for (const resolution of ['480p', '720p']) {
+            for (const videoRef of [false, true]) {
+              const perSec = videoRef ? rate[resolution].withVideo : rate[resolution].noVideo;
+              for (let d = 4; d <= 15; d++) {
+                const tokens = Math.round(perSec * d * 10) / 10;
+                rows.push({
+                  conditions: { resolution, videoRef, duration: d },
+                  costInTokens: tokens,
+                  costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+                  label: `${resolution} × ${d}с${videoRef ? ' (видео-реф)' : ''}`,
+                });
+              }
+            }
+          }
+          return rows;
+        })(),
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '480p', label: '480p (от 10.8🔥)' },
+              { value: '720p', label: '720p (от 24🔥)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: (() => {
+              const o: any[] = [];
+              for (let d = 4; d <= 15; d++) o.push({ value: d, label: `${d} сек` });
+              return o;
+            })(),
+          },
+          {
+            key: 'videoRef', label: 'Видео-референс', type: 'boolean', affectsPrice: true, defaultValue: false,
+            options: [
+              { value: false, label: 'Без видео (дороже)' },
+              { value: true, label: 'С видео (дешевле)' },
+            ],
+          },
+          {
+            key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: false, defaultValue: true,
+            options: [
+              { value: false, label: 'Без звука' },
+              { value: true, label: 'Со звуком' },
+            ],
+          },
+          {
+            key: 'webSearch', label: 'Онлайн-поиск', type: 'boolean', affectsPrice: false, defaultValue: false,
+            options: [
+              { value: false, label: 'Выкл' },
+              { value: true, label: 'Вкл' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '21:9', label: 'Кино (21:9)' },
             ],
           },
         ],

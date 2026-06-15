@@ -245,12 +245,13 @@ export class VideoGenerationDto {
   waterMark?: string;
 
   @ApiPropertyOptional({
-  enum: ['crop', 'pad'],
-  description: 'Как вписать изображение в видео (только для img2video Sora)',
-})
-@IsOptional()
-@IsString()
-resizeMode?: string;
+    enum: ['crop', 'pad'],
+    description: 'Как вписать изображение в видео (только для img2video Sora)',
+  })
+
+  @IsOptional()
+  @IsString()
+  resizeMode?: string;
 
   @ApiPropertyOptional({ description: 'Prompt optimizer (Hailuo)' })
   @IsOptional()
@@ -285,7 +286,7 @@ resizeMode?: string;
   @IsString()
   watermark?: string;
 
-    // 🆕 Kling 3.0: multi-shots mode
+  // 🆕 Kling 3.0: multi-shots mode
   @ApiPropertyOptional({ description: 'Kling: enable multi-shot mode' })
   @IsOptional()
   @IsBoolean()
@@ -309,7 +310,7 @@ resizeMode?: string;
   })
   @IsOptional()
   @IsArray()
-    @ValidateNested({ each: true })
+  @ValidateNested({ each: true })
   @Type(() => KlingElementDto)
   klingElements?: KlingElementDto[];
 
@@ -326,6 +327,24 @@ resizeMode?: string;
   @IsOptional()
   @IsBoolean()
   nsfwChecker?: boolean;
+
+    // 🆕 Seedance 1.5 Pro: фиксированная камера
+  @ApiPropertyOptional({ description: 'Seedance 1.5: fixed camera (no movement)' })
+  @IsOptional()
+  @IsBoolean()
+  fixedLens?: boolean;
+
+  // 🆕 Seedance 2/2-fast: онлайн-поиск
+  @ApiPropertyOptional({ description: 'Seedance 2: web search' })
+  @IsOptional()
+  @IsBoolean()
+  webSearch?: boolean;
+
+  // 🆕 Seedance 2/2-fast: аудио-референсы (до 3, суммарно ≤15с)
+  @ApiPropertyOptional({ description: 'Seedance 2: reference audio URLs' })
+  @IsOptional()
+  @IsArray()
+  audioUrls?: string[];
 }
 
 export class DialogueLineDto {

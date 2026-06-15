@@ -152,7 +152,7 @@ export class GenerationService {
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    const priceParams = {
+        const priceParams = {
       mode: dto.mode,
       duration: dto.duration,
       resolution: dto.resolution,
@@ -161,6 +161,7 @@ export class GenerationService {
       sound: dto.sound,
       generateAudio: dto.generateAudio,
       stable: dto.stable,
+      videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0), // 🆕 Seedance 2 ценообразование
       hasInputImage:
         !!dto.imageUrl ||
         !!(dto.imageUrls && dto.imageUrls.length > 0) ||
@@ -208,6 +209,9 @@ export class GenerationService {
         klingElements: dto.klingElements,
         cfgScale: dto.cfgScale,         // 🆕 kling 2.5
         nsfwChecker: dto.nsfwChecker,   // 🆕 kling 2.5
+        fixedLens: dto.fixedLens,       // 🆕 seedance 1.5
+        webSearch: dto.webSearch,       // 🆕 seedance 2
+        audioUrls: dto.audioUrls,       // 🆕 seedance 2
       },
       tokensCost: costInTokens,
       costInDollars: priceCalc.costInDollars,
@@ -260,6 +264,9 @@ export class GenerationService {
           // 🆕 Kling 2.5 Turbo
           cfgScale: p.cfgScale,
           nsfwChecker: p.nsfwChecker,
+          fixedLens: p.fixedLens,       // 🆕 seedance 1.5
+          webSearch: p.webSearch,       // 🆕 seedance 2
+          audioUrls: p.audioUrls,       // 🆕 seedance 2
         },
       },
       {
