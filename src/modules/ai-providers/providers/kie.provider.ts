@@ -98,6 +98,17 @@ const KIE_MODEL_PARAMS: Record<string, {
     inputImagesField: 'input_urls',
     maxInputImages: 8,
   },
+  'gpt-image-2-text-to-image': {
+    aspectRatios: ['auto', '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '16:9', '9:16', '2:1', '1:2', '3:1', '1:3', '21:9', '9:21'],
+    resolutions: ['1K', '2K', '4K'],
+  },
+  'gpt-image-2-image-to-image': {
+    aspectRatios: ['auto', '1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '16:9', '9:16', '2:1', '1:2', '3:1', '1:3', '21:9', '9:21'],
+    resolutions: ['1K', '2K', '4K'],
+    hasInputImages: true,
+    inputImagesField: 'input_urls',
+    maxInputImages: 4,
+  },
 };
 
 interface VideoModelConfig {
@@ -332,11 +343,20 @@ export class KieProvider extends BaseProvider {
   async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
-      const modelId = request.model;
+      let modelId = request.model;
+
+      // 🆕 GPT Image 2: авто-переключение TTI ↔ ITI по наличию фото-референса
+      const incomingUrls: string[] = (request as any).inputUrls || [];
+      if (modelId === 'gpt-image-2-text-to-image' && incomingUrls.length > 0) {
+        modelId = 'gpt-image-2-image-to-image';
+      } else if (modelId === 'gpt-image-2-image-to-image' && incomingUrls.length === 0) {
+        modelId = 'gpt-image-2-text-to-image';
+      }
+
       const modelParams = KIE_MODEL_PARAMS[modelId];
 
       this.logger.debug(
-        `KIE generateImage: model=${modelId}, prompt="${request.prompt?.substring(0, 60)}"`,
+        `KIE generateImage: model=${modelId}, imgs=${incomingUrls.length}, prompt="${request.prompt?.substring(0, 60)}"`,
       );
 
       const input: Record<string, any> = { prompt: request.prompt };
