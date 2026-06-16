@@ -865,7 +865,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.04,
         tokensPerDollar: 90,
         minTokenCost: 3.6,
-        sortOrder: 2,
+        sortOrder: 3,
         capabilities: ['text_to_image'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'google/imagen4-ultra', priority: 1, isActive: true },
@@ -1018,7 +1018,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.0133,
         tokensPerDollar: 90,
         minTokenCost: 1.2,
-        sortOrder: 6,
+        sortOrder: 2,
         capabilities: [],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'google/imagen4-fast', priority: 1, isActive: true },

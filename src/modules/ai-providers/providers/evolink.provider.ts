@@ -633,6 +633,11 @@ export class EvolinkProvider extends BaseProvider {
   async generateImage(request: ImageGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
+      // ─── 🆕 Midjourney V7: особый формат (img2img через промпт + speed) ───
+      if (request.model === 'mj-v7') {
+        return await this.generateMidjourneyImage(request, start);
+      }
+
       const body: any = {
         model: request.model,
         prompt: request.prompt,
@@ -640,7 +645,6 @@ export class EvolinkProvider extends BaseProvider {
       };
 
       // Evolink images API принимает 'size' вместо width/height
-      // Форматы: '1:1', '2:3', '3:2' или '1024x1024', '1024x1536', '1536x1024'
       if (request.aspectRatio) {
         body.size = request.aspectRatio;
       } else if (request.width && request.height) {
@@ -648,10 +652,10 @@ export class EvolinkProvider extends BaseProvider {
       }
 
       if (request.quality) {
-        body.quality = request.quality; // 'low' | 'medium' | 'high' | 'auto'
+        body.quality = request.quality;
       }
 
-      // image_urls для img2img / редактирования
+      // image_urls для img2img / редактирования (НЕ для Midjourney!)
       if (request.inputUrls && request.inputUrls.length > 0) {
         body.image_urls = request.inputUrls;
       }
@@ -659,7 +663,6 @@ export class EvolinkProvider extends BaseProvider {
       const response = await this.client.post('/images/generations', body);
       const data = response.data;
 
-      // Evolink images API всегда возвращает async task
       return {
         success: true,
         data: {
@@ -673,6 +676,67 @@ export class EvolinkProvider extends BaseProvider {
     } catch (error) {
       return this.handleError(error, start);
     }
+  }
+
+  /**
+   * 🆕 Midjourney V7 (Evolink) — особая схема:
+   * - img2img: URL картинок вставляются в НАЧАЛО промпта (не через image_urls)
+   * - speed (mode): передаётся через model_params.speed (draft|fast|turbo)
+   * - aspect ratio: через нативный синтаксис --ar в промпте
+   * - --fast/--turbo/--draft из промпта Evolink сам вырезает (управление через speed)
+   */
+  private async generateMidjourneyImage(
+    request: ImageGenerationRequest,
+    start: number,
+  ): Promise<GenerationResult> {
+    const r = request as any;
+
+    // ─── Сборка промпта ───
+    let promptText = (request.prompt || '').trim();
+
+    // aspect ratio → нативный --ar (если ещё не указан в промпте вручную)
+    const ar = request.aspectRatio || r.aspectRatio;
+    if (ar && !/--ar\s/.test(promptText)) {
+      promptText = `${promptText} --ar ${ar}`.trim();
+    }
+
+    // img2img: URL'ы рефов идут В НАЧАЛО промпта (правило Midjourney)
+    const inputUrls: string[] = Array.isArray(request.inputUrls)
+      ? request.inputUrls.filter(Boolean)
+      : [];
+    if (inputUrls.length > 0) {
+      promptText = `${inputUrls.join(' ')} ${promptText}`.trim();
+    }
+
+    const body: any = {
+      model: 'mj-v7',
+      prompt: promptText.substring(0, 8192),
+    };
+
+    // speed (mode): draft | fast | turbo
+    const speed = r.mode;
+    if (speed === 'draft' || speed === 'fast' || speed === 'turbo') {
+      body.model_params = { speed };
+    }
+
+    this.logger.debug(
+      `Evolink MJ generateImage: imgs=${inputUrls.length}, speed=${speed || 'default'}, ` +
+      `prompt="${promptText.substring(0, 120)}"`,
+    );
+
+    const response = await this.client.post('/images/generations', body);
+    const data = response.data;
+
+    return {
+      success: true,
+      data: {
+        taskId: data.id,
+        urls: [],
+        metadata: { model: 'mj-v7', status: data.status },
+      },
+      responseTimeMs: Date.now() - start,
+      providerSlug: this.slug,
+    };
   }
 
   // ========================================
