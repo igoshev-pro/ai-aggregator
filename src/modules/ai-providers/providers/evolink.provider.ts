@@ -634,7 +634,11 @@ export class EvolinkProvider extends BaseProvider {
     const start = Date.now();
     try {
       // ─── 🆕 Midjourney V7: особый формат (img2img через промпт + speed) ───
-      if (request.model === 'mj-v7') {
+      if (
+        request.model === 'mj-v7' ||
+        request.model === 'midjourney' ||
+        request.model.startsWith('mj-')
+      ) {
         return await this.generateMidjourneyImage(request, start);
       }
 
@@ -700,12 +704,16 @@ export class EvolinkProvider extends BaseProvider {
       promptText = `${promptText} --ar ${ar}`.trim();
     }
 
-    // img2img: URL'ы рефов идут В НАЧАЛО промпта (правило Midjourney)
+        // img2img: URL'ы рефов идут В НАЧАЛО промпта (правило Midjourney)
     const inputUrls: string[] = Array.isArray(request.inputUrls)
       ? request.inputUrls.filter(Boolean)
       : [];
     if (inputUrls.length > 0) {
       promptText = `${inputUrls.join(' ')} ${promptText}`.trim();
+      // 🆕 максимальная схожесть с референсом (image weight, V7 max = 3)
+      if (!/--iw\s/.test(promptText)) {
+        promptText = `${promptText} --iw 3`.trim();
+      }
     }
 
     const body: any = {
