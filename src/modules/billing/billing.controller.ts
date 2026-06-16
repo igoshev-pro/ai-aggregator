@@ -92,6 +92,31 @@ export class BillingController {
     return { success: true, data: result };
   }
 
+    @Post('pay/tokens-custom')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Create payment for custom amount of tokens' })
+  @HttpCode(200)
+  async payTokensCustom(
+    @CurrentUser('sub') userId: string,
+    @Body()
+    body: {
+      tokens: number;
+      provider: PaymentProviderName;
+      currency?: 'RUB' | 'USD';
+      returnUrl?: string;
+    },
+  ) {
+    const result = await this.billingService.createCustomTokenPayment(
+      userId,
+      body.tokens,
+      body.provider,
+      body.currency || 'RUB',
+      body.returnUrl,
+    );
+    return { success: true, data: result };
+  }
+
   @Post('pay/subscription')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)

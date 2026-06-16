@@ -45,6 +45,7 @@ import {
   TokenPackageEntity,
   TokenPackageDocument,
 } from './schemas/token-package.schema';
+import { calcCustomByTokens, CUSTOM_MAX_TOKENS, CUSTOM_MIN_TOKENS } from './pricing/custom-tokens.pricing';
 
 // ─── Курс конвертации ────────────────────────────────────────────
 const RUB_TO_USD_RATE = 90;
@@ -897,6 +898,87 @@ export class BillingService implements OnApplicationBootstrap {
           bonusTokens: promoValidation.bonusTokens,
         }
         : null,
+    };
+  }
+
+    // ═══════════════════════════════════════════════════════════════
+  // 🆕 Кастомная покупка спичек (произвольное количество)
+  // Цена ВСЕГДА считается на сервере по тирам ТЗ — клиенту не доверяем.
+  // ═══════════════════════════════════════════════════════════════
+
+  async createCustomTokenPayment(
+    userId: string,
+    tokensRaw: number,
+    provider: ProviderName,
+    currency: 'RUB' | 'USD' = 'RUB',
+    returnUrl?: string,
+  ) {
+    const calc = calcCustomByTokens(tokensRaw);
+
+    if (!calc.valid) {
+      throw new BadRequestException(
+        `Количество спичек должно быть от ${CUSTOM_MIN_TOKENS} до ${CUSTOM_MAX_TOKENS}`,
+      );
+    }
+
+    const tokens = calc.tokens;
+    const finalPriceRub = calc.rub;
+
+    const user = await this.usersService.findById(userId);
+    const paymentProvider = this.getPaymentProvider(provider);
+
+    const paymentAmount = this.convertPrice(finalPriceRub, currency);
+
+    const result = await paymentProvider.createPayment({
+      amount: paymentAmount,
+      currency,
+      tokens,
+      userId,
+      description: `Пополнение: ${tokens} спичек`,
+      returnUrl,
+    });
+
+    if (!result.success) {
+      throw new BadRequestException(result.error || 'Payment creation failed');
+    }
+
+    const balanceSnapshot = roundTokens(
+      user.tokenBalance + user.bonusTokens + (user.cashbackBalance || 0),
+    );
+
+    await this.createTransaction(userId, {
+      type: TransactionType.DEPOSIT,
+      amount: tokens,
+      description: `Пополнение: ${tokens} спичек (${calc.pricePerToken}₽/шт, −${calc.discountPct}%)`,
+      paymentStatus: PaymentStatus.PENDING,
+      externalPaymentId: result.paymentId,
+      paymentProvider: provider,
+      paymentAmountRub: finalPriceRub,
+      balanceBefore: balanceSnapshot,
+      balanceAfter: balanceSnapshot,
+      metadata: {
+        currency,
+        paymentAmount,
+        custom: true,
+        pricePerToken: calc.pricePerToken,
+        discountPct: calc.discountPct,
+        baseTokens: tokens,
+        bonusTokens: 0,
+      },
+    });
+
+    return {
+      paymentId: result.paymentId,
+      paymentUrl: result.paymentUrl,
+      custom: {
+        tokens,
+        pricePerToken: calc.pricePerToken,
+        discountPct: calc.discountPct,
+        priceRub: finalPriceRub,
+        price: paymentAmount,
+        originalPrice: this.convertPrice(calc.baseRub, currency),
+        currency,
+      },
     };
   }
 
