@@ -145,7 +145,7 @@ export class GenerationConsumer {
   // ФИНАЛЬНЫЙ FAIL — после исчерпания всех retry
   // ═══════════════════════════════════════════════════════════════
 
-  @OnQueueFailed()
+    @OnQueueFailed()
   async onFailed(job: Job<GenerationJobData>, error: Error) {
     const { generationId, userId } = job.data;
     const maxAttempts = job.opts.attempts ?? 1;
@@ -163,17 +163,29 @@ export class GenerationConsumer {
     );
 
     try {
-      // 1) Помечаем генерацию как окончательно failed
+      // 🆕 Если генерация уже успешно завершилась (race: Bull timeout vs
+      // async polling, который досчитался до completed) — НЕ трогаем её
+      // и НЕ возвращаем деньги.
+      const current = await this.generationService.getRawGeneration(generationId);
+      if (
+        current &&
+        (current.billingRecorded ||
+          current.status === GenerationStatus.COMPLETED)
+      ) {
+        this.logger.warn(
+          `⚠️ Gen ${generationId} already completed/billed — skip fail handling & refund`,
+        );
+        return;
+      }
+
       await this.generationService.updateGeneration(generationId, {
         status: GenerationStatus.FAILED,
         errorMessage: error.message,
         completedAt: new Date(),
       });
 
-      // 2) Возвращаем токены (идемпотентно — через флаг isRefunded)
       await this.generationService.refundGeneration(generationId);
 
-      // 3) Уведомляем пользователя
       this.generationGateway.sendToUser(userId, 'generation:failed', {
         generationId,
         status: GenerationStatus.FAILED,

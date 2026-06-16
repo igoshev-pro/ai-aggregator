@@ -147,12 +147,12 @@ export class GenerationService {
     };
   }
 
-    // ─── VIDEO ──────────────────────────────────────────────────────
+  // ─── VIDEO ──────────────────────────────────────────────────────
 
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-        const priceParams = {
+    const priceParams = {
       mode: dto.mode,
       duration: dto.duration,
       resolution: dto.resolution,
@@ -552,29 +552,28 @@ export class GenerationService {
    *   2) billingService.recordRefund — пишет транзакцию (БЕЗ повторного начисления)
    *   3) generation.isRefunded = true
    */
-    async refundGeneration(generationId: string) {
-    // ─── АТОМАРНЫЙ ЗАХВАТ: ставим isRefunded=true ТОЛЬКО если он был false.
-    // findOneAndUpdate гарантирует, что лишь ОДИН вызов получит документ,
-    // остальные параллельные/повторные вызовы получат null и тихо выйдут.
-    // Это исключает двойной возврат (баг "баланс растёт").
+  async refundGeneration(generationId: string) {
+    // Атомарный захват: возврат только если он ещё не сделан И генерация
+    // НЕ была успешно оплачена (billingRecorded). Это исключает возврат
+    // за генерацию, которая по факту завершилась успешно (race Bull timeout
+    // vs async polling — job падает по timeout, но poll досчитался до completed).
     const generation = await this.generationModel.findOneAndUpdate(
-      { _id: generationId, isRefunded: { $ne: true } },
+      {
+        _id: generationId,
+        isRefunded: { $ne: true },
+        billingRecorded: { $ne: true },
+      },
       { $set: { isRefunded: true } },
       { new: true },
     );
 
-    // null → генерации нет ИЛИ возврат уже сделан другим вызовом
+    // null → нет генерации / уже возвращено / генерация успешна (billed)
     if (!generation) return;
 
-    // Не возвращаем за бесплатные генерации (по подписке)
     if (!generation.tokensCost || generation.tokensCost <= 0) {
       return;
     }
 
-    // ─── ЗАЩИТА: возвращаем только если списание реально произошло.
-    // Если billing-транзакция за генерацию была записана — значит средства
-    // прошли через учёт. Но списание делается в deductTokens ещё на старте,
-    // поэтому ориентируемся на tokensCost (реально списанная сумма).
     try {
       await this.usersService.refundTokens(
         generation.userId.toString(),
@@ -592,13 +591,12 @@ export class GenerationService {
         `↩️ Refunded ${generation.tokensCost}🔥 for generation ${generationId}`,
       );
     } catch (err: any) {
-      // ⚠️ Если возврат упал — откатываем флаг, чтобы можно было повторить.
       await this.generationModel.updateOne(
         { _id: generationId },
         { $set: { isRefunded: false } },
       );
       this.logger.error(
-        `❌ Refund failed for generation ${generationId}, isRefunded rolled back: ${err.message}`,
+        `❌ Refund failed for generation ${generationId}, rolled back: ${err.message}`,
         err.stack,
       );
       throw err;
@@ -722,5 +720,10 @@ export class GenerationService {
         `Insufficient tokens. Need ${cost}, have ${totalBalance}`,
       );
     }
+  }
+
+  /** Сырой документ генерации без проверки доступа — для внутренних нужд (consumer). */
+  async getRawGeneration(generationId: string): Promise<GenerationDocument | null> {
+    return this.generationModel.findById(generationId);
   }
 }
