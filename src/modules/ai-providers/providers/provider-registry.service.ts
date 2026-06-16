@@ -898,7 +898,7 @@ export class ProviderRegistryService implements OnModuleInit {
         fixedCostPerGeneration: 0.028,
         tokensPerDollar: 90,
         minTokenCost: 2.5,
-        sortOrder: 3,
+        sortOrder: 4,
         capabilities: ['variations', 'upscale', 'image_to_image'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'mj-v7', priority: 1, isActive: true },
@@ -1059,7 +1059,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { width: 1024, height: 1024, steps: 28 },
         limits: { maxResolution: '2048x2048' },
-        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 8 }, // 🆕 фото → авто iti
         pricingMatrix: [
           { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 7.5, costInDollars: 0.12, label: 'Flex × 2K' },
           { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 5, costInDollars: 0.07, label: 'Flex × 1K' },
@@ -1093,46 +1093,46 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      {
-        slug: 'flux-2-img2img',
-        name: 'Flux 2 Img2Img',
-        displayName: 'Flux 2 (Image to Image)',
-        description: 'Flux 2 для трансформации изображений',
-        type: 'image',
-        fixedCostPerGeneration: 0.025,
-        tokensPerDollar: 90,
-        minTokenCost: 1.8,
-        sortOrder: 8,
-        capabilities: ['image_to_image'],
-        providerMappings: [
-          { providerSlug: 'kie', modelId: 'flux-2/flex-image-to-image', priority: 1, isActive: true },
-        ],
-        defaultParams: { width: 1024, height: 1024, steps: 28 },
-        limits: { maxResolution: '2048x2048' },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 8 },
-        pricingMatrix: [
-          { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 7.5, costInDollars: 0.12, label: 'Flex × 2K' },
-          { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 5, costInDollars: 0.07, label: 'Flex × 1K' },
-          { conditions: { version: 'pro', resolution: '2K' }, costInTokens: 2, costInDollars: 0.035, label: 'Pro × 2K' },
-          { conditions: { version: 'pro', resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.025, label: 'Pro × 1K' },
-        ],
-        uiParameters: [
-          {
-            key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'pro',
-            options: [
-              { value: 'flex', label: 'Flex (от 5🔥)' },
-              { value: 'pro', label: 'Pro (от 1.8🔥)' },
-            ],
-          },
-          {
-            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
-            options: [
-              { value: '1K', label: '1K (1024×1024)' },
-              { value: '2K', label: '2K (2048×2048)' },
-            ],
-          },
-        ],
-      },
+      // {
+      //   slug: 'flux-2-img2img',
+      //   name: 'Flux 2 Img2Img',
+      //   displayName: 'Flux 2 (Image to Image)',
+      //   description: 'Flux 2 для трансформации изображений',
+      //   type: 'image',
+      //   fixedCostPerGeneration: 0.025,
+      //   tokensPerDollar: 90,
+      //   minTokenCost: 1.8,
+      //   sortOrder: 8,
+      //   capabilities: ['image_to_image'],
+      //   providerMappings: [
+      //     { providerSlug: 'kie', modelId: 'flux-2/flex-image-to-image', priority: 1, isActive: true },
+      //   ],
+      //   defaultParams: { width: 1024, height: 1024, steps: 28 },
+      //   limits: { maxResolution: '2048x2048' },
+      //   inputCapabilities: { acceptsImages: true, maxInputImages: 8 },
+      //   pricingMatrix: [
+      //     { conditions: { version: 'flex', resolution: '2K' }, costInTokens: 7.5, costInDollars: 0.12, label: 'Flex × 2K' },
+      //     { conditions: { version: 'flex', resolution: '1K' }, costInTokens: 5, costInDollars: 0.07, label: 'Flex × 1K' },
+      //     { conditions: { version: 'pro', resolution: '2K' }, costInTokens: 2, costInDollars: 0.035, label: 'Pro × 2K' },
+      //     { conditions: { version: 'pro', resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.025, label: 'Pro × 1K' },
+      //   ],
+      //   uiParameters: [
+      //     {
+      //       key: 'version', label: 'Версия модели', type: 'select', affectsPrice: true, defaultValue: 'pro',
+      //       options: [
+      //         { value: 'flex', label: 'Flex (от 5🔥)' },
+      //         { value: 'pro', label: 'Pro (от 1.8🔥)' },
+      //       ],
+      //     },
+      //     {
+      //       key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+      //       options: [
+      //         { value: '1K', label: '1K (1024×1024)' },
+      //         { value: '2K', label: '2K (2048×2048)' },
+      //       ],
+      //     },
+      //   ],
+      // },
       {
         slug: 'nano-banana-2',
         name: 'Nano Banana 2',

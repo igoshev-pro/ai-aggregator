@@ -353,6 +353,13 @@ export class KieProvider extends BaseProvider {
         modelId = 'gpt-image-2-text-to-image';
       }
 
+      // 🆕 Flux 2: авто-переключение TTI ↔ ITI по наличию фото-референса
+      if (modelId === 'flux-2/flex-text-to-image' && incomingUrls.length > 0) {
+        modelId = 'flux-2/flex-image-to-image';
+      } else if (modelId === 'flux-2/flex-image-to-image' && incomingUrls.length === 0) {
+        modelId = 'flux-2/flex-text-to-image';
+      }
+
       const modelParams = KIE_MODEL_PARAMS[modelId];
 
       this.logger.debug(
