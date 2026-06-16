@@ -552,35 +552,57 @@ export class GenerationService {
    *   2) billingService.recordRefund — пишет транзакцию (БЕЗ повторного начисления)
    *   3) generation.isRefunded = true
    */
-  async refundGeneration(generationId: string) {
-    const generation = await this.generationModel.findById(generationId);
-    if (!generation || generation.isRefunded) return;
+    async refundGeneration(generationId: string) {
+    // ─── АТОМАРНЫЙ ЗАХВАТ: ставим isRefunded=true ТОЛЬКО если он был false.
+    // findOneAndUpdate гарантирует, что лишь ОДИН вызов получит документ,
+    // остальные параллельные/повторные вызовы получат null и тихо выйдут.
+    // Это исключает двойной возврат (баг "баланс растёт").
+    const generation = await this.generationModel.findOneAndUpdate(
+      { _id: generationId, isRefunded: { $ne: true } },
+      { $set: { isRefunded: true } },
+      { new: true },
+    );
+
+    // null → генерации нет ИЛИ возврат уже сделан другим вызовом
+    if (!generation) return;
 
     // Не возвращаем за бесплатные генерации (по подписке)
     if (!generation.tokensCost || generation.tokensCost <= 0) {
-      generation.isRefunded = true;
-      await generation.save();
       return;
     }
 
-    await this.usersService.refundTokens(
-      generation.userId.toString(),
-      generation.tokensCost,
-    );
+    // ─── ЗАЩИТА: возвращаем только если списание реально произошло.
+    // Если billing-транзакция за генерацию была записана — значит средства
+    // прошли через учёт. Но списание делается в deductTokens ещё на старте,
+    // поэтому ориентируемся на tokensCost (реально списанная сумма).
+    try {
+      await this.usersService.refundTokens(
+        generation.userId.toString(),
+        generation.tokensCost,
+      );
 
-    await this.billingService.recordRefund(
-      generation.userId.toString(),
-      generation.tokensCost,
-      `Refund for failed ${generation.type} generation`,
-      generationId,
-    );
+      await this.billingService.recordRefund(
+        generation.userId.toString(),
+        generation.tokensCost,
+        `Refund for failed ${generation.type} generation`,
+        generationId,
+      );
 
-    generation.isRefunded = true;
-    await generation.save();
-
-    this.logger.log(
-      `↩️ Refunded ${generation.tokensCost}🔥 for generation ${generationId}`,
-    );
+      this.logger.log(
+        `↩️ Refunded ${generation.tokensCost}🔥 for generation ${generationId}`,
+      );
+    } catch (err: any) {
+      // ⚠️ Если возврат упал — откатываем флаг, чтобы можно было повторить.
+      await this.generationModel.updateOne(
+        { _id: generationId },
+        { $set: { isRefunded: false } },
+      );
+      this.logger.error(
+        `❌ Refund failed for generation ${generationId}, isRefunded rolled back: ${err.message}`,
+        err.stack,
+      );
+      throw err;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
