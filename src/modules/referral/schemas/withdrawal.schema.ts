@@ -21,11 +21,12 @@ export class Withdrawal {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User', index: true })
   userId: Types.ObjectId;
 
-  /** Сумма в рублях для выплаты */
-  @Prop({ required: true, min: 100 })  // 🆕 синхронизация с MIN_WITHDRAWAL_AMOUNT
+  /** Сумма к списанию в СПИЧКАХ (резервируется из cashbackBalance) */
+  @Prop({ required: true, min: 1 })
   amount: number;
 
-  @Prop({ required: true, min: 100 })  // 🆕
+  /** Сумма к выплате в РУБЛЯХ (amount × RUB_PER_TOKEN) */
+  @Prop({ required: true, min: 1 })
   amountRub: number;
 
   @Prop({ type: Types.ObjectId, ref: 'User' })
@@ -52,8 +53,6 @@ export class Withdrawal {
 
   @Prop({ type: Date })
   processedAt: Date;
-
-
 
   createdAt: Date;
   updatedAt: Date;

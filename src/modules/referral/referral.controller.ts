@@ -24,12 +24,21 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { WithdrawalMethod } from './schemas/withdrawal.schema';
 
+// 1000 ₽ / 3 = 334 спички (минимум), 100 000 ₽ / 3 = 33334 спички (максимум)
+const MIN_WITHDRAWAL_TOKENS = 334;
+const MAX_WITHDRAWAL_TOKENS = 33334;
+
 class CreateWithdrawalDto {
-  @ApiProperty({ example: 100, minimum: 100, maximum: 100000 })
+  @ApiProperty({
+    example: 334,
+    minimum: MIN_WITHDRAWAL_TOKENS,
+    maximum: MAX_WITHDRAWAL_TOKENS,
+    description: 'Сумма в спичках (1 спичка = 3 ₽)',
+  })
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(100)
-  @Max(100_000)
+  @Min(MIN_WITHDRAWAL_TOKENS)
+  @Max(MAX_WITHDRAWAL_TOKENS)
   amount: number;
 
   @ApiProperty({ enum: WithdrawalMethod })

@@ -144,17 +144,22 @@ export class TelegramBotUpdate {
     );
   }
 
-  @Command('balance')
+    @Command('balance')
   async onBalance(@Ctx() ctx: Context) {
     const from = ctx.from;
     if (!from) return;
     try {
       const user = await this.usersService.findByTelegramId(from.id);
+
+      // 1 спичка кэшбека = 3 ₽
+      const cashback = user.cashbackBalance ?? 0;
+      const cashbackRub = Math.round(cashback * 3 * 100) / 100;
+
       await ctx.reply(
         `💰 *Твой баланс*\n\n` +
           `🪙 Куплено: *${user.tokenBalance ?? 0}* 🔥\n` +
           `🎁 Бонусных: *${user.bonusTokens ?? 0}* 🔥\n` +
-          `💸 Кэшбек: *${user.cashbackBalance ?? 0}* 🔥`,
+          `💸 Кэшбек: *${cashback}* 🔥 (≈ ${cashbackRub} ₽)`,
         { parse_mode: 'Markdown' },
       );
     } catch (e: any) {
@@ -172,12 +177,24 @@ export class TelegramBotUpdate {
       const info = await this.referralService.getReferralInfo(
         user._id.toString(),
       );
+
+      // Кэшбек в рублях из бэка (rubPerToken = 3)
+      const earnedRub =
+        (info as any).cashbackEarnedTotalRub ??
+        Math.round((info.totalEarned || 0) * 3 * 100) / 100;
+      const availableRub =
+        (info as any).cashbackBalanceRub ??
+        Math.round((info.cashbackBalance || 0) * 3 * 100) / 100;
+
       await ctx.reply(
         `🤝 *Твоя реферальная программа*\n\n` +
           `🔗 Ссылка:\n\`${info.referralLink}\`\n\n` +
           `👥 Приглашено: *${info.referralCount}*\n` +
-          `💸 Заработано: *${info.totalEarned}* 🔥\n\n` +
-          `Делись ссылкой — получай +10 🔥 за каждого друга и 10% кэшбека с их покупок!`,
+          `💎 С покупками: *${info.activeReferrals}*\n` +
+          `💸 Заработано: *${info.totalEarned}* 🔥 (≈ ${earnedRub} ₽)\n` +
+          `💰 Доступно к выводу: *${info.cashbackBalance}* 🔥 (≈ ${availableRub} ₽)\n\n` +
+          `Делись ссылкой — получай +10 🔥 за каждого друга и 10% кэшбека с их покупок!\n\n` +
+          `💡 Вывод средств — через нашу поддержку: @spichki_support`,
         { parse_mode: 'Markdown' },
       );
     } catch (e: any) {

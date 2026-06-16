@@ -1160,16 +1160,18 @@ export class BillingService implements OnApplicationBootstrap {
     return { processed: true, status: 'completed' };
   }
 
-  // ═══════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
   // Реферальный бонус
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * 🆕 Кэшбек считаем от суммы платежа в РУБЛЯХ (paymentAmountRub),
-   * потому что 1 спичка ≈ 1 ₽ (используется при выводе).
+   * 🆕 Кэшбек = 10% от КУПЛЕННЫХ СПИЧЕК (transaction.amount).
    *
-   * Раньше cashback считался от transaction.amount (количество токенов),
-   * что давало неправильную сумму для пакетов с бонусами.
+   * Начисляется только если покупка была платной (paymentAmountRub > 0),
+   * чтобы бесплатные транзакции (по промокоду / полная скидка) не давали кэшбек.
+   *
+   * Кэшбек хранится в спичках. При выводе 1 спичка = 3 ₽
+   * (см. RUB_PER_TOKEN в referral.service.ts).
    */
   private async processReferralBonus(transaction: TransactionDocument) {
     const userDoc = await this.usersService.findById(
@@ -1177,18 +1179,20 @@ export class BillingService implements OnApplicationBootstrap {
     );
     if (!userDoc.referredBy) return;
 
+    // Платная покупка обязательна (исключаем промо/бесплатные транзакции)
     const paymentRub = Number(transaction.paymentAmountRub) || 0;
-    if (paymentRub <= 0) {
-      // Бесплатные транзакции (по промокоду) не дают кэшбек
-      return;
-    }
+    if (paymentRub <= 0) return;
 
-    const cashbackAmount = roundTokens(paymentRub * REFERRAL_CASHBACK_RATE);
+    // 10% от купленных спичек
+    const purchasedTokens = Number(transaction.amount) || 0;
+    if (purchasedTokens <= 0) return;
+
+    const cashbackAmount = roundTokens(purchasedTokens * REFERRAL_CASHBACK_RATE);
     if (cashbackAmount <= 0) return;
 
     const referrerId = userDoc.referredBy.toString();
 
-    // fromReferral=true (по умолчанию) → попадёт и в referralEarnings
+    // fromReferral=true → попадёт и в referralEarnings
     await this.usersService.addCashback(referrerId, cashbackAmount, true);
 
     try {
@@ -1203,18 +1207,19 @@ export class BillingService implements OnApplicationBootstrap {
     await this.createTransaction(referrerId, {
       type: TransactionType.REFERRAL_BONUS,
       amount: cashbackAmount,
-      description: `Кэшбек 10% от покупки пользователя ${userDoc.firstName || 'друга'}`,
+      description: `Кэшбек 10% от покупки пользователя ${userDoc.firstName || 'друга'} (+${cashbackAmount}🔥)`,
       paymentStatus: PaymentStatus.COMPLETED,
       referralUserId: transaction.userId,
       metadata: {
         cashback: true,
+        sourcePurchasedTokens: purchasedTokens,
         sourcePaymentRub: paymentRub,
         sourceTransactionId: transaction._id.toString(),
       },
     });
 
     this.logger.log(
-      `💰 Cashback +${cashbackAmount}🔥 → user ${referrerId} (10% of ${paymentRub}₽)`,
+      `💰 Cashback +${cashbackAmount}🔥 → user ${referrerId} (10% of ${purchasedTokens}🔥 purchased)`,
     );
   }
 

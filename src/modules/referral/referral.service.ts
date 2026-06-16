@@ -16,17 +16,34 @@ import {
   WithdrawalStatus,
   WithdrawalMethod,
 } from './schemas/withdrawal.schema';
+import {
+  Transaction,
+  TransactionDocument,
+} from '../billing/schemas/transaction.schema';
+import { TransactionType, PaymentStatus } from '@/common/interfaces';
 import { UsersService } from '../users/users.service';
 
-// ─── Константы ──────────────────────────────────────────────────
-const MIN_WITHDRAWAL_AMOUNT = 100;          // 100 спичек = 100₽
-const MAX_WITHDRAWAL_AMOUNT = 100_000;      // защита от ошибок ввода
-const REFERRAL_SIGNUP_BONUS = 10;           // бонус за регистрацию реферала
-const CASHBACK_PRECISION = 2;               // округление до 0.01
+// ─── Константы кэшбека и вывода ─────────────────────────────────
+// 1 спичка кэшбека = 3 ₽ при выводе.
+export const RUB_PER_TOKEN = 3;
+// Минимум вывода: 1000 ₽ → в спичках ceil(1000/3) = 334.
+export const MIN_WITHDRAWAL_RUB = 1000;
+export const MIN_WITHDRAWAL_TOKENS = Math.ceil(MIN_WITHDRAWAL_RUB / RUB_PER_TOKEN); // 334
+// Максимум вывода: 100 000 ₽ → ceil(100000/3) = 33334 спички.
+export const MAX_WITHDRAWAL_RUB = 100_000;
+export const MAX_WITHDRAWAL_TOKENS = Math.ceil(MAX_WITHDRAWAL_RUB / RUB_PER_TOKEN); // 33334
+
+const REFERRAL_SIGNUP_BONUS = 10; // бонус за регистрацию реферала (спички)
+const CASHBACK_PRECISION = 2; // округление до 0.01
 
 function roundCashback(value: number): number {
   const factor = Math.pow(10, CASHBACK_PRECISION);
   return Math.round(value * factor) / factor;
+}
+
+/** Спички → рубли (для отображения и выплаты). */
+function tokensToRub(tokens: number): number {
+  return Math.round(tokens * RUB_PER_TOKEN * 100) / 100;
 }
 
 @Injectable()
@@ -42,6 +59,8 @@ export class ReferralService {
     @InjectModel(Referral.name) private referralModel: Model<ReferralDocument>,
     @InjectModel(Withdrawal.name)
     private withdrawalModel: Model<WithdrawalDocument>,
+    @InjectModel(Transaction.name)
+    private transactionModel: Model<TransactionDocument>,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
   ) {}
@@ -50,12 +69,6 @@ export class ReferralService {
   // Резолв username бота
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Получить username бота:
-   * 1. Из env (TG_BOT_USERNAME / TELEGRAM_BOT_USERNAME / BOT_USERNAME).
-   * 2. Если в env пусто — спрашиваем у Telegram через getMe.
-   * 3. Кэшируем результат на 1 час.
-   */
   private async resolveBotUsername(): Promise<string> {
     const now = Date.now();
     if (
@@ -65,7 +78,6 @@ export class ReferralService {
       return this.cachedBotUsername;
     }
 
-    // 1. Из env
     const fromEnv =
       process.env.TG_BOT_USERNAME ||
       process.env.TELEGRAM_BOT_USERNAME ||
@@ -79,7 +91,6 @@ export class ReferralService {
       return username;
     }
 
-    // 2. Через Telegram API getMe (с таймаутом)
     const token =
       process.env.TG_BOT_TOKEN ||
       process.env.TELEGRAM_BOT_TOKEN ||
@@ -110,14 +121,12 @@ export class ReferralService {
       }
     }
 
-    // 3. Фолбэк
     this.logger.warn(
       '⚠️ Bot username NOT configured! Set TG_BOT_USERNAME or TG_BOT_TOKEN in .env',
     );
     return 'UNKNOWN_BOT';
   }
 
-  /** Сбросить кэш (на случай смены бота). */
   invalidateBotUsernameCache() {
     this.cachedBotUsername = null;
     this.cachedBotUsernameAt = 0;
@@ -199,26 +208,36 @@ export class ReferralService {
       activeReferrals,
       totalEarned,
 
-      // Кэшбек
+      // Кэшбек в спичках
       cashbackBalance,
       cashbackEarnedTotal,
-      pendingWithdrawal,             // 🆕 сумма в заявках на выводе
-      availableForWithdrawal: cashbackBalance, // алиас для удобства фронта
+      pendingWithdrawal,
+      availableForWithdrawal: cashbackBalance,
 
-      // Лимиты вывода
-      minWithdrawal: MIN_WITHDRAWAL_AMOUNT,
-      maxWithdrawal: MAX_WITHDRAWAL_AMOUNT,
+      // 🆕 Кэшбек в рублях (1 спичка = 3 ₽)
+      rubPerToken: RUB_PER_TOKEN,
+      cashbackBalanceRub: tokensToRub(cashbackBalance),
+      cashbackEarnedTotalRub: tokensToRub(cashbackEarnedTotal),
+      pendingWithdrawalRub: tokensToRub(pendingWithdrawal),
+
+      // Лимиты вывода (спички + рубли)
+      minWithdrawal: MIN_WITHDRAWAL_TOKENS,
+      maxWithdrawal: MAX_WITHDRAWAL_TOKENS,
+      minWithdrawalRub: MIN_WITHDRAWAL_RUB,
+      maxWithdrawalRub: MAX_WITHDRAWAL_RUB,
 
       // Список приглашённых
       referrals: referrals.map((r) => {
         const ref: any = r.referredId;
+        const earnedTokens = roundCashback(r.bonusEarned || 0);
         return {
           id: ref?._id?.toString() || '',
           firstName: ref?.firstName || 'User',
           username: ref?.username || null,
           photoUrl: ref?.photoUrl || null,
           joinedAt: r['createdAt'] || new Date(),
-          earned: roundCashback(r.bonusEarned || 0),
+          earned: earnedTokens,
+          earnedRub: tokensToRub(earnedTokens),
           hasPurchased: r.hasPurchased || false,
         };
       }),
@@ -229,12 +248,7 @@ export class ReferralService {
   // Запись о реферальной связи
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Создаёт запись в коллекции Referral.
-   * Идемпотентно: повторный вызов не создаст дубликат.
-   */
   async recordReferral(referrerId: string, referredId: string): Promise<void> {
-    // Защита от само-реферала
     if (referrerId === referredId) {
       this.logger.warn(
         `recordReferral: self-referral blocked for user=${referredId}`,
@@ -265,7 +279,6 @@ export class ReferralService {
         `✅ Referral recorded: referrer=${referrerId} → referred=${referredId}`,
       );
     } catch (err: any) {
-      // На случай гонки: если unique-индекс по referredId упал — игнорим
       if (err?.code === 11000) {
         this.logger.warn(
           `Referral race condition for referredId=${referredId} — already exists`,
@@ -276,10 +289,6 @@ export class ReferralService {
     }
   }
 
-  /**
-   * Отметить что реферал сделал покупку (вызывается из billing.service).
-   * Инкрементит bonusEarned на сумму кэшбека.
-   */
   async markReferralPurchase(
     referredUserId: string,
     cashbackAmount: number,
@@ -323,20 +332,20 @@ export class ReferralService {
     method: WithdrawalMethod,
     requisites: string,
   ) {
-    // 1. Валидация суммы
+    // 1. Валидация суммы (в спичках)
     if (typeof amount !== 'number' || !Number.isFinite(amount)) {
       throw new BadRequestException('Некорректная сумма');
     }
     const cleanAmount = roundCashback(amount);
 
-    if (cleanAmount < MIN_WITHDRAWAL_AMOUNT) {
+    if (cleanAmount < MIN_WITHDRAWAL_TOKENS) {
       throw new BadRequestException(
-        `Минимальная сумма вывода: ${MIN_WITHDRAWAL_AMOUNT} спичек`,
+        `Минимальная сумма вывода: ${MIN_WITHDRAWAL_TOKENS} спичек (${MIN_WITHDRAWAL_RUB} ₽)`,
       );
     }
-    if (cleanAmount > MAX_WITHDRAWAL_AMOUNT) {
+    if (cleanAmount > MAX_WITHDRAWAL_TOKENS) {
       throw new BadRequestException(
-        `Максимальная сумма вывода: ${MAX_WITHDRAWAL_AMOUNT} спичек`,
+        `Максимальная сумма вывода: ${MAX_WITHDRAWAL_TOKENS} спичек (${MAX_WITHDRAWAL_RUB} ₽)`,
       );
     }
 
@@ -363,8 +372,11 @@ export class ReferralService {
       );
     }
 
-    // 5. Резервируем сумму (атомарно)
+    // 5. Резервируем сумму (атомарно) — деньги списываются с cashbackBalance,
+    //    юзер больше не может их потратить. Финальное «списание» = факт PAID.
     await this.usersService.reserveCashbackForWithdrawal(userId, cleanAmount);
+
+    const amountRub = tokensToRub(cleanAmount);
 
     // 6. Создаём заявку. Если запись упала — возвращаем кэшбек обратно.
     let withdrawal: WithdrawalDocument;
@@ -372,7 +384,7 @@ export class ReferralService {
       withdrawal = new this.withdrawalModel({
         userId: new Types.ObjectId(userId),
         amount: cleanAmount,
-        amountRub: cleanAmount, // 1 спичка = 1₽
+        amountRub, // 🆕 спички × 3
         method,
         requisites: cleanRequisites,
         status: WithdrawalStatus.PENDING,
@@ -393,7 +405,7 @@ export class ReferralService {
     }
 
     this.logger.log(
-      `💸 Withdrawal created: user=${userId} amount=${cleanAmount} method=${method}`,
+      `💸 Withdrawal created: user=${userId} amount=${cleanAmount}🔥 (${amountRub}₽) method=${method}`,
     );
 
     return {
@@ -406,10 +418,6 @@ export class ReferralService {
     };
   }
 
-  /**
-   * Минимальная валидация реквизитов по методу вывода.
-   * Можно расширить под бизнес-правила.
-   */
   private validateRequisitesByMethod(
     method: WithdrawalMethod,
     req: string,
@@ -426,7 +434,6 @@ export class ReferralService {
     }
 
     if (method === WithdrawalMethod.SBP) {
-      // Российский номер: +7 / 8 + 10 цифр, итого 11
       if (!/^(\+?7|8)\d{10}$/.test(digitsOnly)) {
         throw new BadRequestException(
           'Укажите телефон в формате +7XXXXXXXXXX',
@@ -435,7 +442,6 @@ export class ReferralService {
       return;
     }
 
-    // Для прочих методов — общая длина
     if (req.length < 4) {
       throw new BadRequestException('Реквизиты слишком короткие');
     }
@@ -461,9 +467,6 @@ export class ReferralService {
     }));
   }
 
-  /**
-   * Маскируем реквизиты в выдаче (показываем только последние 4 символа).
-   */
   private maskRequisites(req: string, method: WithdrawalMethod): string {
     if (!req) return '';
     if (req.length <= 4) return req;
@@ -478,7 +481,7 @@ export class ReferralService {
     return `...${last}`;
   }
 
-  // ═══════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════
   // Админ-методы
   // ═══════════════════════════════════════════════════════════════
 
@@ -501,12 +504,16 @@ export class ReferralService {
     w.processedAt = new Date();
     await w.save();
 
-    this.logger.log(
-      `✅ Withdrawal ${w._id} approved by admin ${adminId}`,
-    );
+    this.logger.log(`✅ Withdrawal ${w._id} approved by admin ${adminId}`);
     return w;
   }
 
+  /**
+   * 🆕 Отметить заявку как ВЫПЛАЧЕННУЮ.
+   * Деньги уже были списаны с cashbackBalance при создании заявки (резерв).
+   * Здесь мы НЕ трогаем баланс повторно — только фиксируем факт выплаты
+   * транзакцией WITHDRAWAL (для отслеживания истории/аналитики).
+   */
   async adminMarkPaid(
     withdrawalId: string,
     adminId: string,
@@ -529,8 +536,42 @@ export class ReferralService {
     w.processedAt = new Date();
     await w.save();
 
+    // 🆕 Фиксируем транзакцию вывода (списание уже произошло при резерве).
+    // amount отрицательный — это уход средств с баланса кэшбека.
+    try {
+      const methodLabel =
+        w.method === WithdrawalMethod.CARD
+          ? 'на карту'
+          : w.method === WithdrawalMethod.SBP
+            ? 'по СБП'
+            : 'в крипту';
+
+      await this.transactionModel.create({
+        userId: w.userId,
+        type: TransactionType.WITHDRAWAL,
+        amount: -roundCashback(w.amount),
+        description: `Вывод кэшбека ${methodLabel}: ${w.amount}🔥 → ${w.amountRub}₽`,
+        paymentStatus: PaymentStatus.COMPLETED,
+        paymentAmountRub: w.amountRub,
+        metadata: {
+          withdrawalId: w._id.toString(),
+          method: w.method,
+          rubPerToken: RUB_PER_TOKEN,
+          amountTokens: w.amount,
+          amountRub: w.amountRub,
+          processedBy: adminId,
+        },
+      });
+    } catch (err: any) {
+      // Транзакция — это лог/история. Если упала, выплату не откатываем,
+      // просто логируем CRITICAL для ручной сверки.
+      this.logger.error(
+        `CRITICAL: failed to write WITHDRAWAL transaction for ${w._id}: ${err?.message}`,
+      );
+    }
+
     this.logger.log(
-      `✅ Withdrawal ${w._id} marked as PAID by admin ${adminId} (${w.amount}🔥 → user ${w.userId})`,
+      `💸 Withdrawal ${w._id} marked as PAID by admin ${adminId} (${w.amount}🔥 = ${w.amountRub}₽ → user ${w.userId})`,
     );
     return w;
   }
@@ -551,8 +592,8 @@ export class ReferralService {
       );
     }
 
-    // 🆕 Сначала меняем статус (чтобы не вернуть деньги дважды при гонке),
-    // потом возвращаем кэшбек. Если возврат упал — логируем CRITICAL.
+    // Сначала меняем статус (защита от двойного возврата при гонке),
+    // потом возвращаем зарезервированный кэшбек.
     w.status = WithdrawalStatus.REJECTED;
     w.adminNote = adminNote;
     w.processedBy = new Types.ObjectId(adminId);
@@ -568,7 +609,6 @@ export class ReferralService {
       this.logger.error(
         `CRITICAL: withdrawal ${w._id} rejected but refund FAILED for user ${w.userId} (${w.amount}🔥). Error: ${err?.message}`,
       );
-      // Помечаем в adminNote для ручной обработки
       w.adminNote = `${w.adminNote} | ⚠️ REFUND FAILED — manual return required`;
       await w.save();
     }
@@ -603,8 +643,8 @@ export class ReferralService {
     };
   }
 
-    // ═══════════════════════════════════════════════════════════════
-  // 🆕 Админ: сводная статистика выводов
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 Админ: сводная статистика выводов (в спичках + рублях)
   // ═══════════════════════════════════════════════════════════════
 
   async adminGetWithdrawalSummary() {
@@ -614,26 +654,35 @@ export class ReferralService {
           _id: '$status',
           count: { $sum: 1 },
           totalAmount: { $sum: '$amount' },
+          totalAmountRub: { $sum: '$amountRub' },
         },
       },
     ]);
 
-    const summary: Record<string, { count: number; totalAmount: number }> = {
-      pending: { count: 0, totalAmount: 0 },
-      approved: { count: 0, totalAmount: 0 },
-      paid: { count: 0, totalAmount: 0 },
-      rejected: { count: 0, totalAmount: 0 },
+    const summary: Record<
+      string,
+      { count: number; totalAmount: number; totalAmountRub: number }
+    > = {
+      pending: { count: 0, totalAmount: 0, totalAmountRub: 0 },
+      approved: { count: 0, totalAmount: 0, totalAmountRub: 0 },
+      paid: { count: 0, totalAmount: 0, totalAmountRub: 0 },
+      rejected: { count: 0, totalAmount: 0, totalAmountRub: 0 },
     };
 
     for (const row of agg) {
       summary[row._id] = {
         count: row.count,
         totalAmount: roundCashback(row.totalAmount || 0),
+        totalAmountRub: roundCashback(row.totalAmountRub || 0),
       };
     }
 
     const totalAll = Object.values(summary).reduce(
       (acc, v) => acc + v.totalAmount,
+      0,
+    );
+    const totalAllRub = Object.values(summary).reduce(
+      (acc, v) => acc + v.totalAmountRub,
       0,
     );
     const countAll = Object.values(summary).reduce(
@@ -642,10 +691,12 @@ export class ReferralService {
     );
 
     return {
+      rubPerToken: RUB_PER_TOKEN,
       summary,
       totals: {
         count: countAll,
         totalAmount: roundCashback(totalAll),
+        totalAmountRub: roundCashback(totalAllRub),
       },
     };
   }
@@ -691,18 +742,22 @@ export class ReferralService {
       },
     ]);
 
-    return agg.map((row) => ({
-      userId: row.userId?.toString() || '',
-      firstName: row.firstName || 'User',
-      username: row.username || null,
-      telegramId: row.telegramId || null,
-      totalReferrals: row.totalReferrals || 0,
-      activeReferrals: row.activeReferrals || 0,
-      totalEarned: roundCashback(row.totalEarned || 0),
-      conversionRate:
-        row.totalReferrals > 0
-          ? Math.round((row.activeReferrals / row.totalReferrals) * 100)
-          : 0,
-    }));
+    return agg.map((row) => {
+      const earned = roundCashback(row.totalEarned || 0);
+      return {
+        userId: row.userId?.toString() || '',
+        firstName: row.firstName || 'User',
+        username: row.username || null,
+        telegramId: row.telegramId || null,
+        totalReferrals: row.totalReferrals || 0,
+        activeReferrals: row.activeReferrals || 0,
+        totalEarned: earned,
+        totalEarnedRub: tokensToRub(earned),
+        conversionRate:
+          row.totalReferrals > 0
+            ? Math.round((row.activeReferrals / row.totalReferrals) * 100)
+            : 0,
+      };
+    });
   }
 }
