@@ -899,13 +899,13 @@ export class ProviderRegistryService implements OnModuleInit {
         tokensPerDollar: 90,
         minTokenCost: 2.5,
         sortOrder: 3,
-        capabilities: ['variations', 'upscale'],
+        capabilities: ['variations', 'upscale', 'image_to_image'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'mj-v7', priority: 1, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '2048x2048' },
-        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 5 },
         pricingMatrix: [
           { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
           { conditions: { mode: 'fast' }, costInTokens: 5, costInDollars: 0.056, label: 'Быстрый режим' },
@@ -934,49 +934,49 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      {
-        slug: 'midjourney-img2img',
-        name: 'Midjourney Img2Img',
-        displayName: 'Midjourney V7 (Image to Image)',
-        description: 'Трансформация изображений через Midjourney',
-        type: 'image',
-        fixedCostPerGeneration: 0.028,
-        tokensPerDollar: 90,
-        minTokenCost: 2.5,
-        sortOrder: 4,
-        capabilities: ['image_to_image', 'variations'],
-        providerMappings: [
-          { providerSlug: 'evolink', modelId: 'mj-v7', priority: 1, isActive: true },
-        ],
-        defaultParams: { width: 1024, height: 1024 },
-        limits: { maxResolution: '2048x2048' },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-        pricingMatrix: [
-          { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
-          { conditions: { mode: 'fast' }, costInTokens: 5, costInDollars: 0.056, label: 'Быстрый режим' },
-          { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Обычный режим' },
-        ],
-        uiParameters: [
-          {
-            key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'draft',
-            options: [
-              { value: 'draft', label: 'Обычный (2.5🔥)' },
-              { value: 'fast', label: 'Быстрый (5🔥)' },
-              { value: 'turbo', label: 'Турбо (9.5🔥)' },
-            ],
-          },
-          {
-            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
-            options: [
-              { value: '1:1', label: 'Квадрат (1:1)' },
-              { value: '16:9', label: 'Горизонталь (16:9)' },
-              { value: '9:16', label: 'Вертикаль (9:16)' },
-              { value: '3:2', label: 'Фото (3:2)' },
-              { value: '2:3', label: 'Портрет (2:3)' },
-            ],
-          },
-        ],
-      },
+      // {
+      //   slug: 'midjourney-img2img',
+      //   name: 'Midjourney Img2Img',
+      //   displayName: 'Midjourney V7 (Image to Image)',
+      //   description: 'Трансформация изображений через Midjourney',
+      //   type: 'image',
+      //   fixedCostPerGeneration: 0.028,
+      //   tokensPerDollar: 90,
+      //   minTokenCost: 2.5,
+      //   sortOrder: 4,
+      //   capabilities: ['image_to_image', 'variations'],
+      //   providerMappings: [
+      //     { providerSlug: 'evolink', modelId: 'mj-v7', priority: 1, isActive: true },
+      //   ],
+      //   defaultParams: { width: 1024, height: 1024 },
+      //   limits: { maxResolution: '2048x2048' },
+      //   inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+      //   pricingMatrix: [
+      //     { conditions: { mode: 'turbo' }, costInTokens: 9.5, costInDollars: 0.106, label: 'Турбо режим' },
+      //     { conditions: { mode: 'fast' }, costInTokens: 5, costInDollars: 0.056, label: 'Быстрый режим' },
+      //     { conditions: { mode: 'draft' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Обычный режим' },
+      //   ],
+      //   uiParameters: [
+      //     {
+      //       key: 'mode', label: 'Режим генерации', type: 'select', affectsPrice: true, defaultValue: 'draft',
+      //       options: [
+      //         { value: 'draft', label: 'Обычный (2.5🔥)' },
+      //         { value: 'fast', label: 'Быстрый (5🔥)' },
+      //         { value: 'turbo', label: 'Турбо (9.5🔥)' },
+      //       ],
+      //     },
+      //     {
+      //       key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+      //       options: [
+      //         { value: '1:1', label: 'Квадрат (1:1)' },
+      //         { value: '16:9', label: 'Горизонталь (16:9)' },
+      //         { value: '9:16', label: 'Вертикаль (9:16)' },
+      //         { value: '3:2', label: 'Фото (3:2)' },
+      //         { value: '2:3', label: 'Портрет (2:3)' },
+      //       ],
+      //     },
+      //   ],
+      // },
       {
         slug: 'seedream-5-lite',
         name: 'Seedream 5.0 Lite',
