@@ -96,7 +96,7 @@ export class GenerationConsumer {
         type,
       );
 
-      await this.generationService.updateGeneration(generationId, {
+      const syncUpdate: any = {
         status: GenerationStatus.COMPLETED,
         resultUrls: storageUrls.length ? storageUrls : providerUrls,
         storageUrls,
@@ -107,8 +107,22 @@ export class GenerationConsumer {
         responseTimeMs: result.responseTimeMs,
         completedAt: new Date(),
         progress: 100,
-        metadata: result.data?.metadata || {},
-      });
+      };
+
+      // 🔧 Сохраняем metadata из preCharge (freeAccess и т.д.),
+      //    добавляем поля от провайдера только если они есть.
+      if (
+        result.data?.metadata &&
+        Object.keys(result.data.metadata).length > 0
+      ) {
+        const current = await this.generationService.getRawGeneration(generationId);
+        syncUpdate.metadata = {
+          ...(current?.metadata || {}),
+          ...result.data.metadata,
+        };
+      }
+
+      await this.generationService.updateGeneration(generationId, syncUpdate);
 
       // 🆕 ЗАПИСЫВАЕМ ТРАНЗАКЦИЮ В BILLING
       await this.generationService.recordSuccessfulGeneration(generationId);
@@ -145,7 +159,7 @@ export class GenerationConsumer {
   // ФИНАЛЬНЫЙ FAIL — после исчерпания всех retry
   // ═══════════════════════════════════════════════════════════════
 
-    @OnQueueFailed()
+  @OnQueueFailed()
   async onFailed(job: Job<GenerationJobData>, error: Error) {
     const { generationId, userId } = job.data;
     const maxAttempts = job.opts.attempts ?? 1;
@@ -163,7 +177,7 @@ export class GenerationConsumer {
     );
 
     try {
-      // 🆕 Если генерация уже успешно завершилась (race: Bull timeout vs
+      // Если генерация уже успешно завершилась (race: Bull timeout vs
       // async polling, который досчитался до completed) — НЕ трогаем её
       // и НЕ возвращаем деньги.
       const current = await this.generationService.getRawGeneration(generationId);
@@ -215,8 +229,8 @@ export class GenerationConsumer {
       type === GenerationType.IMAGE
         ? 'image'
         : type === GenerationType.VIDEO
-        ? 'video'
-        : 'audio';
+          ? 'video'
+          : 'audio';
 
     try {
       const results = await Promise.all(
@@ -299,7 +313,7 @@ export class GenerationConsumer {
             type,
           );
 
-          // 🆕 Собираем апдейт, metadata добавляем только если пришла
+          // Собираем апдейт, metadata мерджим только если пришла
           const completedUpdate: any = {
             status: GenerationStatus.COMPLETED,
             resultUrls: storageUrls.length ? storageUrls : providerUrls,
@@ -309,11 +323,18 @@ export class GenerationConsumer {
             completedAt: new Date(),
             progress: 100,
           };
+
+          // 🔧 Сохраняем metadata из preCharge (freeAccess и т.д.),
+          //    добавляем поля от провайдера только если они есть.
           if (
             taskResult.metadata &&
             Object.keys(taskResult.metadata).length > 0
           ) {
-            completedUpdate.metadata = taskResult.metadata; // 🆕 { audioIds }
+            const current = await this.generationService.getRawGeneration(generationId);
+            completedUpdate.metadata = {
+              ...(current?.metadata || {}),
+              ...taskResult.metadata, // например { audioIds } для Suno
+            };
           }
 
           await this.generationService.updateGeneration(
