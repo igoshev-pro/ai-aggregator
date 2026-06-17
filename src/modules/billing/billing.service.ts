@@ -2199,25 +2199,15 @@ export class BillingService implements OnApplicationBootstrap {
     // Для каталога показываем цену за 1000 символов как "среднюю",
     // а минимум — model.minTokenCost (защитный минимум за вызов).
     if (model.charBasedPricing && Number(model.pricePerThousandChars) > 0) {
-      const pricePerK = Number(model.pricePerThousandChars);
-      const minCost = Number(model.minTokenCost) > 0
-        ? finalizeTokenCost(Number(model.minTokenCost))
-        : finalizeTokenCost(0.5);
+      const pricePerK = finalizeTokenCost(Number(model.pricePerThousandChars));
 
       return {
-        // avgCost = цена за 1000 символов (это и есть "ориентир" для UI)
-        avgCostInTokens: finalizeTokenCost(pricePerK),
-        // min = защитный минимум за вызов
-        minCostInTokens: minCost,
-        // max не показываем (зависит от длины текста)
-        pricingType: 'per_token',
+        avgCostInTokens: pricePerK,
+        minCostInTokens: pricePerK,
+        maxCostInTokens: pricePerK,
+        pricingType: 'per_chars',
         details: {
-          pricePerMillionInput: 0,
-          pricePerMillionOutput: 0,
-          // 🆕 кладём цену за 1000 символов в details
-          // фронт может прочитать details.pricePerThousandChars
-          // (через any-каст, т.к. поля нет в ModelPreviewCost.details)
-          ...({ pricePerThousandChars: pricePerK } as any),
+          pricePerThousandChars: Number(model.pricePerThousandChars),
         },
       };
     }
