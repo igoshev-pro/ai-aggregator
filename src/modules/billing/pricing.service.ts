@@ -76,6 +76,45 @@ export class PricingService {
       );
     }
 
+        // ─── 🆕 ПОСИМВОЛЬНАЯ ТАРИФИКАЦИЯ (charBasedPricing) ───
+    // Используется для ElevenLabs TTS / Dialogue.
+    // Фронт передаёт params.textLength (число символов в prompt).
+    // Если textLength не пришёл — fallback к среднему 500 символов.
+    if ((model as any).charBasedPricing && (model as any).pricePerThousandChars > 0) {
+      const minCost = model.minTokenCost || 0.5;
+      const pricePerK = Number((model as any).pricePerThousandChars);
+
+      const textLength = Math.max(0, Number(params.textLength) || 0);
+
+      // Если фронт не прислал textLength — показываем preview за 500 символов.
+      // Реальное списание произойдёт уже с фактической длиной.
+      const effectiveLength = textLength > 0 ? textLength : 500;
+
+      const raw = (effectiveLength / 1000) * pricePerK;
+      const rounded = Math.round(raw * 100) / 100;
+      const finalCost = rounded < minCost ? minCost : rounded;
+
+      const breakdown = {
+        modelSlug: model.slug,
+        modelName: model.name,
+        type: model.type,
+        rule: textLength > 0
+          ? `${textLength} chars × ${pricePerK}🔥/1k`
+          : `preview: 500 chars × ${pricePerK}🔥/1k (передайте textLength)`,
+        params,
+        costInTokens: finalCost,
+        costInDollars: 0,
+        fallback: textLength === 0,
+      };
+
+      return {
+        costInTokens: finalCost,
+        costInDollars: 0,
+        fallback: textLength === 0,
+        breakdown,
+      };
+    }
+
     // ─── ТЕКСТ ─── preview цена (реальная считается после стрима)
     if (model.type === 'text') {
       const minCost = model.minTokenCost || 1;

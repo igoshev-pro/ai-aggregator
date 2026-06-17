@@ -527,4 +527,14 @@ export class AudioGenerationDto {
   @ValidateNested({ each: true })
   @Type(() => DialogueLineDto)
   dialogue?: DialogueLineDto[];
+
+  // 🆕 Длина текста для посимвольной тарификации (ElevenLabs TTS/Dialogue).
+  // Если не передано — бэк вычислит из prompt.length автоматически.
+  @ApiPropertyOptional({
+    description: 'Text length in characters (for char-based pricing models)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  textLength?: number;
 }

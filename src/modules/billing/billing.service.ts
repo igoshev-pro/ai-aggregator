@@ -2024,6 +2024,31 @@ export class BillingService implements OnApplicationBootstrap {
       throw new NotFoundException(`Model ${modelSlug} not found`);
     }
 
+        // ── 🆕 0. Посимвольная тарификация (charBasedPricing) ───────
+    // Аудио-модели ElevenLabs: цена = (textLength / 1000) × pricePerThousandChars.
+    // textLength приходит из params (фронт обязан передать).
+    if ((model as any).charBasedPricing && (model as any).pricePerThousandChars > 0) {
+      const pricePerK = Number((model as any).pricePerThousandChars);
+      const textLength = Math.max(0, Number(params?.textLength) || 0);
+
+      // Если textLength=0 (фронт не прислал) → используем minTokenCost
+      // как защитный минимум (нечего тарифицировать).
+      const rawCost = textLength > 0
+        ? (textLength / 1000) * pricePerK
+        : 0;
+
+      const minCostChars = model.minTokenCost || MIN_CHARGE_TOKENS;
+      const finalCost = finalizeTokenCost(Math.max(minCostChars, rawCost));
+
+      return {
+        costInDollars: 0,
+        costInTokens: finalCost,
+        matchedTier: textLength > 0
+          ? `${textLength} chars`
+          : 'min (no textLength)',
+      };
+    }
+
     // ── 1. Текстовые модели ─────────────────────────────────────
     if (model.type === 'text') {
       const inputUsed = inputTokens ?? 0;

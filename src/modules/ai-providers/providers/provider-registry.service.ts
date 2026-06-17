@@ -292,12 +292,15 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: modelData.displayName,
         description: modelData.description,
         type: modelData.type,
-        sortOrder: modelData.sortOrder,           // 🆕 всегда обновляем порядок
+        sortOrder: modelData.sortOrder,
         capabilities: modelData.capabilities || [],
         providerMappings: mappings,
         limits: modelData.limits || {},
         defaultParams: modelData.defaultParams || {},
         supportsVision: (modelData as any).supportsVision ?? false,
+        // 🆕 Посимвольная тарификация (для ElevenLabs аудио-моделей)
+        charBasedPricing: (modelData as any).charBasedPricing ?? false,
+        pricePerThousandChars: (modelData as any).pricePerThousandChars ?? 0,
       };
 
       const setOnCreate: Record<string, any> = {
@@ -417,6 +420,8 @@ export class ProviderRegistryService implements OnModuleInit {
           tokensPerDollar: modelData.tokensPerDollar,
           fixedCostPerGeneration,
           isPremium: (modelData as any).isPremium ?? false,
+          charBasedPricing: (modelData as any).charBasedPricing ?? false,
+          pricePerThousandChars: (modelData as any).pricePerThousandChars ?? 0,
         };
 
         const matrix = (modelData as any).pricingMatrix;
@@ -470,7 +475,7 @@ export class ProviderRegistryService implements OnModuleInit {
 
   private buildModelsCatalog(): any[] {
     return [
-            // ════════════════════════════════════════════════════
+      // ════════════════════════════════════════════════════
       // ТЕКСТОВЫЕ МОДЕЛИ (без изменений)
       // ════════════════════════════════════════════════════
       {
@@ -1569,7 +1574,7 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── Kling 3.0 (KIE) ────────────────────────────────
-            {
+      {
         slug: 'kling-3.0',
         name: 'Kling 3.0',
         displayName: 'Kling 3.0',
@@ -1764,7 +1769,7 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── Hailuo 02 (KIE) — t2v/i2v standard+pro ──────────
-            {
+      {
         slug: 'hailuo-02',
         name: 'Hailuo 02',
         displayName: 'Hailuo 02',
@@ -2294,9 +2299,9 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Suno V5',
         description: 'Генерация музыки с вокалом — Suno V5',
         type: 'audio',
-        fixedCostPerGeneration: 0.133,
+        fixedCostPerGeneration: 0.041,
         tokensPerDollar: 90,
-        minTokenCost: 12,
+        minTokenCost: 3.7,
         sortOrder: 1,
         capabilities: ['text_to_audio', 'music_generation'],
         providerMappings: [
@@ -2306,7 +2311,7 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: {},
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
         pricingMatrix: [
-          { conditions: {}, costInTokens: 12, costInDollars: 0.133, label: 'Стандартная генерация' },
+          { conditions: {}, costInTokens: 3.7, costInDollars: 0.041, label: 'Стандартная генерация' },
         ],
         uiParameters: [
           {
@@ -2369,26 +2374,31 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── ElevenLabs TTS Multilingual v2 (KIE) ────────────
+      // 🆕 Посимвольная тарификация: 5.4🔥 за 1000 символов
       {
         slug: 'elevenlabs-tts-multilingual-v2',
         name: 'ElevenLabs TTS Multilingual v2',
         displayName: 'ElevenLabs TTS Multilingual v2',
-        description: 'Многоязычный синтез речи от ElevenLabs',
+        description: 'Многоязычный синтез речи от ElevenLabs (5.4🔥 за 1000 символов)',
         type: 'audio',
-        fixedCostPerGeneration: 0.044,
+        // 🆕 Посимвольная тарификация
+        charBasedPricing: true,
+        pricePerThousandChars: 5.4,
+        // Минимум за вызов (защита от копеечных списаний)
+        minTokenCost: 1,
+        // Справочно (legacy fields, не используются при charBasedPricing=true)
+        fixedCostPerGeneration: 0.06,
         tokensPerDollar: 90,
-        minTokenCost: 4,
         sortOrder: 5,
         capabilities: ['text_to_speech'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'elevenlabs/text-to-speech-multilingual-v2', priority: 1, isActive: true },
         ],
-        defaultParams: { voice: 'Rachel', stability: 0.5, similarity_boost: 0.75 },
+        defaultParams: { voice: 'Rachel', stability: 0.5, similarity_boost: 0.75, speed: 1.0 },
         limits: { maxTextLength: 5000 },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { costInTokens: 4, costInDollars: 0.044, label: 'Стандартная генерация' },
-        ],
+        // pricingMatrix не используется (charBasedPricing имеет приоритет)
+        pricingMatrix: [],
         uiParameters: [
           {
             key: 'voice', label: 'Голос', type: 'select', affectsPrice: false, defaultValue: 'Rachel',
@@ -2405,37 +2415,44 @@ export class ProviderRegistryService implements OnModuleInit {
             ],
           },
           {
-            key: 'stability', label: 'Стабильность', type: 'slider', affectsPrice: false, defaultValue: 0.5,
-            options: [],
+            key: 'stability', label: 'Стабильность', type: 'number', affectsPrice: false, defaultValue: 0.5,
+            min: 0, max: 1, step: 0.05, options: [],
           },
           {
-            key: 'similarity_boost', label: 'Сходство', type: 'slider', affectsPrice: false, defaultValue: 0.75,
-            options: [],
+            key: 'similarity_boost', label: 'Сходство', type: 'number', affectsPrice: false, defaultValue: 0.75,
+            min: 0, max: 1, step: 0.05, options: [],
+          },
+          {
+            key: 'speed', label: 'Скорость (1× = 100%)', type: 'number', affectsPrice: false, defaultValue: 1.0,
+            min: 0.7, max: 1.2, step: 0.05, options: [],
           },
         ],
       },
 
       // ─── ElevenLabs TTS Turbo 2.5 (KIE) ─────────────────
+      // 🆕 Посимвольная тарификация: 2.7🔥 за 1000 символов
       {
         slug: 'elevenlabs-tts-turbo-2-5',
         name: 'ElevenLabs TTS Turbo 2.5',
         displayName: 'ElevenLabs TTS Turbo 2.5',
-        description: 'Быстрый синтез речи — ElevenLabs Turbo 2.5',
+        description: 'Быстрый синтез речи — ElevenLabs Turbo 2.5 (2.7🔥 за 1000 символов)',
         type: 'audio',
-        fixedCostPerGeneration: 0.022,
+        // 🆕 Посимвольная тарификация
+        charBasedPricing: true,
+        pricePerThousandChars: 2.7,
+        minTokenCost: 0.5,
+        // Справочно (legacy fields, не используются при charBasedPricing=true)
+        fixedCostPerGeneration: 0.03,
         tokensPerDollar: 90,
-        minTokenCost: 2,
         sortOrder: 4,
         capabilities: ['text_to_speech'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'elevenlabs/text-to-speech-turbo-2-5', priority: 1, isActive: true },
         ],
-        defaultParams: { voice: 'Rachel', stability: 0.5, similarity_boost: 0.75 },
+        defaultParams: { voice: 'Rachel', stability: 0.5, similarity_boost: 0.75, speed: 1.0 },
         limits: { maxTextLength: 5000 },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { costInTokens: 2, costInDollars: 0.022, label: 'Стандартная генерация' },
-        ],
+        pricingMatrix: [],
         uiParameters: [
           {
             key: 'voice', label: 'Голос', type: 'select', affectsPrice: false, defaultValue: 'Rachel',
@@ -2448,12 +2465,16 @@ export class ProviderRegistryService implements OnModuleInit {
             ],
           },
           {
-            key: 'stability', label: 'Стабильность', type: 'slider', affectsPrice: false, defaultValue: 0.5,
-            options: [],
+            key: 'stability', label: 'Стабильность', type: 'number', affectsPrice: false, defaultValue: 0.5,
+            min: 0, max: 1, step: 0.05, options: [],
           },
           {
-            key: 'similarity_boost', label: 'Сходство', type: 'slider', affectsPrice: false, defaultValue: 0.75,
-            options: [],
+            key: 'similarity_boost', label: 'Сходство', type: 'number', affectsPrice: false, defaultValue: 0.75,
+            min: 0, max: 1, step: 0.05, options: [],
+          },
+          {
+            key: 'speed', label: 'Скорость (1× = 100%)', type: 'number', affectsPrice: false, defaultValue: 1.0,
+            min: 0.7, max: 1.2, step: 0.05, options: [],
           },
         ],
       },
@@ -2499,30 +2520,37 @@ export class ProviderRegistryService implements OnModuleInit {
       // },
 
       // ─── ElevenLabs Text-to-Dialogue v3 (KIE) ────────────
+      // 🆕 Посимвольная тарификация: 6.7🔥 за 1000 символов
       {
         slug: 'elevenlabs-text-to-dialogue-v3',
         name: 'ElevenLabs Text-to-Dialogue v3',
         displayName: 'ElevenLabs Dialogue v3',
-        description: 'Генерация диалогов с несколькими голосами от ElevenLabs',
+        description: 'Генерация диалогов с несколькими голосами от ElevenLabs (6.7🔥 за 1000 символов)',
         type: 'audio',
-        fixedCostPerGeneration: 0.044,
+        // 🆕 Посимвольная тарификация
+        charBasedPricing: true,
+        pricePerThousandChars: 6.7,
+        minTokenCost: 1,
+        // Справочно (legacy fields, не используются при charBasedPricing=true)
+        fixedCostPerGeneration: 0.074,
         tokensPerDollar: 90,
-        minTokenCost: 4,
         sortOrder: 6,
         capabilities: ['text_to_speech', 'dialogue'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'elevenlabs/text-to-dialogue-v3', priority: 1, isActive: true },
         ],
-        defaultParams: { stability: 0.5 },
+        defaultParams: { stability: 0.5, speed: 1.0 },
         limits: { maxTextLength: 5000 },
         inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { costInTokens: 4, costInDollars: 0.044, label: 'Стандартная генерация' },
-        ],
+        pricingMatrix: [],
         uiParameters: [
           {
-            key: 'stability', label: 'Стабильность', type: 'slider', affectsPrice: false, defaultValue: 0.5,
-            options: [],
+            key: 'stability', label: 'Стабильность', type: 'number', affectsPrice: false, defaultValue: 0.5,
+            min: 0, max: 1, step: 0.05, options: [],
+          },
+          {
+            key: 'speed', label: 'Скорость (1× = 100%)', type: 'number', affectsPrice: false, defaultValue: 1.0,
+            min: 0.7, max: 1.2, step: 0.05, options: [],
           },
           {
             key: 'language_code', label: 'Язык', type: 'select', affectsPrice: false, defaultValue: '',

@@ -194,6 +194,17 @@ export class AIModel {
   @Prop({ default: 0 })
   webSearchCostInTokens!: number;
 
+    // 🆕 Посимвольная тарификация (для аудио-моделей типа ElevenLabs).
+  // Если charBasedPricing=true → цена считается как
+  // (textLength / 1000) * pricePerThousandChars, с защитой через minTokenCost.
+  // Фронт ОБЯЗАН передавать params.textLength для preview/расчёта.
+  @Prop({ default: false })
+  charBasedPricing!: boolean;
+
+  // 🔥 за 1000 символов входного текста (только если charBasedPricing=true)
+  @Prop({ default: 0 })
+  pricePerThousandChars!: number;
+
   // ═══════════════════════════════════════════════════════════════
   // ⚠️ DEPRECATED — оставлены для обратной совместимости и миграции.
   // BillingService использует их как fallback, если новые поля = 0.

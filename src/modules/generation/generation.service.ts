@@ -466,6 +466,13 @@ export class GenerationService {
   async generateAudio(userId: string, dto: AudioGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
+    // 🆕 textLength для посимвольной тарификации ElevenLabs.
+    // Приоритет: явное значение от фронта → длина prompt → 0.
+    const textLength =
+      typeof dto.textLength === 'number' && dto.textLength > 0
+        ? dto.textLength
+        : (dto.prompt?.length || 0);
+
     const priceParams = {
       operation: dto.operation,
       duration: dto.duration,
@@ -474,6 +481,8 @@ export class GenerationService {
       language: dto.language,
       hasAudioInput: !!dto.audioUrl,
       hasDialogue: !!(dto.dialogue && dto.dialogue.length > 0),
+      // 🆕 длина текста для charBasedPricing моделей
+      textLength,
     };
 
     // 🆕 Free-gate с params
