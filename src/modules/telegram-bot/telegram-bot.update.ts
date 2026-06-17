@@ -15,8 +15,28 @@ export class TelegramBotUpdate {
     private readonly config: ConfigService,
     private readonly usersService: UsersService,
     private readonly referralService: ReferralService,
-    private readonly botAuthService: BotAuthService, // 🆕
+    private readonly botAuthService: BotAuthService,
   ) {}
+
+  // ─── Helpers ─────────────────────────────────────────────
+  /** Юзернейм поддержки без @ (из .env, fallback на macheezzz) */
+  private getSupportUsername(): string {
+    const raw =
+      this.config.get<string>('SUPPORT_USERNAME') ||
+      process.env.SUPPORT_USERNAME ||
+      'macheezzz';
+    return raw.replace(/^@/, '').trim();
+  }
+
+  /** Полный URL поддержки для inline-кнопки */
+  private getSupportUrl(): string {
+    return `https://t.me/${this.getSupportUsername()}`;
+  }
+
+  /** Юзернейм с @ для подстановки в текст */
+  private getSupportHandle(): string {
+    return `@${this.getSupportUsername()}`;
+  }
 
   @Start()
   async onStart(@Ctx() ctx: Context) {
@@ -31,7 +51,7 @@ export class TelegramBotUpdate {
       `📩 /start tg=${from.id} (@${from.username || '—'}) payload="${payload}"`,
     );
 
-    // 🆕 Разбираем тип payload
+    // Разбираем тип payload
     let authCode: string | undefined;
     let referralCode: string | undefined;
 
@@ -67,7 +87,7 @@ export class TelegramBotUpdate {
       return;
     }
 
-    // 🆕 Bot Auth: подтверждаем сессию входа на сайте
+    // Bot Auth: подтверждаем сессию входа на сайте
     if (authCode) {
       let ok = false;
       try {
@@ -123,7 +143,7 @@ export class TelegramBotUpdate {
       buttons.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
     }
     buttons.push([
-      Markup.button.url('💬 Поддержка', 'https://t.me/spichki_support'),
+      Markup.button.url('💬 Поддержка', this.getSupportUrl()), // 🆕 из .env
     ]);
 
     await ctx.reply(greeting, {
@@ -134,17 +154,20 @@ export class TelegramBotUpdate {
 
   @Help()
   async onHelp(@Ctx() ctx: Context) {
+    const support = this.getSupportHandle(); // 🆕
+
     await ctx.reply(
       '*SPICHKI AI* — все нейросети в Telegram\n\n' +
         '/start — открыть приложение\n' +
         '/balance — баланс спичек\n' +
         '/ref — реферальная ссылка\n' +
-        '/help — справка',
+        '/help — справка\n\n' +
+        `💬 Поддержка: ${support}`,
       { parse_mode: 'Markdown' },
     );
   }
 
-    @Command('balance')
+  @Command('balance')
   async onBalance(@Ctx() ctx: Context) {
     const from = ctx.from;
     if (!from) return;
@@ -186,6 +209,8 @@ export class TelegramBotUpdate {
         (info as any).cashbackBalanceRub ??
         Math.round((info.cashbackBalance || 0) * 3 * 100) / 100;
 
+      const support = this.getSupportHandle(); // 🆕
+
       await ctx.reply(
         `🤝 *Твоя реферальная программа*\n\n` +
           `🔗 Ссылка:\n\`${info.referralLink}\`\n\n` +
@@ -194,7 +219,7 @@ export class TelegramBotUpdate {
           `💸 Заработано: *${info.totalEarned}* 🔥 (≈ ${earnedRub} ₽)\n` +
           `💰 Доступно к выводу: *${info.cashbackBalance}* 🔥 (≈ ${availableRub} ₽)\n\n` +
           `Делись ссылкой — получай +10 🔥 за каждого друга и 10% кэшбека с их покупок!\n\n` +
-          `💡 Вывод средств — через нашу поддержку: @spichki_support`,
+          `💡 Вывод средств — через нашу поддержку: ${support}`,
         { parse_mode: 'Markdown' },
       );
     } catch (e: any) {
