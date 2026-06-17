@@ -34,21 +34,23 @@ type PaymentProviderName =
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
 
-  @Get('packages')
+    @Get('packages')
   @ApiOperation({ summary: 'Get available token packages' })
-  getPackages(@Query('currency') currency?: 'RUB' | 'USD') {
+  async getPackages(@Query('currency') currency?: 'RUB' | 'USD') {
+    const data = await this.billingService.getTokenPackages(currency || 'RUB');
     return {
       success: true,
-      data: this.billingService.getTokenPackages(currency || 'RUB'),
+      data,
     };
   }
 
   @Get('plans')
   @ApiOperation({ summary: 'Get subscription plans' })
-  getPlans(@Query('currency') currency?: 'RUB' | 'USD') {
+  async getPlans(@Query('currency') currency?: 'RUB' | 'USD') {
+    const data = await this.billingService.getSubscriptionPlans(currency || 'RUB');
     return {
       success: true,
-      data: this.billingService.getSubscriptionPlans(currency || 'RUB'),
+      data,
     };
   }
 
