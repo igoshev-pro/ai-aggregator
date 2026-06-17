@@ -30,6 +30,11 @@ import { AdminTransactionsController } from './admin-transactions.controller';
 import { AdminTransactionsService } from './admin-transactions.service';
 import { ReferralAdminController } from './admin-referral.controller';
 import { ReferralModule } from '../referral/referral.module';
+import { CategoryCover, CategoryCoverSchema } from './schemas/category-cover.schema';
+import { StorageModule } from '../storage/storage.module';
+import { CategoryCoversController } from './category-covers.controller';
+import { CategoryCoversPublicController } from './category-covers.public.controller';
+import { CategoryCoversService } from './category-covers.service';
 
 @Module({
   imports: [
@@ -40,24 +45,29 @@ import { ReferralModule } from '../referral/referral.module';
       { name: AIModel.name, schema: AIModelSchema },
       { name: TokenomicsSettings.name, schema: TokenomicsSettingsSchema },
       { name: PromoCode.name, schema: PromoCodeSchema },
+      { name: CategoryCover.name, schema: CategoryCoverSchema }, // 🆕
     ]),
     forwardRef(() => UsersModule),
     forwardRef(() => AiProvidersModule),
     forwardRef(() => BillingModule),
     forwardRef(() => ReferralModule),
+    StorageModule, // 🆕
   ],
   controllers: [
     AdminController,
     AdminBillingController,
     AdminPromoCodesController,
-    AdminTransactionsController, // 🆕
-    ReferralAdminController
+    AdminTransactionsController,
+    ReferralAdminController,
+    CategoryCoversController,        // 🆕
+    CategoryCoversPublicController,  // 🆕
   ],
   providers: [
     AdminService,
     AdminBillingService,
     AdminPromoCodesService,
-    AdminTransactionsService, // 🆕
+    AdminTransactionsService,
+    CategoryCoversService, // 🆕
   ],
 })
 export class AdminModule {}
