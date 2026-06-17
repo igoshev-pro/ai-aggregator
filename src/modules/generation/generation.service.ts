@@ -13,72 +13,17 @@ import { InjectQueue } from '@nestjs/bull';
 import { Model, Types } from 'mongoose';
 import { Queue } from 'bull';
 import { Generation, GenerationDocument } from './schemas/generation.schema';
-import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
+import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema'; // 🆕
 import { AiProvidersService } from '../ai-providers/ai-providers.service';
 import { UsersService } from '../users/users.service';
 import { BillingService } from '../billing/billing.service';
-import { PricingService } from '../billing/pricing.service';
-import {
-  GenerationType,
-  GenerationStatus,
-  SubscriptionPlan,
-} from '@/common/interfaces';
+import { PricingService } from '../billing/pricing.service'; // 🆕
+import { GenerationType, GenerationStatus } from '@/common/interfaces';
 import {
   ImageGenerationDto,
   VideoGenerationDto,
   AudioGenerationDto,
 } from './dto/image-generation.dto';
-
-
-// ─── Иерархия планов (для подсказок upgrade) ─────────────────────
-const PLAN_ORDER: SubscriptionPlan[] = [
-  SubscriptionPlan.FREE,
-  SubscriptionPlan.BASIC,
-  SubscriptionPlan.PLUS,
-  SubscriptionPlan.MAX,
-  SubscriptionPlan.ULTIMATE,
-];
-
-const TOP_PLAN = SubscriptionPlan.ULTIMATE;
-
-function isTopPlan(plan: string): boolean {
-  return String(plan).toLowerCase() === String(TOP_PLAN).toLowerCase();
-}
-
-function nextPlanAfter(plan: string): SubscriptionPlan | null {
-  const idx = PLAN_ORDER.findIndex(
-    (p) => String(p).toLowerCase() === String(plan).toLowerCase(),
-  );
-  if (idx < 0) return SubscriptionPlan.PLUS;
-  if (idx >= PLAN_ORDER.length - 1) return null;
-  return PLAN_ORDER[idx + 1];
-}
-
-function buildResetHints(now: Date) {
-  const nextHour = new Date(now);
-  nextHour.setHours(now.getHours() + 1, 0, 0, 0);
-
-  const nextDay = new Date(now);
-  nextDay.setDate(now.getDate() + 1);
-  nextDay.setHours(0, 0, 0, 0);
-
-  const minutesToHour = Math.max(
-    1,
-    Math.ceil((nextHour.getTime() - now.getTime()) / 60_000),
-  );
-  const minutesToDay = Math.max(
-    1,
-    Math.ceil((nextDay.getTime() - now.getTime()) / 60_000),
-  );
-
-  return {
-    hourlyResetAt: nextHour.toISOString(),
-    dailyResetAt: nextDay.toISOString(),
-    minutesToHourlyReset: minutesToHour,
-    minutesToDailyReset: minutesToDay,
-  };
-}
-
 
 @Injectable()
 export class GenerationService {
@@ -87,7 +32,7 @@ export class GenerationService {
   constructor(
     @InjectModel(Generation.name)
     private generationModel: Model<GenerationDocument>,
-    @InjectModel(AIModel.name)
+    @InjectModel(AIModel.name) // 🆕
     private modelModel: Model<ModelDocument>,
     @InjectQueue('generation') private generationQueue: Queue,
     @Inject(forwardRef(() => AiProvidersService))
@@ -96,96 +41,15 @@ export class GenerationService {
     private usersService: UsersService,
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
-    private pricingService: PricingService,
-  ) {}
-
-
-  // ═══════════════════════════════════════════════════════════════
-  // 🆕 FREE ACCESS GATE
-  // ═══════════════════════════════════════════════════════════════
-
-  /**
-   * Решает, бесплатна ли генерация по подписке.
-   *
-   * 🆕 Принимает params — нужны для моделей с requiredParams в плане
-   * (например, midjourney → бесплатен только в режиме `mode: 'draft'`).
-   *
-   * Возвращает:
-   *   { isFree: true }                          → списываем 0 токенов
-   *   { isFree: false, fallthroughToPaid: true} → идём в обычный платный путь
-   *
-   * Бросает 400, если:
-   *   - модель в freeModels плана, лимит исчерпан, и план НЕ топовый
-   *
-   * Для топового плана (Ultimate) при исчерпании лимита — НЕ бросаем,
-   * а отдаём fallthroughToPaid=true (пользователь сам выбирает).
-   */
-  private async resolveFreeAccess(
-    userId: string,
-    modelSlug: string,
-    params?: Record<string, any>, // 🆕 учитываем requiredParams
-  ): Promise<{ isFree: boolean; fallthroughToPaid: boolean }> {
-    const access = await this.billingService.checkFreeModelAccess(
-      userId,
-      modelSlug,
-      params, // 🆕 пробрасываем
-    );
-
-    // Бесплатно — лимит ОК
-    if (access.isFree) {
-      return { isFree: true, fallthroughToPaid: false };
-    }
-
-    // Не бесплатно, и не "лимит исчерпан":
-    //   - модель не входит в free-список плана, ИЛИ
-    //   - входит, но params не подходят (напр. midjourney mode!=draft)
-    if (!access.reason || access.reason === 'not_in_plan') {
-      return { isFree: false, fallthroughToPaid: true };
-    }
-
-    // Лимит исчерпан → решаем по плану пользователя
-    const user = await this.usersService.findById(userId);
-    const userPlan = String(user.subscriptionPlan || 'free').toLowerCase();
-
-    if (isTopPlan(userPlan)) {
-      this.logger.log(
-        `[FreeAccess] user=${userId} model=${modelSlug} → top plan, fallthrough to paid`,
-      );
-      return { isFree: false, fallthroughToPaid: true };
-    }
-
-    // Не топовый → блокируем с подсказкой апгрейда
-    const hints = buildResetHints(new Date());
-    const next = nextPlanAfter(userPlan);
-
-    const message =
-      `${access.reason}. ` +
-      (next
-        ? `Перейдите на тариф ${String(next).toUpperCase()} для увеличения лимитов, `
-        : '') +
-      `или дождитесь обнуления лимита через ~${hints.minutesToHourlyReset} мин (часовой) / ~${hints.minutesToDailyReset} мин (дневной).`;
-
-    throw new BadRequestException({
-      code: 'FREE_LIMIT_EXCEEDED_UPGRADE',
-      message,
-      modelSlug,
-      currentPlan: userPlan,
-      suggestedPlan: next,
-      hourlyResetAt: hints.hourlyResetAt,
-      dailyResetAt: hints.dailyResetAt,
-      minutesToHourlyReset: hints.minutesToHourlyReset,
-      minutesToDailyReset: hints.minutesToDailyReset,
-    });
-  }
-
+    private pricingService: PricingService, // 🆕
+  ) { }
 
   // ─── IMAGE ──────────────────────────────────────────────────────
 
   async generateImage(userId: string, dto: ImageGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    // 🆕 Собираем priceParams ДО free-gate, чтобы передать их в обе функции.
-    //     Это критично для midjourney (mode='draft' → free, иначе → paid).
+    // 🆕 Расчёт через PricingService с params (mode, version, и т.д.)
     const priceParams = {
       mode: dto.mode,
       version: dto.version,
@@ -196,26 +60,13 @@ export class GenerationService {
       numImages: dto.numImages || 1,
     };
 
-    // 🆕 1. Free-gate теперь учитывает params (mode, version и т.д.)
-    const { isFree } = await this.resolveFreeAccess(
-      userId,
-      dto.modelSlug,
-      priceParams,
-    );
-
-    // 2. Цена считается всегда (для аудита pricingBreakdown)
     const priceCalc = await this.pricingService.calculatePrice(
       dto.modelSlug,
       priceParams,
     );
 
-    const costInTokens = isFree ? 0 : priceCalc.costInTokens;
-    const costInDollars = isFree ? 0 : priceCalc.costInDollars;
-
-    // 3. Баланс проверяем только для платных
-    if (!isFree) {
-      await this.validateBalance(userId, costInTokens);
-    }
+    const costInTokens = priceCalc.costInTokens;
+    await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
@@ -236,24 +87,20 @@ export class GenerationService {
         numImages: dto.numImages || 1,
         style: dto.style,
         inputUrls: dto.inputUrls,
-        mode: dto.mode,
-        version: dto.version,
+        mode: dto.mode,         // 🆕
+        version: dto.version,   // 🆕
       },
       tokensCost: costInTokens,
-      costInDollars,
-      pricingBreakdown: priceCalc.breakdown,
-      metadata: { freeAccess: isFree },
+      costInDollars: priceCalc.costInDollars,
+      pricingBreakdown: priceCalc.breakdown, // 🆕
     });
     await generation.save();
 
-    // 4. Списание — только для платных
-    if (!isFree) {
-      await this.usersService.deductTokens(
-        userId,
-        costInTokens,
-        'generation_reserve',
-      );
-    }
+    await this.usersService.deductTokens(
+      userId,
+      costInTokens,
+      'generation_reserve',
+    );
 
     const p = generation.params as any;
 
@@ -279,8 +126,8 @@ export class GenerationService {
           style: p.style,
           resizeMode: p.resizeMode,
           inputUrls: p.inputUrls,
-          mode: p.mode,
-          version: p.version,
+          mode: p.mode,         // 🆕
+          version: p.version,   // 🆕
         },
       },
       {
@@ -295,12 +142,10 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
-      costInDollars,
-      pricingBreakdown: priceCalc.breakdown,
-      freeAccess: isFree,
+      costInDollars: priceCalc.costInDollars,    // 🆕
+      pricingBreakdown: priceCalc.breakdown,     // 🆕
     };
   }
-
 
   // ─── VIDEO ──────────────────────────────────────────────────────
 
@@ -316,31 +161,20 @@ export class GenerationService {
       sound: dto.sound,
       generateAudio: dto.generateAudio,
       stable: dto.stable,
-      videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
+      videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0), // 🆕 Seedance 2 ценообразование
       hasInputImage:
         !!dto.imageUrl ||
         !!(dto.imageUrls && dto.imageUrls.length > 0) ||
-        !!(dto.referenceImages && dto.referenceImages.length > 0),
+        !!(dto.referenceImages && dto.referenceImages.length > 0), // 🆕
     };
-
-    // 🆕 Free-gate с params
-    const { isFree } = await this.resolveFreeAccess(
-      userId,
-      dto.modelSlug,
-      priceParams,
-    );
 
     const priceCalc = await this.pricingService.calculatePrice(
       dto.modelSlug,
       priceParams,
     );
 
-    const costInTokens = isFree ? 0 : priceCalc.costInTokens;
-    const costInDollars = isFree ? 0 : priceCalc.costInDollars;
-
-    if (!isFree) {
-      await this.validateBalance(userId, costInTokens);
-    }
+    const costInTokens = priceCalc.costInTokens;
+    await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
@@ -352,19 +186,13 @@ export class GenerationService {
       params: {
         imageUrl: dto.imageUrl,
         imageUrls: dto.imageUrls,
-        referenceImages: dto.referenceImages,
+        referenceImages: dto.referenceImages,    // 🆕 Veo reference
         videoUrls: dto.videoUrls,
-        characterOrientation: dto.characterOrientation,
-        generationType: dto.generationType,
+        characterOrientation: dto.characterOrientation,  // 🆕 motion-control
+        generationType: dto.generationType,      // 🆕 Veo mode override
         duration: dto.duration || (model.defaultParams as any)?.duration || 5,
-        aspectRatio:
-          dto.aspectRatio ||
-          (model.defaultParams as any)?.aspectRatio ||
-          '16:9',
-        resolution:
-          dto.resolution ||
-          (model.defaultParams as any)?.resolution ||
-          '720p',
+        aspectRatio: dto.aspectRatio || (model.defaultParams as any)?.aspectRatio || '16:9',
+        resolution: dto.resolution || (model.defaultParams as any)?.resolution || '720p',
         mode: dto.mode,
         quality: dto.quality,
         sound: dto.sound,
@@ -373,32 +201,29 @@ export class GenerationService {
         removeWatermark: dto.removeWatermark,
         promptOptimizer: dto.promptOptimizer,
         waterMark: dto.waterMark,
-        watermark: dto.watermark,
+        watermark: dto.watermark,                // 🆕 Veo watermark
         style: dto.style,
-        resizeMode: dto.resizeMode,
+        resizeMode: dto.resizeMode,  // ← ДОБАВИТЬ
         multiShots: dto.multiShots,
         multiPrompt: dto.multiPrompt,
         klingElements: dto.klingElements,
-        cfgScale: dto.cfgScale,
-        nsfwChecker: dto.nsfwChecker,
-        fixedLens: dto.fixedLens,
-        webSearch: dto.webSearch,
-        audioUrls: dto.audioUrls,
+        cfgScale: dto.cfgScale,         // 🆕 kling 2.5
+        nsfwChecker: dto.nsfwChecker,   // 🆕 kling 2.5
+        fixedLens: dto.fixedLens,       // 🆕 seedance 1.5
+        webSearch: dto.webSearch,       // 🆕 seedance 2
+        audioUrls: dto.audioUrls,       // 🆕 seedance 2
       },
       tokensCost: costInTokens,
-      costInDollars,
+      costInDollars: priceCalc.costInDollars,
       pricingBreakdown: priceCalc.breakdown,
-      metadata: { freeAccess: isFree },
     });
     await generation.save();
 
-    if (!isFree) {
-      await this.usersService.deductTokens(
-        userId,
-        costInTokens,
-        'generation_reserve',
-      );
-    }
+    await this.usersService.deductTokens(
+      userId,
+      costInTokens,
+      'generation_reserve',
+    );
 
     const p = generation.params as any;
 
@@ -414,10 +239,10 @@ export class GenerationService {
           negativePrompt: dto.negativePrompt,
           imageUrl: p.imageUrl,
           imageUrls: p.imageUrls,
-          referenceImages: p.referenceImages,
+          referenceImages: p.referenceImages,    // 🆕
           videoUrls: p.videoUrls,
-          characterOrientation: p.characterOrientation,
-          generationType: p.generationType,
+          characterOrientation: p.characterOrientation,   // 🆕 motion-control
+          generationType: p.generationType,       // 🆕
           duration: p.duration,
           aspectRatio: p.aspectRatio,
           resolution: p.resolution,
@@ -429,17 +254,19 @@ export class GenerationService {
           removeWatermark: p.removeWatermark,
           promptOptimizer: p.promptOptimizer,
           waterMark: p.waterMark,
-          watermark: p.watermark,
+          watermark: p.watermark,                  // 🆕
           style: p.style,
-          resizeMode: p.resizeMode,
+          resizeMode: p.resizeMode,        // 🔧 fix: ранее не передавался в очередь
+          // 🆕 Kling 3.0
           multiShots: p.multiShots,
           multiPrompt: p.multiPrompt,
           klingElements: p.klingElements,
+          // 🆕 Kling 2.5 Turbo
           cfgScale: p.cfgScale,
           nsfwChecker: p.nsfwChecker,
-          fixedLens: p.fixedLens,
-          webSearch: p.webSearch,
-          audioUrls: p.audioUrls,
+          fixedLens: p.fixedLens,       // 🆕 seedance 1.5
+          webSearch: p.webSearch,       // 🆕 seedance 2
+          audioUrls: p.audioUrls,       // 🆕 seedance 2
         },
       },
       {
@@ -454,18 +281,17 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
-      costInDollars,
+      costInDollars: priceCalc.costInDollars,
       pricingBreakdown: priceCalc.breakdown,
-      freeAccess: isFree,
     };
   }
-
 
   // ─── AUDIO ──────────────────────────────────────────────────────
 
   async generateAudio(userId: string, dto: AudioGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
+    // 🆕 Расчёт через PricingService
     const priceParams = {
       operation: dto.operation,
       duration: dto.duration,
@@ -476,24 +302,13 @@ export class GenerationService {
       hasDialogue: !!(dto.dialogue && dto.dialogue.length > 0),
     };
 
-    // 🆕 Free-gate с params
-    const { isFree } = await this.resolveFreeAccess(
-      userId,
-      dto.modelSlug,
-      priceParams,
-    );
-
     const priceCalc = await this.pricingService.calculatePrice(
       dto.modelSlug,
       priceParams,
     );
 
-    const costInTokens = isFree ? 0 : priceCalc.costInTokens;
-    const costInDollars = isFree ? 0 : priceCalc.costInDollars;
-
-    if (!isFree) {
-      await this.validateBalance(userId, costInTokens);
-    }
+    const costInTokens = priceCalc.costInTokens;
+    await this.validateBalance(userId, costInTokens);
 
     const generation = new this.generationModel({
       userId: new Types.ObjectId(userId),
@@ -508,8 +323,9 @@ export class GenerationService {
         customMode: dto.customMode,
         operation: dto.operation,
         title: dto.title,
-        audioId: dto.audioId,
-        continueAt: dto.continueAt,
+        audioId: dto.audioId,        // 🆕 extend
+        continueAt: dto.continueAt,  // 🆕 extend
+        // 🆕 Suno расширенные
         negativeTags: dto.negativeTags,
         vocalGender: dto.vocalGender,
         styleWeight: dto.styleWeight,
@@ -526,44 +342,43 @@ export class GenerationService {
         dialogue: dto.dialogue,
       },
       tokensCost: costInTokens,
-      costInDollars,
+      costInDollars: priceCalc.costInDollars,
       pricingBreakdown: priceCalc.breakdown,
-      metadata: { freeAccess: isFree },
     });
     await generation.save();
 
-    if (!isFree) {
-      await this.usersService.deductTokens(
-        userId,
-        costInTokens,
-        'generation_reserve',
-      );
-    }
+    await this.usersService.deductTokens(
+      userId,
+      costInTokens,
+      'generation_reserve',
+    );
 
     const p = generation.params as any;
 
+    // Build request payload — provider will receive all needed fields
     const requestPayload: any = {
       prompt: dto.prompt,
-      text: dto.prompt,
+      text: dto.prompt, // ElevenLabs TTS models use 'text' field
       style: p.style,
       duration: p.duration,
       instrumental: p.instrumental,
       customMode: dto.customMode,
       operation: p.operation,
       title: p.title,
-      audioId: p.audioId,
-      continueAt: p.continueAt,
+      audioId: p.audioId,        // 🆕 extend
+      continueAt: p.continueAt,  // 🆕 extend
+      // 🆕 Suno расширенные
       negativeTags: p.negativeTags,
       vocalGender: p.vocalGender,
       styleWeight: p.styleWeight,
       weirdnessConstraint: p.weirdnessConstraint,
       audioWeight: p.audioWeight,
       voiceId: p.voiceId,
-      voice: p.voiceId,
+      voice: p.voiceId, // KIE ElevenLabs uses 'voice'
       language: p.language,
-      language_code: p.language,
+      language_code: p.language, // KIE ElevenLabs uses 'language_code'
       stability: p.stability,
-      similarity_boost: p.similarity,
+      similarity_boost: p.similarity, // KIE ElevenLabs uses 'similarity_boost'
       similarity: p.similarity,
       speed: p.speed,
       loop: p.loop,
@@ -595,21 +410,18 @@ export class GenerationService {
       generationId: generation._id.toString(),
       status: generation.status,
       tokensCost: costInTokens,
-      costInDollars,
+      costInDollars: priceCalc.costInDollars,
       pricingBreakdown: priceCalc.breakdown,
-      freeAccess: isFree,
     };
   }
 
-
-    // ─── РАСЧЁТ ЦЕНЫ (для preview на фронте) ────────────────────
+  // 🆕 ─── РАСЧЁТ ЦЕНЫ (для preview на фронте) ────────────────────
 
   async calculatePrice(modelSlug: string, params: Record<string, any>) {
     return this.pricingService.calculatePrice(modelSlug, params);
   }
 
-
-  // ─── UI-КОНФИГ МОДЕЛИ ──────────────────────────────────────
+  // 🆕 ─── UI-КОНФИГ МОДЕЛИ (для рендера формы на фронте) ────────
 
   async getModelUIConfig(slug: string) {
     const model = await this.modelModel
@@ -643,7 +455,6 @@ export class GenerationService {
     };
   }
 
-
   // ─── СТАТУС / ИСТОРИЯ ───────────────────────────────────────────
 
   async getGenerationStatus(userId: string, generationId: string) {
@@ -663,20 +474,17 @@ export class GenerationService {
       resultUrls: generation.resultUrls,
       resultContent: generation.resultContent,
       tokensCost: generation.tokensCost,
-      costInDollars: generation.costInDollars,
-      pricingBreakdown: generation.pricingBreakdown,
+      costInDollars: generation.costInDollars,        // 🆕
+      pricingBreakdown: generation.pricingBreakdown,  // 🆕
       errorMessage: generation.errorMessage,
       prompt: generation.prompt,
       params: generation.params,
-      metadata: generation.metadata,
-      // 🆕 удобный флаг для фронта
-      freeAccess: !!(generation.metadata as any)?.freeAccess,
+      metadata: generation.metadata,   // 🆕 audioIds для extend
       createdAt: generation['createdAt'],
       completedAt: generation.completedAt,
       responseTimeMs: generation.responseTimeMs,
     };
   }
-
 
   async getUserGenerations(
     userId: string,
@@ -707,11 +515,9 @@ export class GenerationService {
         status: g.status,
         prompt: g.prompt,
         resultUrls: g.resultUrls,
-        metadata: g.metadata,
-        // 🆕
-        freeAccess: !!(g.metadata as any)?.freeAccess,
+        metadata: g.metadata,          // 🆕 audioIds для extend
         tokensCost: g.tokensCost,
-        costInDollars: g.costInDollars,
+        costInDollars: g.costInDollars,    // 🆕
         isFavorite: g.isFavorite,
         createdAt: g['createdAt'],
         completedAt: g.completedAt,
@@ -719,7 +525,6 @@ export class GenerationService {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
-
 
   async updateGeneration(
     generationId: string,
@@ -731,7 +536,6 @@ export class GenerationService {
       { new: true },
     );
   }
-
 
   // ═══════════════════════════════════════════════════════════════
   // REFUND — возврат токенов за неудачную генерацию
@@ -747,14 +551,12 @@ export class GenerationService {
    *   1) usersService.refundTokens — реально возвращает токены на баланс
    *   2) billingService.recordRefund — пишет транзакцию (БЕЗ повторного начисления)
    *   3) generation.isRefunded = true
-   *
-   * 🆕 Бесплатные генерации (tokensCost=0 / freeAccess=true) проходят
-   * раннее short-circuit и в billing/wallet не лезут.
    */
   async refundGeneration(generationId: string) {
     // Атомарный захват: возврат только если он ещё не сделан И генерация
     // НЕ была успешно оплачена (billingRecorded). Это исключает возврат
-    // за генерацию, которая по факту завершилась успешно.
+    // за генерацию, которая по факту завершилась успешно (race Bull timeout
+    // vs async polling — job падает по timeout, но poll досчитался до completed).
     const generation = await this.generationModel.findOneAndUpdate(
       {
         _id: generationId,
@@ -768,7 +570,6 @@ export class GenerationService {
     // null → нет генерации / уже возвращено / генерация успешна (billed)
     if (!generation) return;
 
-    // 🆕 Бесплатные — нечего возвращать
     if (!generation.tokensCost || generation.tokensCost <= 0) {
       return;
     }
@@ -802,25 +603,20 @@ export class GenerationService {
     }
   }
 
-
   // ═══════════════════════════════════════════════════════════════
   // RECORD SUCCESSFUL MEDIA GENERATION
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * Фиксирует успешную media-генерацию в billing.
+   * 🆕 Фиксирует успешную media-генерацию в billing.
    * Вызывается из GenerationConsumer после получения результата от провайдера.
    *
    * Идемпотентность: повторный вызов не создаст дубль транзакции
    * (защита через флаг billingRecorded в Generation).
    *
-   * ВАЖНО:
-   *  - Для платных: токены уже списаны на стадии generateImage/Video/Audio.
-   *    Здесь только запись транзакции.
-   *  - 🆕 Для бесплатных (freeAccess=true / tokensCost=0): токены НЕ списывались,
-   *    но billing всё равно вызывается чтобы записать транзакцию с
-   *    metadata.freeAccess=true — она нужна для подсчёта часовых/дневных
-   *    лимитов в checkFreeModelAccess.
+   * ВАЖНО: токены уже списаны на стадии generateImage/Video/Audio
+   * (через usersService.deductTokens). Здесь только запись транзакции
+   * + инкремент счётчиков freeModelAccess (через recordMediaGeneration в billing).
    */
   async recordSuccessfulGeneration(generationId: string) {
     const generation = await this.generationModel.findById(generationId);
@@ -839,10 +635,7 @@ export class GenerationService {
       return;
     }
 
-    const isFree =
-      !!(generation.metadata as any)?.freeAccess ||
-      !generation.tokensCost ||
-      generation.tokensCost <= 0;
+    const isFree = !generation.tokensCost || generation.tokensCost <= 0;
 
     try {
       await this.billingService.recordMediaGeneration(
@@ -857,7 +650,6 @@ export class GenerationService {
             (generation as any).pricingBreakdown?.rule || undefined,
           generationParams: generation.params as any,
           providerSlug: (generation as any).providerSlug,
-          freeAccess: isFree, // 🆕 явный флаг для billing
         },
       );
 
@@ -868,8 +660,7 @@ export class GenerationService {
       );
 
       this.logger.log(
-        `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${
-          isFree ? ' (free)' : ''
+        `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${isFree ? ' (free)' : ''
         } | gen=${generationId}`,
       );
     } catch (err: any) {
@@ -880,7 +671,6 @@ export class GenerationService {
       );
     }
   }
-
 
   // ─── FAVORITES ──────────────────────────────────────────────────
 
@@ -895,7 +685,6 @@ export class GenerationService {
     await generation.save();
     return { isFavorite: generation.isFavorite };
   }
-
 
   async getFavorites(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -921,13 +710,11 @@ export class GenerationService {
     };
   }
 
-
   // ─── PRIVATE HELPERS ────────────────────────────────────────────
 
   private async validateBalance(userId: string, cost: number) {
     const user = await this.usersService.findById(userId);
-    const totalBalance =
-      user.tokenBalance + user.bonusTokens + (user.cashbackBalance || 0);
+    const totalBalance = user.tokenBalance + user.bonusTokens;
     if (totalBalance < cost) {
       throw new BadRequestException(
         `Insufficient tokens. Need ${cost}, have ${totalBalance}`,
@@ -935,11 +722,8 @@ export class GenerationService {
     }
   }
 
-
   /** Сырой документ генерации без проверки доступа — для внутренних нужд (consumer). */
-  async getRawGeneration(
-    generationId: string,
-  ): Promise<GenerationDocument | null> {
+  async getRawGeneration(generationId: string): Promise<GenerationDocument | null> {
     return this.generationModel.findById(generationId);
   }
 }

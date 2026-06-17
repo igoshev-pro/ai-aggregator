@@ -33,20 +33,13 @@ export class Subscription {
   @Prop({ default: 0 })
   tokensPerMonth: number;
 
-  // 🆕 Бонусные спички, начисляемые единоразово при активации плана
-  @Prop({ default: 0 })
-  bonusTokens: number;
-
   @Prop({ default: 0 })
   priceRub: number;
 
-  // 🆕 Расширяемая структура — фичи разных планов могут отличаться
+  // 🆕 Расширяемая структура — фичи разных планов могут отличаться,
+  // конкретный тип в схеме обманывал TS
   @Prop({ type: Object, default: {} })
   features: Record<string, any>;
-
-  // 🆕 Произвольные данные активации (флаг promo, кол-во дней и т.д.)
-  @Prop({ type: Object, default: {} })
-  metadata: Record<string, any>;
 }
 
 export const SubscriptionSchema = SchemaFactory.createForClass(Subscription);

@@ -29,7 +29,7 @@ export class UsersService {
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-  ) { }
+  ) {}
 
   // ═══════════════════════════════════════════════════════════════
   // Регистрация / поиск
@@ -498,60 +498,16 @@ export class UsersService {
    * чтобы не затереть баланс через user.save().
    */
   async updateSubscription(
-    userId: string,
-    plan: string,
-    expiresAt: Date | null,
-  ): Promise<UserDocument> {
-    const user = await this.userModel.findByIdAndUpdate(
-      userId,
-      { $set: { subscriptionPlan: plan, subscriptionExpiresAt: expiresAt } },
-      { new: true },
-    );
-    if (!user) throw new NotFoundException('User not found');
-    return user;
-  }
-
-  /**
-     * 🆕 Массовая миграция устаревшего плана подписки на новый.
-     * Вызывается BillingService.onApplicationBootstrap для PRO→PLUS, UNLIMITED→ULTIMATE.
-     *
-     * @returns количество обновлённых пользователей
-     */
-  async migrateUserPlan(oldPlan: string, newPlan: string): Promise<number> {
-    if (oldPlan === newPlan) return 0;
-
-    const result = await this.userModel.updateMany(
-      { subscriptionPlan: oldPlan },
-      { $set: { subscriptionPlan: newPlan } },
-    );
-
-    if (result.modifiedCount > 0) {
-      this.logger.warn(
-        `🔁 Migrated ${result.modifiedCount} users: ${oldPlan} → ${newPlan}`,
-      );
-    }
-
-    return result.modifiedCount;
-  }
-
-
-  /**
-   * 🆕 Перевод пользователя на бесплатный тариф (после истечения подписки).
-   * Сбрасывает subscriptionPlan на FREE и обнуляет subscriptionExpiresAt.
-   * Балансы НЕ трогает.
-   */
-  async downgradeToFree(userId: string): Promise<UserDocument> {
-    const user = await this.userModel.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          subscriptionPlan: 'free',
-          subscriptionExpiresAt: null,
-        },
-      },
-      { new: true },
-    );
-    if (!user) throw new NotFoundException('User not found');
-    return user;
-  }
+  userId: string,
+  plan: string,
+  expiresAt: Date | null,
+): Promise<UserDocument> {
+  const user = await this.userModel.findByIdAndUpdate(
+    userId,
+    { $set: { subscriptionPlan: plan, subscriptionExpiresAt: expiresAt } },
+    { new: true },
+  );
+  if (!user) throw new NotFoundException('User not found');
+  return user;
+}
 }
