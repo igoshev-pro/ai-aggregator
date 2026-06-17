@@ -35,7 +35,7 @@ export class AiProvidersController {
     private readonly aiProvidersService: AiProvidersService,
     @Inject(forwardRef(() => BillingService))
     private readonly billingService: BillingService,
-  ) {}
+  ) { }
 
 
 
@@ -98,7 +98,9 @@ export class AiProvidersController {
           uiParameters: m.uiParameters || [],
 
 
-
+          // 🆕 Эти 2 строки — НОВЫЕ
+          charBasedPricing: (m as any).charBasedPricing || false,
+          pricePerThousandChars: (m as any).pricePerThousandChars || 0,
 
           // ⚠️ DEPRECATED — оставляем для обратной совместимости
           // Старый фронт может использовать tokenCost — отдаём avgCost
@@ -179,7 +181,9 @@ export class AiProvidersController {
         // 🆕 Pricing matrix (для media-моделей)
         pricingMatrix: model.pricingMatrix || [],
 
-
+        // 🆕 Эти 2 строки — НОВЫЕ
+        charBasedPricing: (model as any).charBasedPricing || false,
+        pricePerThousandChars: (model as any).pricePerThousandChars || 0,
 
 
         // ⚠️ DEPRECATED

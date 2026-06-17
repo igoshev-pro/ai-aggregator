@@ -135,13 +135,15 @@ export interface ModelPreviewCost {
   avgCostInTokens: number;
   minCostInTokens: number;
   maxCostInTokens?: number;
-  pricingType: 'per_token' | 'matrix' | 'fixed';
+  pricingType: 'per_token' | 'matrix' | 'fixed' | 'per_chars';
   details: {
     pricePerMillionInput?: number;
     pricePerMillionOutput?: number;
     avgTokensPerRequest?: number;
     min?: number;
     max?: number;
+    // 🆕 Для char-based моделей (ElevenLabs)
+    pricePerThousandChars?: number;
   };
 }
 
@@ -2192,6 +2194,34 @@ export class BillingService implements OnApplicationBootstrap {
   private async buildPreviewFromModel(
     model: any,
   ): Promise<ModelPreviewCost> {
+    // ─── 🆕 CHAR-BASED PRICING (ElevenLabs TTS/Dialogue) ─────
+    // Цена считается за 1000 символов входного текста.
+    // Для каталога показываем цену за 1000 символов как "среднюю",
+    // а минимум — model.minTokenCost (защитный минимум за вызов).
+    if (model.charBasedPricing && Number(model.pricePerThousandChars) > 0) {
+      const pricePerK = Number(model.pricePerThousandChars);
+      const minCost = Number(model.minTokenCost) > 0
+        ? finalizeTokenCost(Number(model.minTokenCost))
+        : finalizeTokenCost(0.5);
+
+      return {
+        // avgCost = цена за 1000 символов (это и есть "ориентир" для UI)
+        avgCostInTokens: finalizeTokenCost(pricePerK),
+        // min = защитный минимум за вызов
+        minCostInTokens: minCost,
+        // max не показываем (зависит от длины текста)
+        pricingType: 'per_token',
+        details: {
+          pricePerMillionInput: 0,
+          pricePerMillionOutput: 0,
+          // 🆕 кладём цену за 1000 символов в details
+          // фронт может прочитать details.pricePerThousandChars
+          // (через any-каст, т.к. поля нет в ModelPreviewCost.details)
+          ...({ pricePerThousandChars: pricePerK } as any),
+        },
+      };
+    }
+
     // ─── TEXT ─────────────────────────────────────────────────
     if (model.type === 'text') {
       const inputPrice =
