@@ -2032,20 +2032,21 @@ export class BillingService implements OnApplicationBootstrap {
       const cachedUsed = Math.min(cachedTokens ?? 0, inputUsed);
       const billableInput = Math.max(inputUsed - cachedUsed, 0);
 
-      const inputCostUsd =
+      // 🆕 pricePerMillionInputTokens / pricePerMillionOutputTokens хранят
+      // сразу СПИЧКИ (🔥) за 1M токенов модели — никаких лишних конверсий.
+      // Формула цены уже включает маржу × курс рубля × цена спички.
+      const inputTokensCost =
         (billableInput * (model.pricePerMillionInputTokens ?? 0)) / 1_000_000;
-      const cachedCostUsd =
+      const cachedTokensCost =
         (cachedUsed *
           (model.pricePerMillionInputTokens ?? 0) *
           0.1) /
         1_000_000;
-      const outputCostUsd =
+      const outputTokensCost =
         (outputUsed * (model.pricePerMillionOutputTokens ?? 0)) / 1_000_000;
 
-      const totalUsd = inputCostUsd + cachedCostUsd + outputCostUsd;
-
-      const tokensPerDollar = model.tokensPerDollar || 1000;
-      let costInTokens = totalUsd * tokensPerDollar;
+      let costInTokens =
+        inputTokensCost + cachedTokensCost + outputTokensCost;
 
       // Учёт web_search
       if (params?.useWebSearch && model.webSearchCostInTokens) {
@@ -2055,8 +2056,20 @@ export class BillingService implements OnApplicationBootstrap {
       const minCost = model.minTokenCost || MIN_CHARGE_TOKENS;
       const finalCost = finalizeTokenCost(Math.max(minCost, costInTokens));
 
+      // Для аналитики маржи — реальная себестоимость у провайдера в $
+      const providerInputUsd =
+        (billableInput *
+          ((model as any).providerCostPerMillionInput ?? 0)) /
+        1_000_000;
+      const providerOutputUsd =
+        (outputUsed *
+          ((model as any).providerCostPerMillionOutput ?? 0)) /
+        1_000_000;
+      const costInDollars =
+        Math.round((providerInputUsd + providerOutputUsd) * 1000) / 1000;
+
       return {
-        costInDollars: Math.round(totalUsd * 1000) / 1000,
+        costInDollars,
         costInTokens: finalCost,
         matchedTier: undefined,
       };
