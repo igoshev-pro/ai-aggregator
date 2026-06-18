@@ -97,7 +97,7 @@ export class GenerationService {
     @Inject(forwardRef(() => BillingService))
     private billingService: BillingService,
     private pricingService: PricingService,
-  ) {}
+  ) { }
 
 
   // ═══════════════════════════════════════════════════════════════
@@ -253,6 +253,11 @@ export class GenerationService {
         costInTokens,
         'generation_reserve',
       );
+
+      await this.generationModel.updateOne(
+        { _id: generation._id },
+        { $set: { tokensDeducted: true } },
+      );
     }
 
     const p = generation.params as any;
@@ -397,6 +402,11 @@ export class GenerationService {
         userId,
         costInTokens,
         'generation_reserve',
+      );
+
+      await this.generationModel.updateOne(
+        { _id: generation._id },
+        { $set: { tokensDeducted: true } },
       );
     }
 
@@ -547,6 +557,11 @@ export class GenerationService {
         costInTokens,
         'generation_reserve',
       );
+
+      await this.generationModel.updateOne(
+        { _id: generation._id },
+        { $set: { tokensDeducted: true } },
+      );
     }
 
     const p = generation.params as any;
@@ -611,7 +626,7 @@ export class GenerationService {
   }
 
 
-      // ─── РАСЧЁТ ЦЕНЫ (для preview на фронте) ────────────────────
+  // ─── РАСЧЁТ ЦЕНЫ (для preview на фронте) ────────────────────
 
   /**
    * 🆕 Принимает userId — чтобы PricingService мог вернуть 0 спичек,
@@ -777,6 +792,7 @@ export class GenerationService {
         _id: generationId,
         isRefunded: { $ne: true },
         billingRecorded: { $ne: true },
+        tokensDeducted: true, 
       },
       { $set: { isRefunded: true } },
       { new: true },
@@ -885,8 +901,7 @@ export class GenerationService {
       );
 
       this.logger.log(
-        `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${
-          isFree ? ' (free)' : ''
+        `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${isFree ? ' (free)' : ''
         } | gen=${generationId}`,
       );
     } catch (err: any) {

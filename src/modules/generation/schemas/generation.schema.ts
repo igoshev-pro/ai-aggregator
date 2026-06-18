@@ -135,6 +135,9 @@ export class Generation {
   @Prop({ default: false })
   billingRecorded: boolean;
 
+  @Prop({ default: false })
+  tokensDeducted: boolean;   // токены реально списаны с баланса
+
   @Prop()
   startedAt: Date;
 
