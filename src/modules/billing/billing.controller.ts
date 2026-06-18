@@ -215,6 +215,42 @@ export class BillingController {
     throw new BadRequestException('Invalid purchaseType');
   }
 
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 Free models quota (pre-flight для фронта)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Квота по бесплатным моделям подписки.
+   *
+   * Используется фронтом ДО отправки запроса на генерацию, чтобы:
+   * - показывать "осталось X/Y" рядом с моделью
+   * - блокировать Send при исчерпанном лимите
+   * - показывать таймер до сброса
+   *
+   * @param modelSlug — опционально: если указан, возвращает данные только
+   *                    по этой модели. Иначе — по всем free-моделям плана.
+   */
+  @Get('free-models/quota')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Get free models usage quota for current user',
+    description:
+      'Returns hourly/daily usage and limits for free models of the user subscription plan. ' +
+      'If modelSlug query param is provided, returns data only for that model.',
+  })
+  async getFreeModelsQuota(
+    @CurrentUser('sub') userId: string,
+    @Query('modelSlug') modelSlug?: string,
+  ) {
+    const data = await this.billingService.getFreeQuotaForUser(
+      userId,
+      modelSlug,
+    );
+    return { success: true, data };
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // Транзакции
   // ═══════════════════════════════════════════════════════════════

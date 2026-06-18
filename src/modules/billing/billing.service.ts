@@ -518,6 +518,221 @@ export class BillingService implements OnApplicationBootstrap {
     };
   }
 
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 Pre-flight квота для фронта (Commit 3)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Возвращает квоту по free-моделям для конкретного пользователя.
+   *
+   * Используется фронтом ДО отправки запроса на генерацию, чтобы:
+   *  - показать "осталось 7/10" рядом с моделью
+   *  - заблокировать кнопку Send когда лимит исчерпан
+   *  - показать таймер до сброса лимита
+   *
+   * Источник счётчиков — те же транзакции с metadata.freeAccess=true,
+   * что использует checkFreeModelAccess() при списании →
+   * расхождений между UI и реальным списанием не будет.
+   *
+   * @param userId — текущий пользователь
+   * @param modelSlug — если задан, возвращает данные только по этой модели;
+   *                   иначе — по всем free-моделям плана
+   */
+  async getFreeQuotaForUser(
+    userId: string,
+    modelSlug?: string,
+  ): Promise<{
+    plan: SubscriptionPlan | string;
+    serverTime: string; // ISO для синхронизации часов фронта
+    models: Array<{
+      modelSlug: string;
+      displayName: string;
+      isFreeInPlan: boolean;
+      hourlyLimit: number | null;
+      dailyLimit: number | null;
+      hourlyUsed: number;
+      dailyUsed: number;
+      hourlyRemaining: number | null;
+      dailyRemaining: number | null;
+      canUse: boolean;
+      limitExceeded: boolean;
+      resetAt: string | null; // ISO ближайшего сброса (часовой или суточный)
+      requiredParams: Record<string, any> | null;
+    }>;
+  }> {
+    const user = await this.usersService.findById(userId);
+    const planConfig = await this.getPlanConfig(user.subscriptionPlan);
+    const now = new Date();
+
+    // Если у юзера нет плана с free-моделями
+    if (!planConfig || !planConfig.freeModels || planConfig.freeModels.length === 0) {
+      // Если запросили конкретную модель — отдадим её как "не в плане"
+      if (modelSlug) {
+        return {
+          plan: user.subscriptionPlan,
+          serverTime: now.toISOString(),
+          models: [
+            {
+              modelSlug,
+              displayName: modelSlug,
+              isFreeInPlan: false,
+              hourlyLimit: null,
+              dailyLimit: null,
+              hourlyUsed: 0,
+              dailyUsed: 0,
+              hourlyRemaining: null,
+              dailyRemaining: null,
+              canUse: false,
+              limitExceeded: false,
+              resetAt: null,
+              requiredParams: null,
+            },
+          ],
+        };
+      }
+      return {
+        plan: user.subscriptionPlan,
+        serverTime: now.toISOString(),
+        models: [],
+      };
+    }
+
+    // Выбираем какие модели обсчитывать
+    const targetModels = modelSlug
+      ? planConfig.freeModels.filter((fm) => fm.modelSlug === modelSlug)
+      : planConfig.freeModels;
+
+    // Если фронт запросил конкретную модель, а её нет в плане —
+    // отдадим "isFreeInPlan: false" по тому slug-у что запросили
+    if (modelSlug && targetModels.length === 0) {
+      return {
+        plan: user.subscriptionPlan,
+        serverTime: now.toISOString(),
+        models: [
+          {
+            modelSlug,
+            displayName: modelSlug,
+            isFreeInPlan: false,
+            hourlyLimit: null,
+            dailyLimit: null,
+            hourlyUsed: 0,
+            dailyUsed: 0,
+            hourlyRemaining: null,
+            dailyRemaining: null,
+            canUse: false,
+            limitExceeded: false,
+            resetAt: null,
+            requiredParams: null,
+          },
+        ],
+      };
+    }
+
+    // Границы временных окон
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+
+    // Параллельно считаем потребление для каждой модели
+    const results = await Promise.all(
+      targetModels.map(async (fm) => {
+        const needHourly = fm.hourlyLimit !== null;
+        const needDaily = fm.dailyLimit !== null;
+
+        const [hourlyUsed, dailyUsed] = await Promise.all([
+          needHourly
+            ? this.transactionModel.countDocuments({
+                userId: new Types.ObjectId(userId),
+                type: TransactionType.GENERATION,
+                modelSlug: fm.modelSlug,
+                createdAt: { $gte: hourAgo },
+                'metadata.freeAccess': true,
+              })
+            : Promise.resolve(0),
+          needDaily
+            ? this.transactionModel.countDocuments({
+                userId: new Types.ObjectId(userId),
+                type: TransactionType.GENERATION,
+                modelSlug: fm.modelSlug,
+                createdAt: { $gte: dayStart },
+                'metadata.freeAccess': true,
+              })
+            : Promise.resolve(0),
+        ]);
+
+        // Безлимит (оба null) → всегда canUse=true
+        if (!needHourly && !needDaily) {
+          return {
+            modelSlug: fm.modelSlug,
+            displayName: fm.displayName,
+            isFreeInPlan: true,
+            hourlyLimit: null,
+            dailyLimit: null,
+            hourlyUsed: 0,
+            dailyUsed: 0,
+            hourlyRemaining: null,
+            dailyRemaining: null,
+            canUse: true,
+            limitExceeded: false,
+            resetAt: null,
+            requiredParams: fm.requiredParams || null,
+          };
+        }
+
+        const hourlyRemaining = needHourly
+          ? Math.max(0, (fm.hourlyLimit as number) - hourlyUsed)
+          : null;
+        const dailyRemaining = needDaily
+          ? Math.max(0, (fm.dailyLimit as number) - dailyUsed)
+          : null;
+
+        const hourlyExhausted = needHourly && hourlyUsed >= (fm.hourlyLimit as number);
+        const dailyExhausted = needDaily && dailyUsed >= (fm.dailyLimit as number);
+        const limitExceeded = hourlyExhausted || dailyExhausted;
+
+        // Время сброса: берём ближайшее из применимых
+        let resetAt: Date | null = null;
+        if (hourlyExhausted) {
+          const r = new Date(now);
+          r.setMinutes(0, 0, 0);
+          r.setHours(r.getHours() + 1);
+          resetAt = r;
+        }
+        if (dailyExhausted) {
+          const r = new Date(now);
+          r.setHours(0, 0, 0, 0);
+          r.setDate(r.getDate() + 1);
+          // Если и часовой исчерпан — берём более ранний из двух
+          if (!resetAt || r < resetAt) resetAt = r;
+        }
+
+        return {
+          modelSlug: fm.modelSlug,
+          displayName: fm.displayName,
+          isFreeInPlan: true,
+          hourlyLimit: fm.hourlyLimit,
+          dailyLimit: fm.dailyLimit,
+          hourlyUsed,
+          dailyUsed,
+          hourlyRemaining,
+          dailyRemaining,
+          canUse: !limitExceeded,
+          limitExceeded,
+          resetAt: resetAt ? resetAt.toISOString() : null,
+          requiredParams: fm.requiredParams || null,
+        };
+      }),
+    );
+
+    return {
+      plan: user.subscriptionPlan,
+      serverTime: now.toISOString(),
+      models: results,
+    };
+  }
+
   /**
    * 🆕 Ручная активация подписки админом.
    * Используется AdminController для тестов и компенсаций.
