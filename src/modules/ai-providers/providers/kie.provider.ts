@@ -576,6 +576,13 @@ export class KieProvider extends BaseProvider {
     if (aspectRatio === 'auto') aspectRatio = 'Auto';
     if (!['16:9', '9:16', 'Auto'].includes(aspectRatio)) aspectRatio = '16:9';
 
+    // ─── Звук: фронт шлёт generateAudio (Veo) или sound (общий тумблер) ───
+    // По умолчанию выключен (false), если флаг не пришёл.
+    const enableAudio =
+      r.generateAudio !== undefined
+        ? !!r.generateAudio
+        : (r.sound !== undefined ? !!r.sound : false);
+
     // ─── Сборка body ───
     const body: Record<string, any> = {
       prompt: request.prompt,
@@ -584,6 +591,7 @@ export class KieProvider extends BaseProvider {
       aspect_ratio: aspectRatio,
       duration,
       resolution,
+      enableAudio,             // 🆕 управление звуком (по умолчанию выключен)
       enableTranslation: true, // поддержка не-английских промптов
     };
 
@@ -603,7 +611,7 @@ export class KieProvider extends BaseProvider {
 
     this.logger.debug(
       `KIE Veo generate: model=${model}, type=${generationType}, ` +
-      `dur=${duration}, res=${resolution}, ar=${aspectRatio}, ` +
+      `dur=${duration}, res=${resolution}, ar=${aspectRatio}, audio=${enableAudio}, ` +
       `imgs=${body.imageUrls?.length ?? 0}, ` +
       `body=${JSON.stringify(body).substring(0, 400)}`,
     );
@@ -1845,7 +1853,7 @@ export class KieProvider extends BaseProvider {
           `operation=${r.operation || 'generate'}`,
         );
 
-                const operation = r.operation || 'generate';
+        const operation = r.operation || 'generate';
 
         // ═══════════════════════════════════════════════════════
         // 🆕 EXTEND — отдельный эндпоинт KIE /api/v1/generate/extend
