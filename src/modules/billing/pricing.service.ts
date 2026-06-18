@@ -1,5 +1,5 @@
 // src/modules/billing/pricing.service.ts
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -7,6 +7,7 @@ import {
   ModelDocument,
   PricingRule,
 } from '../ai-providers/schemas/model.schema';
+import { BillingService } from './billing.service';
 
 export interface PriceCalculation {
   costInTokens: number;
@@ -52,18 +53,23 @@ export class PricingService {
 
   constructor(
     @InjectModel(AIModel.name) private modelModel: Model<ModelDocument>,
+    @Inject(forwardRef(() => BillingService))
+    private billingService: BillingService,
   ) {}
 
   /**
    * Главный метод расчёта цены.
    *
-   * @param modelSlug - slug модели (например, 'midjourney')
-   * @param params    - параметры генерации, влияющие на цену
-   *                    (mode, resolution, duration, hasInputImage, etc.)
+   * @param modelSlug - slug модели
+   * @param params    - параметры генерации
+   * @param userId    - 🆕 опционально: если передан, проверяется free-доступ
+   *                    по подписке юзера и возвращается costInTokens=0
+   *                    при попадании в план.
    */
   async calculatePrice(
     modelSlug: string,
     params: Record<string, any> = {},
+    userId?: string,
   ): Promise<PriceCalculation> {
     const model = await this.modelModel.findOne({
       slug: modelSlug,
@@ -75,6 +81,52 @@ export class PricingService {
         `Model "${modelSlug}" not found or inactive`,
       );
     }
+
+    // 🆕 ПРОВЕРКА FREE-ДОСТУПА (если передан userId)
+    // Если модель бесплатна для подписки юзера и параметры подходят,
+    // возвращаем 0 спичек. Лимиты часовые/дневные тут НЕ проверяем —
+    // фронт показывает "бесплатно", а реальную проверку лимита делает
+    // GenerationService.resolveFreeAccess при отправке генерации.
+    if (userId) {
+      try {
+        const freeMap =
+          await this.billingService.getFreeModelsForUser(userId);
+        const freeEntry = freeMap.get(modelSlug);
+
+        if (freeEntry) {
+          const matchParams = this.matchRequiredParams(
+            freeEntry.requiredParams,
+            params,
+          );
+          if (matchParams) {
+            const breakdown = {
+              modelSlug: model.slug,
+              modelName: model.name,
+              type: model.type,
+              rule: 'free-by-subscription',
+              params,
+              costInTokens: 0,
+              costInDollars: 0,
+              fallback: false,
+            };
+            return {
+              costInTokens: 0,
+              costInDollars: 0,
+              fallback: false,
+              breakdown,
+            };
+          }
+        }
+      } catch (err) {
+        // Не валим расчёт цены если billing недоступен —
+        // просто продолжаем с обычной (платной) ценой.
+        this.logger.warn(
+          `Free-access check failed for user ${userId}, model ${modelSlug}: ${(err as any).message}`,
+        );
+      }
+    }
+
+    // ─── 🆕 ПОСИМВОЛЬНАЯ
 
         // ─── 🆕 ПОСИМВОЛЬНАЯ ТАРИФИКАЦИЯ (charBasedPricing) ───
     // Используется для ElevenLabs TTS / Dialogue.
@@ -252,6 +304,32 @@ export class PricingService {
       fallback: true,
       breakdown,
     };
+  }
+
+    /**
+   * 🆕 Нестрогое сравнение requiredParams с params (для free-доступа).
+   * Дублирует логику из BillingService.matchRequiredParams, чтобы
+   * избежать утечки приватных методов наружу.
+   *
+   * Если requiredParams пустой/undefined → совпадает всегда.
+   * Иначе — каждый ключ из required должен совпасть с params (== для number/string/bool).
+   */
+  private matchRequiredParams(
+    required: Record<string, any> | undefined | null,
+    actual?: Record<string, any>,
+  ): boolean {
+    if (!required || Object.keys(required).length === 0) {
+      return true;
+    }
+    if (!actual) return false;
+
+    for (const key of Object.keys(required)) {
+      const expected = required[key];
+      const got = actual[key];
+      // eslint-disable-next-line eqeqeq
+      if (expected != got) return false;
+    }
+    return true;
   }
 
   // ─── Private helpers ────────────────────────────────────────────

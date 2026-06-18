@@ -176,6 +176,10 @@ export class AdminService {
   /**
    * Детали одного пользователя + последние транзакции и генерации.
    */
+    /**
+   * Детали одного пользователя + последние транзакции и генерации.
+   * 🆕 Дополнительно возвращает активную подписку и состояние free-лимитов.
+   */
   async getUserById(userId: string) {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user id');
@@ -229,6 +233,80 @@ export class AdminService {
         .exec(),
     ]);
 
+    // 🆕 Активная подписка + конфиг плана + использование free-моделей
+    let subscriptionInfo: any = null;
+    try {
+      const planConfig = await this.billingService.getPlanConfigPublic(
+        user.subscriptionPlan,
+      );
+
+      // Активная запись Subscription из коллекции (для аудита: source/admin/promo)
+      const activeSubscription = await this.billingService
+        .getActiveSubscription(userId)
+        .catch(() => null);
+
+      const isActive =
+        user.subscriptionPlan !== 'free' &&
+        !!user.subscriptionExpiresAt &&
+        new Date(user.subscriptionExpiresAt) > new Date();
+
+      // Использование free-моделей (для каждой модели в плане)
+      const freeModelsUsage: Array<{
+        modelSlug: string;
+        displayName: string;
+        hourlyLimit: number | null;
+        dailyLimit: number | null;
+        hourlyUsed: number;
+        dailyUsed: number;
+        requiredParams?: Record<string, any> | null;
+      }> = [];
+
+      if (planConfig?.freeModels?.length) {
+        for (const fm of planConfig.freeModels) {
+          const usage = await this.billingService
+            .getFreeAccessUsage(userId, fm.modelSlug)
+            .catch(() => null);
+          if (!usage) continue;
+
+          freeModelsUsage.push({
+            modelSlug: fm.modelSlug,
+            displayName: fm.displayName,
+            hourlyLimit: usage.hourlyLimit,
+            dailyLimit: usage.dailyLimit,
+            hourlyUsed: usage.hourlyUsed,
+            dailyUsed: usage.dailyUsed,
+            requiredParams: usage.requiredParams,
+          });
+        }
+      }
+
+      subscriptionInfo = {
+        plan: user.subscriptionPlan,
+        planName: planConfig?.name || (user.subscriptionPlan === 'free' ? 'Free' : null),
+        expiresAt: user.subscriptionExpiresAt || null,
+        isActive,
+        tokensPerMonth: planConfig?.tokensPerMonth || 0,
+        bonusTokens: planConfig?.bonusTokens || 0,
+        modelsAccess: planConfig?.modelsAccess || 'limited',
+        // Источник активации (admin/payment/promo) из последней Subscription записи
+        source: activeSubscription
+          ? (activeSubscription as any).metadata?.adminActivated
+            ? 'admin'
+            : (activeSubscription as any).metadata?.activatedByPromo
+              ? 'promo'
+              : 'payment'
+          : null,
+        startedAt: activeSubscription?.startDate || null,
+        adminReason:
+          (activeSubscription as any)?.metadata?.reason || null,
+        freeModels: freeModelsUsage,
+      };
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to build subscriptionInfo for user ${userId}: ${err.message}`,
+      );
+    }
+
     return {
       user,
       stats: {
@@ -236,6 +314,7 @@ export class AdminService {
         transactionsCount,
         invitedCount: invitedUsers.length,
       },
+      subscription: subscriptionInfo, // 🆕
       recentTransactions,
       recentGenerations,
       referrer,
@@ -461,6 +540,70 @@ export class AdminService {
     this.logger.warn(`User ${userId} deleted by admin ${adminId}`);
 
     return { deleted: true, userId };
+  }
+
+    // ─── Subscription management ───────────────────────────────────
+
+  /**
+   * 🆕 Ручная установка/снятие подписки для пользователя.
+   * Делегирует BillingService.adminActivateSubscription, который:
+   *  - создаёт запись в коллекции Subscription (для аудита)
+   *  - обновляет user.subscriptionPlan + user.subscriptionExpiresAt
+   *  - опционально начисляет токены плана
+   */
+  async setUserSubscription(
+    adminId: string,
+    userId: string,
+    body: {
+      plan: any; // SubscriptionPlan
+      durationDays?: number;
+      expiresAt?: string;
+      grantTokens?: boolean;
+      reason?: string;
+    },
+  ) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user id');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.isDeleted) {
+      throw new BadRequestException(
+        'Cannot set subscription for deleted user',
+      );
+    }
+
+        const result = await this.billingService.adminActivateSubscription(
+      adminId,
+      userId,
+      body.plan,
+      {
+        durationDays: body.durationDays,
+        expiresAt: body.expiresAt ? new Date(body.expiresAt) : undefined,
+        grantTokens: !!body.grantTokens,
+        reason: body.reason,
+      },
+    );
+
+    // Перечитываем юзера (балансы могли измениться если grantTokens=true)
+    const fresh = await this.userModel
+      .findById(userId)
+      .select('-__v -passwordHash')
+      .lean()
+      .exec();
+
+    return {
+      user: fresh,
+      subscription: {
+        plan: result.plan,
+        expiresAt: result.expiresAt
+          ? result.expiresAt.toISOString()
+          : null,
+        grantedTokens: result.grantedTokens,
+        grantedBonusTokens: result.grantedBonusTokens,
+      },
+    };
   }
 
   // ─── Providers ──────────────────────────────────────────────────

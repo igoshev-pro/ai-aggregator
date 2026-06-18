@@ -611,10 +611,18 @@ export class GenerationService {
   }
 
 
-    // ─── РАСЧЁТ ЦЕНЫ (для preview на фронте) ────────────────────
+      // ─── РАСЧЁТ ЦЕНЫ (для preview на фронте) ────────────────────
 
-  async calculatePrice(modelSlug: string, params: Record<string, any>) {
-    return this.pricingService.calculatePrice(modelSlug, params);
+  /**
+   * 🆕 Принимает userId — чтобы PricingService мог вернуть 0 спичек,
+   * если модель бесплатна по подписке пользователя.
+   */
+  async calculatePrice(
+    modelSlug: string,
+    params: Record<string, any>,
+    userId?: string,
+  ) {
+    return this.pricingService.calculatePrice(modelSlug, params, userId);
   }
 
 

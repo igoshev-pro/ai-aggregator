@@ -20,6 +20,7 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { UserRole } from '@/common/interfaces';
 import { CreateModelDto, ModelsFilterDto, UpdateModelDto } from './dto/model.dto';
 import { UpdateTokenomicsDto } from './dto/tokenomics.dto';
+import { SetSubscriptionDto } from './dto/subscription.dto';
 
 @ApiTags('Admin')
 @ApiBearerAuth()
@@ -27,7 +28,7 @@ import { UpdateTokenomicsDto } from './dto/tokenomics.dto';
 @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(private readonly adminService: AdminService) { }
 
   // ─── Access check ───────────────────────────────────────────────
 
@@ -142,6 +143,26 @@ export class AdminController {
     @Param('id') userId: string,
   ) {
     const data = await this.adminService.deleteUser(adminId, userId);
+    return { success: true, data };
+  }
+
+  @Put('users/:id/subscription')
+  @ApiOperation({
+    summary: 'Set/remove user subscription manually (admin)',
+    description:
+      'Активирует подписку плана на N дней или до даты. plan=free снимает подписку. ' +
+      'По умолчанию токены не начисляются (для тестирования).',
+  })
+  async setSubscription(
+    @CurrentUser('sub') adminId: string,
+    @Param('id') userId: string,
+    @Body() body: SetSubscriptionDto,
+  ) {
+    const data = await this.adminService.setUserSubscription(
+      adminId,
+      userId,
+      body,
+    );
     return { success: true, data };
   }
 

@@ -193,9 +193,9 @@ const FALLBACK_SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
     bonusTokens: 0,
     modelsAccess: 'full',
     freeModels: [
-      { modelSlug: 'gpt-oss-120b',     displayName: 'gpt-oss-120b',      hourlyLimit: 10, dailyLimit: 60 },
+      { modelSlug: 'gpt-oss-120b', displayName: 'gpt-oss-120b', hourlyLimit: 10, dailyLimit: 60 },
       { modelSlug: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', hourlyLimit: 10, dailyLimit: 60 },
-      { modelSlug: 'grok-4.20',        displayName: 'xAI: Grok 4.20',    hourlyLimit: 10, dailyLimit: 60 },
+      { modelSlug: 'grok-4.20', displayName: 'xAI: Grok 4.20', hourlyLimit: 10, dailyLimit: 60 },
     ],
     features: {
       maxDailyGenerations: 200,
@@ -218,9 +218,9 @@ const FALLBACK_SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
     bonusTokens: 50,
     modelsAccess: 'full',
     freeModels: [
-      { modelSlug: 'gpt-oss-120b',     displayName: 'gpt-oss-120b',      hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'gpt-oss-120b', displayName: 'gpt-oss-120b', hourlyLimit: null, dailyLimit: null },
       { modelSlug: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', hourlyLimit: null, dailyLimit: null },
-      { modelSlug: 'grok-4.20',        displayName: 'xAI: Grok 4.20',    hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'grok-4.20', displayName: 'xAI: Grok 4.20', hourlyLimit: null, dailyLimit: null },
     ],
     features: {
       maxDailyGenerations: 999999,
@@ -264,9 +264,9 @@ const FALLBACK_SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
         requiredParams: { mode: 'draft' }, // 🆕 только режим "draft" бесплатно
       },
       // text — безлимит
-      { modelSlug: 'gpt-oss-120b',      displayName: 'gpt-oss-120b',      hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'gpt-oss-120b', displayName: 'gpt-oss-120b', hourlyLimit: null, dailyLimit: null },
       { modelSlug: 'deepseek-v4-flash', displayName: 'DeepSeek V4 Flash', hourlyLimit: null, dailyLimit: null },
-      { modelSlug: 'grok-4.20',         displayName: 'xAI: Grok 4.20',    hourlyLimit: null, dailyLimit: null },
+      { modelSlug: 'grok-4.20', displayName: 'xAI: Grok 4.20', hourlyLimit: null, dailyLimit: null },
     ],
     features: {
       maxDailyGenerations: 999999,
@@ -325,7 +325,7 @@ export class BillingService implements OnApplicationBootstrap {
     private freedompayProvider: FreedomPayProvider,
     private tochkaProvider: TochkaProvider,
     private heleketProvider: HeleketProvider,
-  ) {}
+  ) { }
 
 
   async onApplicationBootstrap() {
@@ -410,6 +410,284 @@ export class BillingService implements OnApplicationBootstrap {
     return FALLBACK_SUBSCRIPTION_PLANS[key] || null;
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 Публичные хелперы для других модулей (Models, Admin)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Публичная обёртка над приватным getPlanConfig.
+   * Используется AdminService и ModelsService для построения UI.
+   */
+  async getPlanConfigPublic(
+    plan: SubscriptionPlan | string,
+  ): Promise<SubscriptionPlanConfig | null> {
+    return this.getPlanConfig(plan);
+  }
+
+  /**
+   * Возвращает map free-моделей для плана текущего пользователя.
+   * Ключ — modelSlug, значение — FreeModelAccess (с лимитами и requiredParams).
+   *
+   * Если у юзера несколько записей с одним slug (в теории) — берётся первая.
+   */
+  async getFreeModelsForUser(
+    userId: string,
+  ): Promise<Map<string, FreeModelAccess>> {
+    const user = await this.usersService.findById(userId);
+    const planConfig = await this.getPlanConfig(user.subscriptionPlan);
+
+    const map = new Map<string, FreeModelAccess>();
+    if (!planConfig) return map;
+
+    for (const fm of planConfig.freeModels) {
+      if (!map.has(fm.modelSlug)) {
+        map.set(fm.modelSlug, fm);
+      }
+    }
+    return map;
+  }
+
+  /**
+   * Текущее использование free-лимитов пользователя по конкретной модели.
+   * Используется AdminService для отображения "осталось X из Y" в карточке юзера.
+   */
+  async getFreeAccessUsage(
+    userId: string,
+    modelSlug: string,
+  ): Promise<{
+    inPlan: boolean;
+    hourlyLimit: number | null;
+    dailyLimit: number | null;
+    hourlyUsed: number;
+    dailyUsed: number;
+    requiredParams?: Record<string, any> | null;
+  }> {
+    const user = await this.usersService.findById(userId);
+    const planConfig = await this.getPlanConfig(user.subscriptionPlan);
+
+    if (!planConfig) {
+      return {
+        inPlan: false,
+        hourlyLimit: null,
+        dailyLimit: null,
+        hourlyUsed: 0,
+        dailyUsed: 0,
+      };
+    }
+
+    const fm = planConfig.freeModels.find((m) => m.modelSlug === modelSlug);
+    if (!fm) {
+      return {
+        inPlan: false,
+        hourlyLimit: null,
+        dailyLimit: null,
+        hourlyUsed: 0,
+        dailyUsed: 0,
+      };
+    }
+
+    const now = new Date();
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+
+    const [hourlyUsed, dailyUsed] = await Promise.all([
+      this.transactionModel.countDocuments({
+        userId: new Types.ObjectId(userId),
+        type: TransactionType.GENERATION,
+        modelSlug,
+        createdAt: { $gte: hourAgo },
+        'metadata.freeAccess': true,
+      }),
+      this.transactionModel.countDocuments({
+        userId: new Types.ObjectId(userId),
+        type: TransactionType.GENERATION,
+        modelSlug,
+        createdAt: { $gte: dayStart },
+        'metadata.freeAccess': true,
+      }),
+    ]);
+
+    return {
+      inPlan: true,
+      hourlyLimit: fm.hourlyLimit,
+      dailyLimit: fm.dailyLimit,
+      hourlyUsed,
+      dailyUsed,
+      requiredParams: fm.requiredParams || null,
+    };
+  }
+
+  /**
+   * 🆕 Ручная активация подписки админом.
+   * Используется AdminController для тестов и компенсаций.
+   *
+   * - Создаёт запись в коллекции Subscription с metadata.adminActivated=true
+   * - Обновляет user.subscriptionPlan + user.subscriptionExpiresAt
+   * - Токены НЕ начисляются (по умолчанию), чтобы можно было тестировать
+   *   без накрутки баланса. Если grantTokens=true — начисляет tokensPerMonth + bonusTokens.
+   *
+   * @param plan — целевой план (если 'free' — снимаем подписку)
+   * @param durationDays — на сколько дней активировать
+   * @param expiresAt — точная дата окончания (приоритет над durationDays)
+   */
+  async adminActivateSubscription(
+    adminUserId: string,
+    targetUserId: string,
+    plan: SubscriptionPlan,
+    options: {
+      durationDays?: number;
+      expiresAt?: Date;
+      grantTokens?: boolean;
+      reason?: string;
+    } = {},
+  ): Promise<{
+    plan: SubscriptionPlan;
+    expiresAt: Date | null;
+    grantedTokens: number;
+    grantedBonusTokens: number;
+  }> {
+    // Снятие подписки
+    if (plan === SubscriptionPlan.FREE) {
+      // Деактивируем все активные подписки юзера (для аудита)
+      await this.subscriptionModel.updateMany(
+        {
+          userId: new Types.ObjectId(targetUserId),
+          isActive: true,
+        },
+        {
+          $set: { isActive: false },
+        },
+      );
+
+      await this.usersService.downgradeToFree(targetUserId);
+
+      this.logger.warn(
+        `[Admin] Subscription removed: user=${targetUserId} by admin=${adminUserId} reason="${options.reason || ''}"`,
+      );
+
+      return {
+        plan: SubscriptionPlan.FREE,
+        expiresAt: null,
+        grantedTokens: 0,
+        grantedBonusTokens: 0,
+      };
+    }
+
+    const effectivePlan = (PLAN_MIGRATION[plan] || plan) as SubscriptionPlan;
+    const planConfig = await this.getPlanConfig(effectivePlan);
+    if (!planConfig) {
+      throw new BadRequestException(`Invalid plan: ${plan}`);
+    }
+
+    // Вычисляем endDate
+    let endDate: Date;
+    if (options.expiresAt) {
+      endDate = new Date(options.expiresAt);
+      if (isNaN(endDate.getTime()) || endDate <= new Date()) {
+        throw new BadRequestException(
+          'expiresAt must be a valid future date',
+        );
+      }
+    } else {
+      const days = Number(options.durationDays);
+      if (!Number.isFinite(days) || days <= 0) {
+        throw new BadRequestException(
+          'durationDays must be a positive number (or provide expiresAt)',
+        );
+      }
+      endDate = new Date();
+      endDate.setDate(endDate.getDate() + days);
+    }
+
+    // Деактивируем старые активные подписки (чтобы не было двух одновременно)
+    await this.subscriptionModel.updateMany(
+      {
+        userId: new Types.ObjectId(targetUserId),
+        isActive: true,
+      },
+      {
+        $set: { isActive: false },
+      },
+    );
+
+    // Создаём новую запись для аудита
+    await this.subscriptionModel.create({
+      userId: new Types.ObjectId(targetUserId),
+      plan: effectivePlan,
+      startDate: new Date(),
+      endDate,
+      isActive: true,
+      tokensPerMonth: options.grantTokens ? planConfig.tokensPerMonth : 0,
+      bonusTokens: options.grantTokens ? planConfig.bonusTokens : 0,
+      metadata: {
+        adminActivated: true,
+        adminUserId,
+        reason: options.reason || '',
+        grantTokens: !!options.grantTokens,
+      },
+    });
+
+    // Обновляем user
+    await this.usersService.updateSubscription(
+      targetUserId,
+      effectivePlan,
+      endDate,
+    );
+
+    let grantedTokens = 0;
+    let grantedBonusTokens = 0;
+
+    if (options.grantTokens) {
+      if (planConfig.tokensPerMonth > 0) {
+        await this.usersService.addTokens(
+          targetUserId,
+          planConfig.tokensPerMonth,
+        );
+        grantedTokens = planConfig.tokensPerMonth;
+      }
+      if (planConfig.bonusTokens > 0) {
+        await this.usersService.addBonusTokens(
+          targetUserId,
+          planConfig.bonusTokens,
+        );
+        grantedBonusTokens = planConfig.bonusTokens;
+      }
+    }
+
+    // Транзакция-метка для истории
+    await this.createTransaction(targetUserId, {
+      type: TransactionType.ADMIN_ADJUSTMENT,
+      amount: grantedTokens + grantedBonusTokens,
+      description:
+        `Подписка ${effectivePlan.toUpperCase()} выдана администратором` +
+        (options.reason ? ` (${options.reason})` : '') +
+        (options.grantTokens
+          ? ` [+${grantedTokens}🔥 + ${grantedBonusTokens} бонус]`
+          : ' [без начисления токенов]'),
+      paymentStatus: PaymentStatus.COMPLETED,
+      metadata: {
+        adminActivated: true,
+        adminUserId,
+        plan: effectivePlan,
+        expiresAt: endDate.toISOString(),
+        grantTokens: !!options.grantTokens,
+        reason: options.reason || '',
+      },
+    });
+
+    this.logger.warn(
+      `[Admin] Subscription activated: user=${targetUserId} plan=${effectivePlan} until=${endDate.toISOString()} ` +
+      `tokens=${grantedTokens} bonus=${grantedBonusTokens} by admin=${adminUserId}`,
+    );
+
+    return {
+      plan: effectivePlan,
+      expiresAt: endDate,
+      grantedTokens,
+      grantedBonusTokens,
+    };
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // WEBHOOKS
@@ -520,14 +798,14 @@ export class BillingService implements OnApplicationBootstrap {
     const source: TokenPackageConfig[] =
       dbPacks.length > 0
         ? dbPacks.map((p) => ({
-            id: p.packageId,
-            tokens: p.tokens,
-            priceRub: p.priceRub,
-            label: p.label,
-            bonusPercent: p.bonusPercent,
-            popular: p.popular,
-            best: p.best,
-          }))
+          id: p.packageId,
+          tokens: p.tokens,
+          priceRub: p.priceRub,
+          label: p.label,
+          bonusPercent: p.bonusPercent,
+          popular: p.popular,
+          best: p.best,
+        }))
         : FALLBACK_TOKEN_PACKAGES;
 
     return source.map((pack) => {
@@ -572,7 +850,7 @@ export class BillingService implements OnApplicationBootstrap {
   }
 
 
-    // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // Планы подписки
   // ═══════════════════════════════════════════════════════════════
 
@@ -583,22 +861,22 @@ export class BillingService implements OnApplicationBootstrap {
     const entries: Array<[string, SubscriptionPlanConfig]> =
       dbPlans.length > 0
         ? dbPlans.map((p) => [
-            p.planKey,
-            {
-              name: p.name,
-              priceRub: p.priceRub,
-              tokensPerMonth: p.tokensPerMonth,
-              bonusTokens: p.bonusTokens,
-              modelsAccess: p.modelsAccess,
-              freeModels: (p.freeModels || []) as FreeModelAccess[],
-              features: p.features as any,
-              capabilities: p.capabilities || [],
-              description: p.description,
-              color: p.color,
-              icon: p.icon,
-              isPopular: p.isPopular,
-            },
-          ])
+          p.planKey,
+          {
+            name: p.name,
+            priceRub: p.priceRub,
+            tokensPerMonth: p.tokensPerMonth,
+            bonusTokens: p.bonusTokens,
+            modelsAccess: p.modelsAccess,
+            freeModels: (p.freeModels || []) as FreeModelAccess[],
+            features: p.features as any,
+            capabilities: p.capabilities || [],
+            description: p.description,
+            color: p.color,
+            icon: p.icon,
+            isPopular: p.isPopular,
+          },
+        ])
         : Object.entries(FALLBACK_SUBSCRIPTION_PLANS);
 
     for (const [planId, config] of entries) {
@@ -676,6 +954,9 @@ export class BillingService implements OnApplicationBootstrap {
     const planConfig = await this.getPlanConfig(user.subscriptionPlan);
 
     if (!planConfig) {
+      this.logger.debug(
+        `[FreeAccess] user=${userId} model=${modelSlug} plan=${user.subscriptionPlan} → no plan config`,
+      );
       return { isFree: false, reason: 'not_in_plan' };
     }
 
@@ -684,6 +965,9 @@ export class BillingService implements OnApplicationBootstrap {
       (fm) => fm.modelSlug === modelSlug,
     );
     if (candidates.length === 0) {
+      this.logger.debug(
+        `[FreeAccess] user=${userId} model=${modelSlug} plan=${user.subscriptionPlan} → not in freeModels list (free models: ${planConfig.freeModels.map((m) => m.modelSlug).join(', ') || 'none'})`,
+      );
       return { isFree: false, reason: 'not_in_plan' };
     }
 
@@ -694,9 +978,16 @@ export class BillingService implements OnApplicationBootstrap {
       null;
 
     if (!freeModel) {
-      // slug в плане есть, но params не подходят → платно
+      this.logger.debug(
+        `[FreeAccess] user=${userId} model=${modelSlug} plan=${user.subscriptionPlan} → params mismatch ` +
+        `(required=${JSON.stringify(candidates.map((c) => c.requiredParams))}, got=${JSON.stringify(params)})`,
+      );
       return { isFree: false, reason: 'not_in_plan' };
     }
+
+    this.logger.debug(
+      `[FreeAccess] user=${userId} model=${modelSlug} plan=${user.subscriptionPlan} → MATCH (limits: hourly=${freeModel.hourlyLimit}, daily=${freeModel.dailyLimit})`,
+    );
 
     // Безлимит → сразу free
     if (freeModel.hourlyLimit === null && freeModel.dailyLimit === null) {
@@ -712,21 +1003,21 @@ export class BillingService implements OnApplicationBootstrap {
     const [hourlyCount, dailyCount] = await Promise.all([
       freeModel.hourlyLimit !== null
         ? this.transactionModel.countDocuments({
-            userId: new Types.ObjectId(userId),
-            type: TransactionType.GENERATION,
-            modelSlug,
-            createdAt: { $gte: hourAgo },
-            'metadata.freeAccess': true,
-          })
+          userId: new Types.ObjectId(userId),
+          type: TransactionType.GENERATION,
+          modelSlug,
+          createdAt: { $gte: hourAgo },
+          'metadata.freeAccess': true,
+        })
         : Promise.resolve(0),
       freeModel.dailyLimit !== null
         ? this.transactionModel.countDocuments({
-            userId: new Types.ObjectId(userId),
-            type: TransactionType.GENERATION,
-            modelSlug,
-            createdAt: { $gte: dayStart },
-            'metadata.freeAccess': true,
-          })
+          userId: new Types.ObjectId(userId),
+          type: TransactionType.GENERATION,
+          modelSlug,
+          createdAt: { $gte: dayStart },
+          'metadata.freeAccess': true,
+        })
         : Promise.resolve(0),
     ]);
 
@@ -893,7 +1184,7 @@ export class BillingService implements OnApplicationBootstrap {
 
       this.logger.log(
         `🎟 Promo ${promoValidation.promo.code} applied to package ${pack.id}: ` +
-          `${pack.priceRub}₽ → ${finalPriceRub}₽ (+${promoBonusTokens}🔥)`,
+        `${pack.priceRub}₽ → ${finalPriceRub}₽ (+${promoBonusTokens}🔥)`,
       );
     }
 
@@ -925,8 +1216,8 @@ export class BillingService implements OnApplicationBootstrap {
         ),
         balanceAfter: roundTokens(
           finalUser.tokenBalance +
-            finalUser.bonusTokens +
-            (finalUser.cashbackBalance || 0),
+          finalUser.bonusTokens +
+          (finalUser.cashbackBalance || 0),
         ),
         metadata: {
           currency,
@@ -984,9 +1275,8 @@ export class BillingService implements OnApplicationBootstrap {
     await this.createTransaction(userId, {
       type: TransactionType.DEPOSIT,
       amount: totalTokens,
-      description: `Пополнение: ${pack.label}${
-        bonusTokensFromPack > 0 ? ` (+${bonusTokensFromPack} бонус)` : ''
-      }${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
+      description: `Пополнение: ${pack.label}${bonusTokensFromPack > 0 ? ` (+${bonusTokensFromPack} бонус)` : ''
+        }${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
       paymentStatus: PaymentStatus.PENDING,
       externalPaymentId: result.paymentId,
       paymentProvider: provider,
@@ -1003,12 +1293,12 @@ export class BillingService implements OnApplicationBootstrap {
         bonusTokens: bonusTokensFromPack,
         promoCodeApplied: promoValidation
           ? {
-              promoId: promoValidation.promo._id.toString(),
-              code: promoValidation.promo.code,
-              type: promoValidation.promo.type,
-              discountRub: promoValidation.discountRub,
-              bonusTokens: promoValidation.bonusTokens,
-            }
+            promoId: promoValidation.promo._id.toString(),
+            code: promoValidation.promo.code,
+            type: promoValidation.promo.type,
+            discountRub: promoValidation.discountRub,
+            bonusTokens: promoValidation.bonusTokens,
+          }
           : null,
       },
     });
@@ -1029,11 +1319,11 @@ export class BillingService implements OnApplicationBootstrap {
       },
       promo: promoValidation
         ? {
-            code: promoValidation.promo.code,
-            effectLabel: promoValidation.effectLabel,
-            discountRub: promoValidation.discountRub,
-            bonusTokens: promoValidation.bonusTokens,
-          }
+          code: promoValidation.promo.code,
+          effectLabel: promoValidation.effectLabel,
+          discountRub: promoValidation.discountRub,
+          bonusTokens: promoValidation.bonusTokens,
+        }
         : null,
     };
   }
@@ -1183,7 +1473,7 @@ export class BillingService implements OnApplicationBootstrap {
     if (!transaction) {
       this.logger.warn(
         `[${provider}] No pending tx for payment ${result.paymentId} ` +
-          `(already processed or wrong provider)`,
+        `(already processed or wrong provider)`,
       );
       return { processed: false };
     }
@@ -1205,15 +1495,15 @@ export class BillingService implements OnApplicationBootstrap {
     );
     await transaction.save();
 
-        // ─── ПРОМОКОД (бонусы + markUsed) ────────────────────────────
+    // ─── ПРОМОКОД (бонусы + markUsed) ────────────────────────────
     const promoApplied = transaction.metadata?.promoCodeApplied as
       | {
-          promoId: string;
-          code: string;
-          type: string;
-          discountRub: number;
-          bonusTokens: number;
-        }
+        promoId: string;
+        code: string;
+        type: string;
+        discountRub: number;
+        bonusTokens: number;
+      }
       | null
       | undefined;
 
@@ -1366,8 +1656,8 @@ export class BillingService implements OnApplicationBootstrap {
       const userFree = await this.usersService.findById(userId);
       const totalFree = roundTokens(
         userFree.tokenBalance +
-          userFree.bonusTokens +
-          (userFree.cashbackBalance || 0),
+        userFree.bonusTokens +
+        (userFree.cashbackBalance || 0),
       );
 
       await this.createTransaction(userId, {
@@ -1409,8 +1699,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     const userAfter = await this.usersService.deductTokens(
@@ -1420,8 +1710,8 @@ export class BillingService implements OnApplicationBootstrap {
     );
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     await this.createTransaction(userId, {
@@ -1465,7 +1755,7 @@ export class BillingService implements OnApplicationBootstrap {
    *     freeAccess=true (чтобы checkFreeModelAccess правильно считал лимиты)
    *   - иначе → обычное платное списание
    */
-    async recordMediaGeneration(
+  async recordMediaGeneration(
     userId: string,
     params: {
       modelSlug: string;
@@ -1520,8 +1810,8 @@ export class BillingService implements OnApplicationBootstrap {
 
     this.logger.log(
       `📝 Recorded media generation: ${params.modelSlug} | ` +
-        (isFree ? `FREE` : `-${cost}🔥`) +
-        ` | user=${userId}`,
+      (isFree ? `FREE` : `-${cost}🔥`) +
+      ` | user=${userId}`,
     );
   }
 
@@ -1575,8 +1865,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     if (balanceBefore + FLOAT_EPSILON < costInTokens) {
@@ -1592,8 +1882,8 @@ export class BillingService implements OnApplicationBootstrap {
     );
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     return {
@@ -1628,8 +1918,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     await this.usersService.refundTokens(userId, refundAmount);
@@ -1637,8 +1927,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userAfter = await this.usersService.findById(userId);
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     await this.createTransaction(userId, {
@@ -1680,8 +1970,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(userId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     const user = await this.usersService.addBonusTokens(
@@ -1821,7 +2111,7 @@ export class BillingService implements OnApplicationBootstrap {
 
       this.logger.log(
         `🎟 Promo ${promoValidation.promo.code} applied to plan ${effectivePlan}: ` +
-          `${planConfig.priceRub}₽ → ${finalPriceRub}₽`,
+        `${planConfig.priceRub}₽ → ${finalPriceRub}₽`,
       );
     }
 
@@ -1871,7 +2161,7 @@ export class BillingService implements OnApplicationBootstrap {
       };
     }
 
-        // ── Обычный поток с оплатой ────────────────────────────────
+    // ── Обычный поток с оплатой ────────────────────────────────
     const paymentAmount = this.convertPrice(finalPriceRub, currency);
 
     const result = await paymentProvider.createPayment({
@@ -1904,12 +2194,12 @@ export class BillingService implements OnApplicationBootstrap {
         finalPriceRub,
         promoCodeApplied: promoValidation
           ? {
-              promoId: promoValidation.promo._id.toString(),
-              code: promoValidation.promo.code,
-              type: promoValidation.promo.type,
-              discountRub: promoValidation.discountRub,
-              bonusTokens: promoValidation.bonusTokens,
-            }
+            promoId: promoValidation.promo._id.toString(),
+            code: promoValidation.promo.code,
+            type: promoValidation.promo.type,
+            discountRub: promoValidation.discountRub,
+            bonusTokens: promoValidation.bonusTokens,
+          }
           : null,
       },
     });
@@ -1929,10 +2219,10 @@ export class BillingService implements OnApplicationBootstrap {
       },
       promo: promoValidation
         ? {
-            code: promoValidation.promo.code,
-            effectLabel: promoValidation.effectLabel,
-            discountRub: promoValidation.discountRub,
-          }
+          code: promoValidation.promo.code,
+          effectLabel: promoValidation.effectLabel,
+          discountRub: promoValidation.discountRub,
+        }
         : null,
     };
   }
@@ -2026,7 +2316,7 @@ export class BillingService implements OnApplicationBootstrap {
       throw new NotFoundException(`Model ${modelSlug} not found`);
     }
 
-        // ── 🆕 0. Посимвольная тарификация (charBasedPricing) ───────
+    // ── 🆕 0. Посимвольная тарификация (charBasedPricing) ───────
     // Аудио-модели ElevenLabs: цена = (textLength / 1000) × pricePerThousandChars.
     // textLength приходит из params (фронт обязан передать).
     if ((model as any).charBasedPricing && (model as any).pricePerThousandChars > 0) {
@@ -2177,7 +2467,7 @@ export class BillingService implements OnApplicationBootstrap {
   }
 
 
-    // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // Превью стоимости (для UI) — использует buildPreviewFromModel
   // ═══════════════════════════════════════════════════════════════
 
@@ -2226,7 +2516,7 @@ export class BillingService implements OnApplicationBootstrap {
 
       const avgCost = finalizeTokenCost(
         (avgTokens * 0.3 * inputPrice) / 1_000_000 +
-          (avgTokens * 0.7 * outputPrice) / 1_000_000,
+        (avgTokens * 0.7 * outputPrice) / 1_000_000,
       );
 
       // Если задан ручной minTokenCost — используем его, иначе формулу
@@ -2234,9 +2524,9 @@ export class BillingService implements OnApplicationBootstrap {
         Number(model.minTokenCost) > 0
           ? finalizeTokenCost(Number(model.minTokenCost))
           : finalizeTokenCost(
-              (60 * inputPrice) / 1_000_000 +
-                (140 * outputPrice) / 1_000_000,
-            );
+            (60 * inputPrice) / 1_000_000 +
+            (140 * outputPrice) / 1_000_000,
+          );
 
       return {
         avgCostInTokens: avgCost,
@@ -2291,11 +2581,11 @@ export class BillingService implements OnApplicationBootstrap {
     };
   }
 
-    /**
-   * История транзакций пользователя.
-   * Сигнатура совпадает с BillingController: (userId, type?, page, limit).
-   * Возвращает и items+total (новый формат), и transactions+pagination (старый).
-   */
+  /**
+ * История транзакций пользователя.
+ * Сигнатура совпадает с BillingController: (userId, type?, page, limit).
+ * Возвращает и items+total (новый формат), и transactions+pagination (старый).
+ */
   async getTransactionHistory(
     userId: string,
     type?: TransactionType,
@@ -2348,7 +2638,7 @@ export class BillingService implements OnApplicationBootstrap {
       .lean();
   }
 
-    // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // 🆕 Алиасы для контроллеров (admin / ai-providers / billing)
   // ═══════════════════════════════════════════════════════════════
 
@@ -2541,8 +2831,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userBefore = await this.usersService.findById(targetUserId);
     const balanceBefore = roundTokens(
       userBefore.tokenBalance +
-        userBefore.bonusTokens +
-        (userBefore.cashbackBalance || 0),
+      userBefore.bonusTokens +
+      (userBefore.cashbackBalance || 0),
     );
 
     if (amount > 0) {
@@ -2558,8 +2848,8 @@ export class BillingService implements OnApplicationBootstrap {
     const userAfter = await this.usersService.findById(targetUserId);
     const balanceAfter = roundTokens(
       userAfter.tokenBalance +
-        userAfter.bonusTokens +
-        (userAfter.cashbackBalance || 0),
+      userAfter.bonusTokens +
+      (userAfter.cashbackBalance || 0),
     );
 
     await this.createTransaction(targetUserId, {

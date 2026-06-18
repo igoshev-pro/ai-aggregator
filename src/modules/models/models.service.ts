@@ -1,12 +1,12 @@
 // src/modules/models/models.service.ts
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
 import { GenerationType, SubscriptionPlan } from '@/common/interfaces';
-
-const MIN_TOKENS_ESTIMATE = 50;
+import { UsersService } from '../users/users.service';
+import { BillingService } from '../billing/billing.service';
 
 export interface ModelDto {
   slug: string;
@@ -33,6 +33,14 @@ export interface ModelDto {
     height?: number;
   };
   hasVariants: boolean;
+
+  // 🆕 Информация о бесплатном доступе по подписке
+  isFreeInPlan: boolean;
+  freeLimit?: {
+    hourlyLimit: number | null;
+    dailyLimit: number | null;
+    requiredParams?: Record<string, any> | null;
+  } | null;
 }
 
 @Injectable()
@@ -41,48 +49,84 @@ export class ModelsService {
 
   constructor(
     @InjectModel(AIModel.name) private modelModel: Model<ModelDocument>,
-  ) { }
+    @Inject(forwardRef(() => UsersService))
+    private usersService: UsersService,
+    @Inject(forwardRef(() => BillingService))
+    private billingService: BillingService,
+  ) {}
 
+  /**
+   * Список моделей доступных пользователю с учётом его плана.
+   *
+   * 🆕 userId вместо userPlan-by-role: план берём из user.subscriptionPlan,
+   *    а не из user.role (роль не отражает подписку).
+   */
   async getAvailableModels(
-    userPlan: SubscriptionPlan,
+    userId: string,
     type?: GenerationType,
   ): Promise<ModelDto[]> {
     const query: any = { isActive: true };
     if (type) query.type = type;
 
-    // 🔧 .lean() — читаем СЫРОЙ документ из Mongo со ВСЕМИ полями
-    //    (pricingMatrix, minTokenCost, fixedCostPerGeneration, tokenCost и т.д.),
-    //    даже если они не объявлены в Mongoose-схеме.
     const models = await this.modelModel
       .find(query)
       .sort({ type: 1, sortOrder: 1 })
       .lean<any[]>()
       .exec();
 
-    // Фильтруем по доступности для плана пользователя
+    // Достаём план юзера и его free-модели
+    const user = await this.usersService.findById(userId);
+    const userPlan = (user.subscriptionPlan ||
+      SubscriptionPlan.FREE) as SubscriptionPlan;
+
+    const freeModelsMap = await this.billingService
+      .getFreeModelsForUser(userId)
+      .catch((err) => {
+        this.logger.warn(
+          `Failed to load free models for user ${userId}: ${err.message}`,
+        );
+        return new Map();
+      });
+
+    // Фильтрация по доступности для плана пользователя (premium)
     const availableModels = models.filter((model) => {
       if (!model.isPremium) return true;
 
       const includedPlans = model.limits?.includedInPlans || [];
       if (includedPlans.length === 0) {
-        // Если не указаны планы - доступна всем премиум пользователям
-        return userPlan === SubscriptionPlan.PRO || userPlan === SubscriptionPlan.UNLIMITED;
+        // Если планы не указаны — premium доступен от PLUS и выше
+        return [
+          SubscriptionPlan.PLUS,
+          SubscriptionPlan.MAX,
+          SubscriptionPlan.ULTIMATE,
+          // legacy
+          SubscriptionPlan.PRO,
+          SubscriptionPlan.UNLIMITED,
+        ].includes(userPlan);
       }
 
       return includedPlans.includes(userPlan);
     });
 
-    return availableModels.map((model) => this.mapToDto(model));
+    return availableModels.map((model) =>
+      this.mapToDto(model, freeModelsMap),
+    );
   }
 
-  async getModelDetails(slug: string, userPlan: SubscriptionPlan): Promise<ModelDto | null> {
-    // 🔧 .lean() — сырой документ со всеми полями
+  async getModelDetails(
+    slug: string,
+    userId: string,
+  ): Promise<ModelDto | null> {
     const model = await this.modelModel
       .findOne({ slug, isActive: true })
       .lean<any>();
     if (!model) return null;
 
-    // Проверяем доступность для пользователя
+    const user = await this.usersService.findById(userId);
+    const userPlan = (user.subscriptionPlan ||
+      SubscriptionPlan.FREE) as SubscriptionPlan;
+
+    // Проверяем доступность premium-моделей
     if (model.isPremium) {
       const includedPlans = model.limits?.includedInPlans || [];
 
@@ -90,19 +134,40 @@ export class ModelsService {
         if (!includedPlans.includes(userPlan)) {
           return null;
         }
-      } else if (userPlan !== SubscriptionPlan.PRO && userPlan !== SubscriptionPlan.UNLIMITED) {
+      } else if (
+        ![
+          SubscriptionPlan.PLUS,
+          SubscriptionPlan.MAX,
+          SubscriptionPlan.ULTIMATE,
+          SubscriptionPlan.PRO,
+          SubscriptionPlan.UNLIMITED,
+        ].includes(userPlan)
+      ) {
         return null;
       }
     }
 
-    return this.mapToDto(model);
+    const freeModelsMap = await this.billingService
+      .getFreeModelsForUser(userId)
+      .catch(() => new Map());
+
+    return this.mapToDto(model, freeModelsMap);
   }
 
-  private mapToDto(model: any): ModelDto {
+  private mapToDto(model: any, freeModelsMap: Map<string, any>): ModelDto {
     const provider = this.getProviderName(model);
-
-    // Рассчитываем cost для отображения в UI
     const cost = this.computeDisplayCost(model);
+
+    // 🆕 Free-доступ по подписке
+    const freeEntry = freeModelsMap.get(model.slug);
+    const isFreeInPlan = !!freeEntry;
+    const freeLimit = freeEntry
+      ? {
+          hourlyLimit: freeEntry.hourlyLimit ?? null,
+          dailyLimit: freeEntry.dailyLimit ?? null,
+          requiredParams: freeEntry.requiredParams ?? null,
+        }
+      : null;
 
     return {
       slug: model.slug,
@@ -114,57 +179,58 @@ export class ModelsService {
       cost,
       hasVariants:
         model.type === GenerationType.TEXT ||
-        (Array.isArray((model as any).pricingMatrix) && (model as any).pricingMatrix.length > 0),
+        (Array.isArray(model.pricingMatrix) &&
+          model.pricingMatrix.length > 0),
       minCost: model.minTokenCost ?? cost,
       isActive: model.isActive,
       isPremium: model.isPremium,
       capabilities: model.capabilities || [],
-      limits: model.limits ? {
-        maxInputTokens: model.limits.maxInputTokens,
-        maxOutputTokens: model.limits.maxOutputTokens,
-        maxResolution: model.limits.maxResolution,
-        maxDuration: model.limits.maxDuration,
-      } : undefined,
-      defaultParams: model.defaultParams ? {
-        temperature: model.defaultParams.temperature,
-        maxTokens: model.defaultParams.maxTokens,
-        width: model.defaultParams.width,
-        height: model.defaultParams.height,
-      } : undefined,
+      limits: model.limits
+        ? {
+            maxInputTokens: model.limits.maxInputTokens,
+            maxOutputTokens: model.limits.maxOutputTokens,
+            maxResolution: model.limits.maxResolution,
+            maxDuration: model.limits.maxDuration,
+          }
+        : undefined,
+      defaultParams: model.defaultParams
+        ? {
+            temperature: model.defaultParams.temperature,
+            maxTokens: model.defaultParams.maxTokens,
+            width: model.defaultParams.width,
+            height: model.defaultParams.height,
+          }
+        : undefined,
+      isFreeInPlan,
+      freeLimit,
     };
   }
 
   /**
-   * Минимальная стоимость одного запроса для отображения в UI ("от X 🔥")
-   * - text: preview по средней длине запроса (0.3·input + 0.7·output на 1M токенов),
-   *         синхронизировано с BillingService.buildPreviewFromModel.
-   *         Если результат меньше minTokenCost — берём minTokenCost.
-   * - media: фиксированная цена за генерацию (минимум из pricingMatrix если есть)
+   * Минимальная стоимость одного запроса для отображения в UI ("от X 🔥").
+   * Логика без изменений — синхронизировано с BillingService.buildPreviewFromModel.
    */
   private computeDisplayCost(model: any): number {
     // === TEXT (LLM) ===
     if (model.type === GenerationType.TEXT) {
-      // 🆕 Приоритет новых полей цен (спички за 1M токенов), fallback на legacy
       const inputPrice =
         Number((model as any).pricePerMillionInputTokens) ||
-        Number(model.costPerMillionInputTokens) || 0;
+        Number(model.costPerMillionInputTokens) ||
+        0;
       const outputPrice =
         Number((model as any).pricePerMillionOutputTokens) ||
-        Number(model.costPerMillionOutputTokens) || 0;
+        Number(model.costPerMillionOutputTokens) ||
+        0;
       const avgTokens = Number((model as any).avgTokensPerRequest) || 1500;
 
       const minCost = model.minTokenCost ?? model.tokenCost ?? 1;
 
       if (inputPrice > 0 || outputPrice > 0) {
-        // Та же формула, что в BillingService.buildPreviewFromModel:
-        // 30% input + 70% output, деление на 1_000_000
         const preview =
           (avgTokens * 0.3 * inputPrice) / 1_000_000 +
           (avgTokens * 0.7 * outputPrice) / 1_000_000;
 
         const rounded = Math.round(preview * 100) / 100;
-
-        // Если получилось меньше минимума — отдаём minTokenCost
         return rounded < minCost ? minCost : rounded;
       }
 
@@ -172,23 +238,27 @@ export class ModelsService {
     }
 
     // === MEDIA (image/video/audio) ===
-    // Если есть pricingMatrix — берём минимум
-    if (Array.isArray((model as any).pricingMatrix) && (model as any).pricingMatrix.length > 0) {
-      const matrix = (model as any).pricingMatrix as Array<{ costInTokens?: number }>;
+    if (
+      Array.isArray((model as any).pricingMatrix) &&
+      (model as any).pricingMatrix.length > 0
+    ) {
+      const matrix = (model as any).pricingMatrix as Array<{
+        costInTokens?: number;
+      }>;
       const costs = matrix
-        .map(r => r.costInTokens)
+        .map((r) => r.costInTokens)
         .filter((c): c is number => typeof c === 'number' && c > 0);
       if (costs.length > 0) {
         return Math.min(...costs);
       }
     }
 
-    // 🔧 Фиксированная цена за генерацию (БЕЗ Math.ceil — round до 2 знаков,
-    //     чтобы 0.0178×90=1.602 не превращалось в 2, как в каталоге seed)
     if (model.fixedCostPerGeneration && model.fixedCostPerGeneration > 0) {
       const tokensPerDollar = model.tokensPerDollar || 90;
       const computed =
-        Math.round(model.fixedCostPerGeneration * tokensPerDollar * 100) / 100;
+        Math.round(
+          model.fixedCostPerGeneration * tokensPerDollar * 100,
+        ) / 100;
       return Math.max(model.minTokenCost ?? 1, computed);
     }
 
@@ -196,13 +266,10 @@ export class ModelsService {
   }
 
   private getProviderName(model: any): string {
-    // Берём первого провайдера из маппингов
     if (model.providerMappings?.length > 0) {
       const providerSlug = model.providerMappings[0].providerSlug;
       return this.formatProviderName(providerSlug);
     }
-
-    // Fallback - определяем по slug модели
     return this.guessProviderBySlug(model.slug);
   }
 
@@ -213,14 +280,15 @@ export class ModelsService {
       kie: 'KIE',
       replicate: 'Replicate',
     };
-
     return mapping[providerSlug] || this.guessProviderBySlug(providerSlug);
   }
 
   private guessProviderBySlug(slug: string): string {
-    if (slug.includes('gpt') || slug.includes('dall') || slug.includes('sora')) return 'OpenAI';
+    if (slug.includes('gpt') || slug.includes('dall') || slug.includes('sora'))
+      return 'OpenAI';
     if (slug.includes('claude')) return 'Anthropic';
-    if (slug.includes('gemini') || slug.includes('imagen') || slug.includes('veo')) return 'Google';
+    if (slug.includes('gemini') || slug.includes('imagen') || slug.includes('veo'))
+      return 'Google';
     if (slug.includes('deepseek')) return 'DeepSeek';
     if (slug.includes('grok')) return 'xAI';
     if (slug.includes('perplexity')) return 'Perplexity';

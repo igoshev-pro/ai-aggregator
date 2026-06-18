@@ -28,7 +28,7 @@ import { Throttle } from '@nestjs/throttler';
 @UseGuards(JwtAuthGuard)
 @Controller('generation')
 export class GenerationController {
-  constructor(private readonly generationService: GenerationService) {}
+  constructor(private readonly generationService: GenerationService) { }
 
   @Post('image')
   @ApiOperation({ summary: 'Generate image' })
@@ -71,13 +71,18 @@ export class GenerationController {
   @ApiOperation({
     summary: 'Calculate generation price for given params',
     description:
-      'Возвращает стоимость генерации в спичках и долларах. Используется фронтом для отображения цены перед нажатием "Сгенерировать".',
+      'Возвращает стоимость генерации в спичках и долларах. Используется фронтом для отображения цены перед нажатием "Сгенерировать". ' +
+      'Если модель бесплатна по подписке пользователя и параметры подходят — вернёт costInTokens=0.',
   })
   @HttpCode(200)
-  async calculatePrice(@Body() dto: CalculatePriceDto) {
+  async calculatePrice(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: CalculatePriceDto,
+  ) {
     const result = await this.generationService.calculatePrice(
       dto.modelSlug,
       dto.params || {},
+      userId, // 🆕 для проверки free-доступа
     );
     return { success: true, data: result };
   }

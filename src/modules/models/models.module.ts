@@ -7,6 +7,7 @@ import { AIModel, AIModelSchema } from '../ai-providers/schemas/model.schema';
 import { AiProvidersModule } from '../ai-providers/ai-providers.module';
 import { UsersModule } from '../users/users.module';
 import { ModelsService } from './models.service';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ModelsService } from './models.service';
     ]),
     forwardRef(() => AiProvidersModule),
     forwardRef(() => UsersModule),
+    forwardRef(() => BillingModule),
   ],
   controllers: [ModelsController],
   providers: [ModelsService],
