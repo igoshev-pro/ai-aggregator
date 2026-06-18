@@ -1434,7 +1434,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { aspectRatio: '16:9', duration: 4 },
         limits: { maxDuration: 12 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
         pricingMatrix: [
           { conditions: { duration: 4 }, costInTokens: 20, costInDollars: 0.222, label: '4 секунды' },
           { conditions: { duration: 8 }, costInTokens: 41, costInDollars: 0.456, label: '8 секунд' },
@@ -1485,7 +1485,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { aspectRatio: '16:9', duration: 4, resolution: '720p' },
         limits: { maxDuration: 12 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
         pricingMatrix: [
           { conditions: { duration: 4, resolution: '720p' }, costInTokens: 61, costInDollars: 0.444, label: '4с × 720p' },
           { conditions: { duration: 4, resolution: '1080p' }, costInTokens: 102, costInDollars: 0.741, label: '4с × 1080p' },
