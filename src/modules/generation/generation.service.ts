@@ -773,45 +773,52 @@ export class GenerationService {
    * Возврат токенов за неудачную генерацию.
    *
    * Идемпотентность: повторный вызов с тем же generationId не сделает
-   * двойной возврат (защита через флаг isRefunded).
+   * двойной возврат (защита через атомарный захват isRefunded).
    *
    * Flow:
-   *   1) usersService.refundTokens — реально возвращает токены на баланс
-   *   2) billingService.recordRefund — пишет транзакцию (БЕЗ повторного начисления)
-   *   3) generation.isRefunded = true
+   *   1) Атомарно помечаем generation.isRefunded = true
+   *      (только если ещё не помечено И токены были списаны И billing не записан)
+   *   2) billingService.recordRefund — возвращает токены на баланс + пишет транзакцию
+   *   3) При ошибке — откатываем флаг isRefunded
    *
-   * 🆕 Бесплатные генерации (tokensCost=0 / freeAccess=true) проходят
-   * раннее short-circuit и в billing/wallet не лезут.
+   * 🔧 FIX: убран дублирующий вызов usersService.refundTokens().
+   *    Раньше токены возвращались ДВАЖДЫ: здесь + внутри recordRefund().
+   *    Теперь возврат происходит ТОЛЬКО через billingService.recordRefund().
    */
   async refundGeneration(generationId: string) {
     // Атомарный захват: возврат только если он ещё не сделан И генерация
-    // НЕ была успешно оплачена (billingRecorded). Это исключает возврат
-    // за генерацию, которая по факту завершилась успешно.
+    // НЕ была успешно оплачена (billingRecorded) И токены реально списаны.
     const generation = await this.generationModel.findOneAndUpdate(
       {
         _id: generationId,
         isRefunded: { $ne: true },
         billingRecorded: { $ne: true },
-        tokensDeducted: true, 
+        tokensDeducted: true,
       },
       { $set: { isRefunded: true } },
       { new: true },
     );
 
-    // null → нет генерации / уже возвращено / генерация успешна (billed)
-    if (!generation) return;
+    // null → нет генерации / уже возвращено / генерация успешна (billed) / токены не списывались
+    if (!generation) {
+      this.logger.debug(
+        `refundGeneration(${generationId}): skipped (not found / already refunded / billed / not deducted)`,
+      );
+      return;
+    }
 
-    // 🆕 Бесплатные — нечего возвращать
+    // Бесплатные — нечего возвращать (доп. защита, хотя tokensDeducted=false уже отфильтрует)
     if (!generation.tokensCost || generation.tokensCost <= 0) {
+      this.logger.debug(
+        `refundGeneration(${generationId}): skipped (tokensCost=${generation.tokensCost})`,
+      );
       return;
     }
 
     try {
-      await this.usersService.refundTokens(
-        generation.userId.toString(),
-        generation.tokensCost,
-      );
-
+      // 🔧 FIX: возврат токенов происходит ТОЛЬКО здесь (recordRefund
+      // внутри вызывает usersService.refundTokens + createTransaction).
+      // Раньше refundTokens вызывался дважды — и тут, и внутри recordRefund.
       await this.billingService.recordRefund(
         generation.userId.toString(),
         generation.tokensCost,
@@ -823,12 +830,13 @@ export class GenerationService {
         `↩️ Refunded ${generation.tokensCost}🔥 for generation ${generationId}`,
       );
     } catch (err: any) {
+      // Откатываем флаг чтобы можно было повторить рефанд
       await this.generationModel.updateOne(
         { _id: generationId },
         { $set: { isRefunded: false } },
       );
       this.logger.error(
-        `❌ Refund failed for generation ${generationId}, rolled back: ${err.message}`,
+        `❌ Refund failed for generation ${generationId}, rolled back isRefunded: ${err.message}`,
         err.stack,
       );
       throw err;
