@@ -1,4 +1,3 @@
-// src/modules/billing/billing.service.ts
 import {
   Injectable,
   Logger,
@@ -46,6 +45,8 @@ import {
   TokenPackageDocument,
 } from './schemas/token-package.schema';
 import { calcCustomByTokens, CUSTOM_MAX_TOKENS, CUSTOM_MIN_TOKENS } from './pricing/custom-tokens.pricing';
+import { TochkaClient } from './providers/tochka/tochka.client';
+import { ConfigService } from '@nestjs/config';
 
 
 // ─── Курс конвертации ────────────────────────────────────────────
@@ -285,7 +286,6 @@ const FALLBACK_SUBSCRIPTION_PLANS: Record<string, SubscriptionPlanConfig> = {
   },
 };
 
-
 const PLAN_MIGRATION: Record<string, SubscriptionPlan> = {
   [SubscriptionPlan.PRO]: SubscriptionPlan.PLUS,
   [SubscriptionPlan.UNLIMITED]: SubscriptionPlan.ULTIMATE,
@@ -324,11 +324,12 @@ export class BillingService implements OnApplicationBootstrap {
     private starsProvider: StarsProvider,
     private freedompayProvider: FreedomPayProvider,
     private tochkaProvider: TochkaProvider,
+    private tochkaClient: TochkaClient,
+    private configService: ConfigService,
     private heleketProvider: HeleketProvider,
   ) { }
 
-
-  async onApplicationBootstrap() {
+    async onApplicationBootstrap() {
     try {
       await this.migrateDeprecatedSubscriptions();
     } catch (err: any) {
@@ -336,6 +337,59 @@ export class BillingService implements OnApplicationBootstrap {
         `Failed to migrate deprecated subscriptions on bootstrap: ${err.message}`,
       );
     }
+
+    // 🆕 Автоматическая регистрация вебхука Точка при старте
+    try {
+      await this.registerTochkaWebhook();
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to register Tochka webhook on bootstrap: ${err.message}`,
+      );
+    }
+  }
+
+  /**
+   * 🆕 Регистрирует webhook в Точка Банк при старте приложения.
+   * Если webhook уже зарегистрирован с правильным URL — пропускает.
+   */
+  private async registerTochkaWebhook(): Promise<void> {
+    const clientId = this.tochkaClient.getClientId();
+    if (!clientId) {
+      this.logger.warn('[Tochka] TOCHKA_CLIENT_ID not set — skipping webhook registration');
+      return;
+    }
+
+    const webhookUrl = this.configService.get<string>('TOCHKA_WEBHOOK_URL') || '';
+    if (!webhookUrl) {
+      this.logger.warn('[Tochka] TOCHKA_WEBHOOK_URL not set — skipping webhook registration');
+      return;
+    }
+
+    // Проверяем текущие вебхуки
+    try {
+      const current = await this.tochkaClient.getWebhooks(clientId);
+      if (
+        current?.Data?.url === webhookUrl &&
+        current?.Data?.webhooksList?.includes('acquiringInternetPayment')
+      ) {
+        this.logger.log(`[Tochka] ✅ Webhook already registered: ${webhookUrl}`);
+        return;
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[Tochka] Could not fetch current webhooks: ${err.message} — will register anyway`,
+      );
+    }
+
+    // Регистрируем
+    const result = await this.tochkaClient.registerWebhook(clientId, {
+      webhooksList: ['acquiringInternetPayment'],
+      url: webhookUrl,
+    });
+
+    this.logger.log(
+      `[Tochka] ✅ Webhook registered: url=${result?.Data?.url}, events=${result?.Data?.webhooksList?.join(', ')}`,
+    );
   }
 
 
