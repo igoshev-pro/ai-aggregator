@@ -184,14 +184,23 @@ export class GenerationService {
   async generateImage(userId: string, dto: ImageGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
-    // 🆕 Собираем priceParams ДО free-gate, чтобы передать их в обе функции.
-    //     Это критично для midjourney (mode='draft' → free, иначе → paid).
+    // 🔧 Подставляем defaultValue из uiParameters модели для параметров,
+    //    которые фронт не прислал. Критично для midjourney: mode по умолчанию
+    //    = 'draft' (бесплатный режим на Ultimate). Без этого free-gate видит
+    //    mode=undefined и не матчит requiredParams {mode:'draft'} → списывает токены.
+    const uiDefaults: Record<string, any> = {};
+    for (const p of (model.uiParameters as any[]) || []) {
+      if (p?.key && p?.defaultValue !== undefined) {
+        uiDefaults[p.key] = p.defaultValue;
+      }
+    }
+
     const priceParams = {
-      mode: dto.mode,
-      version: dto.version,
-      aspectRatio: dto.aspectRatio,
-      resolution: dto.resolution,
-      quality: dto.quality,
+      mode: dto.mode ?? uiDefaults.mode,
+      version: dto.version ?? uiDefaults.version,
+      aspectRatio: dto.aspectRatio ?? uiDefaults.aspectRatio,
+      resolution: dto.resolution ?? uiDefaults.resolution,
+      quality: dto.quality ?? uiDefaults.quality,
       hasInputImage: !!(dto.inputUrls && dto.inputUrls.length > 0),
       numImages: dto.numImages || 1,
     };
@@ -227,17 +236,17 @@ export class GenerationService {
       params: {
         width: dto.width || model.defaultParams?.width || 1024,
         height: dto.height || model.defaultParams?.height || 1024,
-        aspectRatio: dto.aspectRatio,
-        resolution: dto.resolution,
-        quality: dto.quality,
         outputFormat: dto.outputFormat,
         steps: dto.steps || model.defaultParams?.steps,
         seed: dto.seed,
         numImages: dto.numImages || 1,
         style: dto.style,
         inputUrls: dto.inputUrls,
-        mode: dto.mode,
-        version: dto.version,
+        mode: priceParams.mode,        // было: dto.mode
+        version: priceParams.version,  // было: dto.version
+        aspectRatio: priceParams.aspectRatio,   // было: dto.aspectRatio
+        resolution: priceParams.resolution,     // было: dto.resolution
+        quality: priceParams.quality,            // было: dto.quality
       },
       tokensCost: costInTokens,
       costInDollars,
