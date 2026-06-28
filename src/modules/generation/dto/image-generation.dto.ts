@@ -86,8 +86,8 @@ export class ImageGenerationDto {
 
   // 🆕 Midjourney mode: normal | fast | turbo
   @ApiPropertyOptional({
-    enum: ['normal', 'fast', 'turbo'],
-    description: 'Midjourney mode: normal/fast/turbo (влияет на цену)',
+    enum: ['normal', 'draft', 'fast', 'turbo'],
+    description: 'Midjourney mode: draft/fast/turbo (влияет на цену)',
   })
   @IsOptional()
   @IsString()
