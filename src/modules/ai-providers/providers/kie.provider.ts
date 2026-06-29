@@ -838,6 +838,12 @@ export class KieProvider extends BaseProvider {
             }))
           : [];
         input.multi_prompt = shots;
+
+        // 🔧 KIE требует: duration (total) = сумма длительностей шотов, range 3–15.
+        // Без этого KIE брал input.duration='3' (дефолт) → видео/цена за 3 сек.
+        const shotsSum = shots.reduce((sum, s) => sum + s.duration, 0);
+        const totalDuration = Math.min(15, Math.max(3, shotsSum || 5));
+        input.duration = String(totalDuration);
       } else {
         input.multi_prompt = [];
       }
