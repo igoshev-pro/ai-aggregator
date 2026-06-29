@@ -312,13 +312,30 @@ export class GenerationService {
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
+    // 🆕 Kling 3.0 мультисцены: реальная длительность = сумма шотов
+    // (каждый шот клампится 1–12, как в KIE provider), затем clamp 3–15.
+    let effectiveDuration = dto.duration;
+    if (
+      dto.multiShots &&
+      Array.isArray(dto.multiPrompt) &&
+      dto.multiPrompt.length > 0
+    ) {
+      const total = dto.multiPrompt.reduce((sum, sh) => {
+        const d = Math.min(12, Math.max(1, Number(sh.duration) || 3));
+        return sum + d;
+      }, 0);
+      if (total > 0) {
+        effectiveDuration = Math.min(15, Math.max(3, total));
+      }
+    }
+
     const priceParams = {
       mode: dto.mode,
-      duration: dto.duration,
+      duration: effectiveDuration,
       resolution: dto.resolution,
       aspectRatio: dto.aspectRatio,
       quality: dto.quality,
-      sound: dto.sound,
+      sound: dto.multiShots ? true : dto.sound, // KIE форсит sound в мультисценах
       generateAudio: dto.generateAudio,
       stable: dto.stable,
       videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
@@ -361,7 +378,7 @@ export class GenerationService {
         videoUrls: dto.videoUrls,
         characterOrientation: dto.characterOrientation,
         generationType: dto.generationType,
-        duration: dto.duration || (model.defaultParams as any)?.duration || 5,
+        duration: effectiveDuration || (model.defaultParams as any)?.duration || 5,
         aspectRatio:
           dto.aspectRatio ||
           (model.defaultParams as any)?.aspectRatio ||
