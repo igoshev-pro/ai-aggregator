@@ -366,8 +366,31 @@ export class KieProvider extends BaseProvider {
         `KIE generateImage: model=${modelId}, imgs=${incomingUrls.length}, prompt="${request.prompt?.substring(0, 60)}"`,
       );
 
-      const input: Record<string, any> = { prompt: request.prompt };
-      const aspectRatio = this.toAspectRatio(request.width, request.height);
+            const input: Record<string, any> = { prompt: request.prompt };
+
+      // 🔧 FIX: приоритет строкового aspectRatio от фронта.
+      // Раньше aspect_ratio всегда вычислялся из width/height, которые
+      // фронт для media не шлёт → всегда получался '1:1' (квадрат).
+      const requestedAr = (request as any).aspectRatio as string | undefined;
+      let aspectRatio: string;
+
+      if (requestedAr && typeof requestedAr === 'string') {
+        // Валидируем по списку допустимых для модели (если он задан)
+        const allowedArs = modelParams?.aspectRatios;
+        if (!allowedArs || allowedArs.length === 0 || allowedArs.includes(requestedAr)) {
+          aspectRatio = requestedAr;
+        } else {
+          // Формат не поддерживается моделью — берём первый допустимый
+          aspectRatio = allowedArs[0];
+          this.logger.warn(
+            `KIE ${modelId}: aspectRatio "${requestedAr}" не поддерживается, использую "${aspectRatio}"`,
+          );
+        }
+      } else {
+        // Fallback: вычисляем из width/height (legacy)
+        aspectRatio = this.toAspectRatio(request.width, request.height);
+      }
+
       input.aspect_ratio = aspectRatio;
 
       if (modelParams?.hasQuality) {
