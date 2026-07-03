@@ -272,7 +272,7 @@ export class TelegramBotUpdate {
       `ОКПО: ${MERCHANT.okpo}\n` +
       `Рег. №: ${MERCHANT.regNumber} от ${MERCHANT.regDate}\n` +
       `Адрес: ${MERCHANT.address}\n\n` +
-      `*Оплата:* картой Visa / Mastercard / Элкарт в сомах (⃀) через FreedomPay.\n\n` +
+      `*Оплата:* картой Visa / Mastercard / Элкарт в сомах через FreedomPay.\n\n` +
       `*Возврат:* неиспользованные спички можно вернуть в течение 14 дней. ` +
       `Потраченные спички возврату не подлежат.\n\n` +
       `Полная оферта, политика конфиденциальности и правила возврата — по кнопке ниже.\n\n` +
