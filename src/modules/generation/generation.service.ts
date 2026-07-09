@@ -314,7 +314,7 @@ export class GenerationService {
 
     // 🆕 Kling 3.0 мультисцены: реальная длительность = сумма шотов
     // (каждый шот клампится 1–12, как в KIE provider), затем clamp 3–15.
-    let effectiveDuration = dto.duration;
+        let effectiveDuration = dto.duration;
     if (
       dto.multiShots &&
       Array.isArray(dto.multiPrompt) &&
@@ -329,13 +329,36 @@ export class GenerationService {
       }
     }
 
+    // 🔧 FIX: если duration не пришёл от фронта — берём дефолт модели.
+    // Иначе priceParams.duration=undefined → pricingMatrix не матчится
+    // → fallback на минимальную цену (критично для Seedance/Kling/Wan,
+    // где цена сильно зависит от длительности).
+    if (effectiveDuration === undefined || effectiveDuration === null) {
+      effectiveDuration =
+        Number((model.defaultParams as any)?.duration) || 5;
+    }
+
+        // 🔧 Дефолты из модели — чтобы pricingMatrix точно сматчилась.
+    // resolution: Seedance/Wan/Runway матрицы зависят от него.
+    // sound: приводим к явному boolean (undefined ломает матч по conditions.sound).
+    const effectiveResolution =
+      dto.resolution ||
+      (model.defaultParams as any)?.resolution ||
+      undefined;
+
+    const effectiveSound = dto.multiShots
+      ? true
+      : (dto.sound !== undefined
+          ? dto.sound
+          : (model.defaultParams as any)?.sound ?? false);
+
     const priceParams = {
       mode: dto.mode,
       duration: effectiveDuration,
-      resolution: dto.resolution,
+      resolution: effectiveResolution,
       aspectRatio: dto.aspectRatio,
       quality: dto.quality,
-      sound: dto.multiShots ? true : dto.sound, // KIE форсит sound в мультисценах
+      sound: effectiveSound,
       generateAudio: dto.generateAudio,
       stable: dto.stable,
       videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),

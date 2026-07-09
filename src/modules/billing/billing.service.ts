@@ -2705,9 +2705,12 @@ export class BillingService implements OnApplicationBootstrap {
   }
 
 
-  /**
-   * Находит строку pricingMatrix, чьи conditions полностью совпадают с params.
-   * Поддерживает == для number/string/boolean.
+    /**
+   * Находит строку pricingMatrix, чьи conditions совпадают с params.
+   * 🔧 Нормализация значений (boolean/number из строк) + сортировка по
+   *    специфичности — чтобы совпадать с PricingService.findMatchingRule.
+   *    Критично для Seedance/Kling/Wan: videoRef/sound (boolean) и duration
+   *    (number) могут приходить строками или в разном порядке правил.
    */
   private findMatrixRow(
     matrix: Array<{ conditions?: Record<string, any>; costInTokens: number; costInDollars: number; label?: string }>,
@@ -2715,20 +2718,33 @@ export class BillingService implements OnApplicationBootstrap {
   ) {
     if (!params) return null;
 
-    for (const row of matrix) {
+    const norm = (v: any): any => {
+      if (typeof v === 'boolean') return v;
+      if (v === 'true') return true;
+      if (v === 'false') return false;
+      if (typeof v === 'number') return v;
+      if (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))) {
+        return Number(v);
+      }
+      return v;
+    };
+
+    const sorted = [...matrix].sort(
+      (a, b) =>
+        Object.keys(b.conditions || {}).length -
+        Object.keys(a.conditions || {}).length,
+    );
+
+    for (const row of sorted) {
       if (!row.conditions || Object.keys(row.conditions).length === 0) continue;
 
       let match = true;
       for (const key of Object.keys(row.conditions)) {
-        const expected = row.conditions[key];
-        const got = params[key];
-        // eslint-disable-next-line eqeqeq
-        if (expected != got) {
+        if (norm(row.conditions[key]) !== norm(params[key])) {
           match = false;
           break;
         }
       }
-
       if (match) return row;
     }
 
