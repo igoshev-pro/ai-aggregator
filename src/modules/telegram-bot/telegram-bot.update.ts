@@ -7,18 +7,6 @@ import { ReferralService } from '../referral/referral.service';
 import { BotAuthService } from '../auth/bot-auth.service';
 import { TelegramUser } from '@/common/interfaces';
 
-// 🆕 Реквизиты ИП (КР) — прямо в файле бота, без внешних зависимостей
-const MERCHANT = {
-  name: 'Индивидуальный предприниматель ЖЫЛДЫЗБЕК УУЛУ СЫЙМЫКБЕК',
-  shortName: 'ИП Жылдызбек уулу Сыймыкбек',
-  inn: '20111199701766',
-  okpo: '34297158',
-  regNumber: '012-2025-169-2267',
-  regDate: '15.10.2025',
-  address:
-    'Кыргызская Республика, Чуйская обл., Сокулукский р-н, с. Кожомкул, ул. Рассвет, дом 36',
-};
-
 @Update()
 export class TelegramBotUpdate {
   private readonly logger = new Logger(TelegramBotUpdate.name);
@@ -40,7 +28,7 @@ export class TelegramBotUpdate {
     return raw.replace(/^@/, '').trim();
   }
 
-    /** Полный URL поддержки для inline-кнопки */
+  /** Полный URL поддержки для inline-кнопки */
   private getSupportUrl(): string {
     return `https://t.me/${this.getSupportUsername()}`;
   }
@@ -48,21 +36,6 @@ export class TelegramBotUpdate {
   /** Юзернейм с @ для подстановки в текст */
   private getSupportHandle(): string {
     return `@${this.getSupportUsername()}`;
-  }
-
-  /** 🆕 URL страницы документов внутри Mini App */
-  private getLegalWebAppUrl(): string {
-    const base =
-      this.config.get<string>('MINI_APP_URL') ||
-      this.config.get<string>('FRONTEND_URL') ||
-      process.env.MINI_APP_URL ||
-      process.env.FRONTEND_URL ||
-      '';
-    if (!base) return '';
-    // добавляем ?page=legal с учётом возможного существующего query
-    return base.includes('?')
-      ? `${base}&page=legal`
-      : `${base}?page=legal`;
   }
 
   @Start()
@@ -188,7 +161,6 @@ export class TelegramBotUpdate {
         '/start — открыть приложение\n' +
         '/balance — баланс спичек\n' +
         '/ref — реферальная ссылка\n' +
-        '/legal — документы и реквизиты\n' + // 🆕
         '/help — справка\n\n' +
         `💬 Поддержка: ${support}`,
       { parse_mode: 'Markdown' },
@@ -254,39 +226,5 @@ export class TelegramBotUpdate {
       this.logger.warn(`/ref failed for tg=${from.id}: ${e?.message}`);
       await ctx.reply('Сначала нажми /start');
     }
-  }
-
-  // ─────────────────────────────────────────────────────────
-  // 🆕 Команда /legal — документы, оплата, возврат, реквизиты
-  // ─────────────────────────────────────────────────────────
-  @Command('legal')
-  async onLegal(@Ctx() ctx: Context) {
-    const support = this.getSupportHandle();
-    const legalUrl = this.getLegalWebAppUrl();
-
-    const message =
-      `📄 *Документы и информация*\n\n` +
-      `*Продавец:*\n` +
-      `${MERCHANT.name}\n` +
-      `ИНН: ${MERCHANT.inn}\n` +
-      `ОКПО: ${MERCHANT.okpo}\n` +
-      `Рег. №: ${MERCHANT.regNumber} от ${MERCHANT.regDate}\n` +
-      `Адрес: ${MERCHANT.address}\n\n` +
-      `*Оплата:* картой Visa / Mastercard / Элкарт в сомах (⃀) через FreedomPay.\n\n` +
-      `*Возврат:* неиспользованные спички можно вернуть в течение 14 дней. ` +
-      `Потраченные спички возврату не подлежат.\n\n` +
-      `Полная оферта, политика конфиденциальности и правила возврата — по кнопке ниже.\n\n` +
-      `💬 Вопросы: ${support}`;
-
-    const buttons: any[] = [];
-    if (legalUrl) {
-      buttons.push([Markup.button.webApp('📖 Открыть документы', legalUrl)]);
-    }
-    buttons.push([Markup.button.url('💬 Поддержка', this.getSupportUrl())]);
-
-    await ctx.reply(message, {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard(buttons),
-    });
   }
 }
