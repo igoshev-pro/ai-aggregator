@@ -340,11 +340,24 @@ export class VideoGenerationDto {
   @IsBoolean()
   webSearch?: boolean;
 
-  // 🆕 Seedance 2/2-fast: аудио-референсы (до 3, суммарно ≤15с)
+    // 🆕 Seedance 2/2-fast: аудио-референсы (до 3, суммарно ≤15с)
   @ApiPropertyOptional({ description: 'Seedance 2: reference audio URLs' })
   @IsOptional()
   @IsArray()
   audioUrls?: string[];
+
+  // 🆕 Seedance 2/2-fast: суммарная длительность видео-референсов (сек).
+  // Используется для посекундной тарификации при videoRef=true:
+  //   cost = rate[resolution] × (duration + refVideoSeconds).
+  // Фронт передаёт сумму ceil() длительностей загруженных видео (макс 15).
+  @ApiPropertyOptional({
+    description: 'Seedance 2: total reference video seconds (for pricing)',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(60)
+  refVideoSeconds?: number;
 }
 
 export class DialogueLineDto {

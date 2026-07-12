@@ -301,6 +301,10 @@ export class ProviderRegistryService implements OnModuleInit {
         // 🆕 Посимвольная тарификация (для ElevenLabs аудио-моделей)
         charBasedPricing: (modelData as any).charBasedPricing ?? false,
         pricePerThousandChars: (modelData as any).pricePerThousandChars ?? 0,
+        // 🆕 Посекундная тарификация с видео-референсом (Seedance 2/2-fast)
+        videoRefPricing: (modelData as any).videoRefPricing ?? false,
+        videoRefRatePerSecond:
+          (modelData as any).videoRefRatePerSecond ?? {},
       };
 
       const setOnCreate: Record<string, any> = {
@@ -422,6 +426,10 @@ export class ProviderRegistryService implements OnModuleInit {
           isPremium: (modelData as any).isPremium ?? false,
           charBasedPricing: (modelData as any).charBasedPricing ?? false,
           pricePerThousandChars: (modelData as any).pricePerThousandChars ?? 0,
+          // 🆕 Посекундная тарификация с видео-референсом (Seedance 2/2-fast)
+          videoRefPricing: (modelData as any).videoRefPricing ?? false,
+          videoRefRatePerSecond:
+            (modelData as any).videoRefRatePerSecond ?? {},
         };
 
         const matrix = (modelData as any).pricingMatrix;
@@ -2099,16 +2107,19 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── Seedance 2 (KIE) ────────────────────────────────
-      // Цена: resolution × duration × videoRef (есть видео-референс → дешевле)
+      // Цена БЕЗ видео-референса: matrix (noVideo, $×90/сек × duration).
+      // Цена С видео-референсом: videoRefRatePerSecond × (out + in) — формулой.
+      // withVideo-ставки ($×90/сек): 480p=5.175, 720p=11.25, 1080p=27.9, 4k=57.6
+      // noVideo-ставки  ($×90/сек):  480p=8.55, 720p=18.45, 1080p=45.9, 4k=93.6
       {
         slug: 'seedance-2',
         name: 'Seedance 2',
         displayName: 'Seedance 2',
         description: 'Новое поколение ByteDance — мультиреференс (фото/видео/аудио), 4-15с',
         type: 'video',
-        fixedCostPerGeneration: 0.063, // справочно (720p×5с без видео ≈ 5.7×5/90)
+        fixedCostPerGeneration: 0.095, // справочно (720p×5с noVideo ≈ 18.45×5/90)
         tokensPerDollar: 90,
-        minTokenCost: 13.8, // мин: 480p × 4с + видео (3.45×4)
+        minTokenCost: 20.7, // мин: 480p × 4с + видео (5.175×4)
         sortOrder: 12.1,
         isPremium: true,
         capabilities: ['text_to_video', 'image_to_video', 'audio', 'reference_to_video'],
@@ -2118,27 +2129,25 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
         limits: { maxDuration: 15 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        // 🆕 Формула для видео-референса (videoRef=true считается в билинге, НЕ в матрице)
+        videoRefPricing: true,
+        videoRefRatePerSecond: { '480p': 5.175, '720p': 11.25, '1080p': 27.9, '4k': 57.6 },
+        // Матрица ТОЛЬКО для noVideo (videoRef=false) — out-длительность × noVideo-ставка
         pricingMatrix: (() => {
           const rows: any[] = [];
-          // [resolution][videoRef] => спичек за секунду
-          const rate: Record<string, { noVideo: number; withVideo: number }> = {
-            '480p': { noVideo: 5.7, withVideo: 3.45 },
-            '720p': { noVideo: 12.3, withVideo: 7.5 },
-            '1080p': { noVideo: 30.6, withVideo: 18.6 },
+          const rate: Record<string, number> = {
+            '480p': 8.55, '720p': 18.45, '1080p': 45.9, '4k': 93.6,
           };
           const dollarsPerToken = 1 / 90;
-          for (const resolution of ['480p', '720p', '1080p']) {
-            for (const videoRef of [false, true]) {
-              const perSec = videoRef ? rate[resolution].withVideo : rate[resolution].noVideo;
-              for (let d = 4; d <= 15; d++) {
-                const tokens = Math.round(perSec * d * 10) / 10;
-                rows.push({
-                  conditions: { resolution, videoRef, duration: d },
-                  costInTokens: tokens,
-                  costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
-                  label: `${resolution} × ${d}с${videoRef ? ' (видео-реф)' : ''}`,
-                });
-              }
+          for (const resolution of ['480p', '720p', '1080p', '4k']) {
+            for (let d = 4; d <= 15; d++) {
+              const tokens = Math.round(rate[resolution] * d * 10) / 10;
+              rows.push({
+                conditions: { resolution, videoRef: false, duration: d },
+                costInTokens: tokens,
+                costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+                label: `${resolution} × ${d}с`,
+              });
             }
           }
           return rows;
@@ -2147,9 +2156,10 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '480p', label: '480p (от 13.8🔥)' },
-              { value: '720p', label: '720p (от 30🔥)' },
-              { value: '1080p', label: '1080p (от 74.4🔥)' },
+              { value: '480p', label: '480p (от 20.7🔥)' },
+              { value: '720p', label: '720p (от 45🔥)' },
+              { value: '1080p', label: '1080p (от 111.6🔥)' },
+              { value: '4k', label: '4K (от 230.4🔥)' },
             ],
           },
           {
@@ -2163,8 +2173,8 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'videoRef', label: 'Видео-референс', type: 'boolean', affectsPrice: true, defaultValue: false,
             options: [
-              { value: false, label: 'Без видео (дороже)' },
-              { value: true, label: 'С видео (дешевле)' },
+              { value: false, label: 'Без видео' },
+              { value: true, label: 'С видео (+секунды референса)' },
             ],
           },
           {
@@ -2196,16 +2206,17 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── Seedance 2 Fast (KIE) ───────────────────────────
-      // Цена: resolution × duration × videoRef (только 480p/720p)
+      // withVideo-ставки ($×90/сек): 480p=4.05, 720p=9
+      // noVideo-ставки  ($×90/сек):  480p=6.975, 720p=14.85
       {
         slug: 'seedance-2-fast',
         name: 'Seedance 2 Fast',
         displayName: 'Seedance 2 Fast',
         description: 'Быстрая версия Seedance 2 — 480p/720p, 4-15с',
         type: 'video',
-        fixedCostPerGeneration: 0.055,
+        fixedCostPerGeneration: 0.0775,
         tokensPerDollar: 90,
-        minTokenCost: 10.8, // мин: 480p × 4с + видео (2.7×4)
+        minTokenCost: 16.2, // мин: 480p × 4с + видео (4.05×4)
         sortOrder: 12.2,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
         providerMappings: [
@@ -2214,25 +2225,22 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
         limits: { maxDuration: 15 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        // 🆕 Формула для видео-референса
+        videoRefPricing: true,
+        videoRefRatePerSecond: { '480p': 4.05, '720p': 9 },
         pricingMatrix: (() => {
           const rows: any[] = [];
-          const rate: Record<string, { noVideo: number; withVideo: number }> = {
-            '480p': { noVideo: 4.65, withVideo: 2.7 },
-            '720p': { noVideo: 9.9, withVideo: 6 },
-          };
+          const rate: Record<string, number> = { '480p': 6.975, '720p': 14.85 };
           const dollarsPerToken = 1 / 90;
           for (const resolution of ['480p', '720p']) {
-            for (const videoRef of [false, true]) {
-              const perSec = videoRef ? rate[resolution].withVideo : rate[resolution].noVideo;
-              for (let d = 4; d <= 15; d++) {
-                const tokens = Math.round(perSec * d * 10) / 10;
-                rows.push({
-                  conditions: { resolution, videoRef, duration: d },
-                  costInTokens: tokens,
-                  costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
-                  label: `${resolution} × ${d}с${videoRef ? ' (видео-реф)' : ''}`,
-                });
-              }
+            for (let d = 4; d <= 15; d++) {
+              const tokens = Math.round(rate[resolution] * d * 10) / 10;
+              rows.push({
+                conditions: { resolution, videoRef: false, duration: d },
+                costInTokens: tokens,
+                costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+                label: `${resolution} × ${d}с`,
+              });
             }
           }
           return rows;
@@ -2241,8 +2249,8 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '480p', label: '480p (от 10.8🔥)' },
-              { value: '720p', label: '720p (от 24🔥)' },
+              { value: '480p', label: '480p (от 16.2🔥)' },
+              { value: '720p', label: '720p (от 36🔥)' },
             ],
           },
           {
@@ -2256,8 +2264,8 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'videoRef', label: 'Видео-референс', type: 'boolean', affectsPrice: true, defaultValue: false,
             options: [
-              { value: false, label: 'Без видео (дороже)' },
-              { value: true, label: 'С видео (дешевле)' },
+              { value: false, label: 'Без видео' },
+              { value: true, label: 'С видео (+секунды референса)' },
             ],
           },
           {

@@ -213,6 +213,36 @@ export class PricingService {
       };
     }
 
+        // ─── 🆕 MEDIA с видео-референсом (Seedance 2/2-fast) ───
+    // Если модель поддерживает посекундную формулу и videoRef=true —
+    // считаем цену формулой rate × (out + refVideoSeconds), минуя матрицу.
+    const videoRefPrice = this.tryVideoRefPrice(model, params);
+    if (videoRefPrice) {
+      const costInTokens = Math.max(
+        videoRefPrice.costInTokens,
+        model.minTokenCost || 1,
+      );
+      const breakdown = {
+        modelSlug: model.slug,
+        modelName: model.name,
+        type: model.type,
+        rule: videoRefPrice.label,
+        params,
+        costInTokens,
+        costInDollars: 0,
+        fallback: false,
+      };
+      this.logger.debug(
+        `[${modelSlug}] video-ref price: ${videoRefPrice.label} → ${costInTokens}🔥`,
+      );
+      return {
+        costInTokens,
+        costInDollars: 0,
+        fallback: false,
+        breakdown,
+      };
+    }
+
     // ─── MEDIA ─── ищем правило в pricingMatrix
     const matched = this.findMatchingRule(model.pricingMatrix, params);
 
@@ -405,5 +435,45 @@ export class PricingService {
     return Object.entries(conditions || {})
       .map(([k, v]) => `${k}=${Array.isArray(v) ? `[${v.join('|')}]` : v}`)
       .join(', ');
+  }
+
+    /**
+   * 🆕 Расчёт цены Seedance с видео-референсом.
+   * Формула: rate[resolution] × (outDuration + refVideoSeconds).
+   * Возвращает null, если модель НЕ videoRefPricing или videoRef!==true —
+   * тогда работает обычная pricingMatrix.
+   */
+  private tryVideoRefPrice(
+    model: any,
+    params: Record<string, any>,
+  ): { costInTokens: number; label: string } | null {
+    if (!model.videoRefPricing) return null;
+
+    // videoRef может прийти строкой 'true'/'false' или boolean
+    const vr = params.videoRef;
+    const videoRefOn = vr === true || vr === 'true';
+    if (!videoRefOn) return null;
+
+    const rateMap = model.videoRefRatePerSecond || {};
+    const resolution = String(params.resolution || '');
+    const rate = Number(rateMap[resolution]);
+    if (!Number.isFinite(rate) || rate <= 0) return null;
+
+    const outSec = Math.max(0, Number(params.duration) || 0);
+    const refSec = Math.min(
+      15,
+      Math.max(0, Math.ceil(Number(params.refVideoSeconds) || 0)),
+    );
+
+    const totalSec = outSec + refSec;
+    if (totalSec <= 0) return null;
+
+    const raw = rate * totalSec;
+    const cost = Math.round(raw * 100) / 100;
+
+    return {
+      costInTokens: cost,
+      label: `${resolution} × ${outSec}с + видео-реф ${refSec}с`,
+    };
   }
 }

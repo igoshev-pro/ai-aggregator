@@ -314,7 +314,7 @@ export class GenerationService {
 
     // 🆕 Kling 3.0 мультисцены: реальная длительность = сумма шотов
     // (каждый шот клампится 1–12, как в KIE provider), затем clamp 3–15.
-        let effectiveDuration = dto.duration;
+    let effectiveDuration = dto.duration;
     if (
       dto.multiShots &&
       Array.isArray(dto.multiPrompt) &&
@@ -338,7 +338,7 @@ export class GenerationService {
         Number((model.defaultParams as any)?.duration) || 5;
     }
 
-        // 🔧 Дефолты из модели — чтобы pricingMatrix точно сматчилась.
+    // 🔧 Дефолты из модели — чтобы pricingMatrix точно сматчилась.
     // resolution: Seedance/Wan/Runway матрицы зависят от него.
     // sound: приводим к явному boolean (undefined ломает матч по conditions.sound).
     const effectiveResolution =
@@ -349,8 +349,8 @@ export class GenerationService {
     const effectiveSound = dto.multiShots
       ? true
       : (dto.sound !== undefined
-          ? dto.sound
-          : (model.defaultParams as any)?.sound ?? false);
+        ? dto.sound
+        : (model.defaultParams as any)?.sound ?? false);
 
     const priceParams = {
       mode: dto.mode,
@@ -362,6 +362,8 @@ export class GenerationService {
       generateAudio: dto.generateAudio,
       stable: dto.stable,
       videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
+      // 🆕 суммарные секунды видео-референсов (для посекундной формулы Seedance 2)
+      refVideoSeconds: Number(dto.refVideoSeconds) || 0,
       hasInputImage:
         !!dto.imageUrl ||
         !!(dto.imageUrls && dto.imageUrls.length > 0) ||
@@ -429,6 +431,9 @@ export class GenerationService {
         fixedLens: dto.fixedLens,
         webSearch: dto.webSearch,
         audioUrls: dto.audioUrls,
+        // 🆕 для пересчёта той же цены в billing (recordMediaGeneration)
+        refVideoSeconds: Number(dto.refVideoSeconds) || 0,
+        videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
       },
       tokensCost: costInTokens,
       costInDollars,

@@ -2661,6 +2661,40 @@ export class BillingService implements OnApplicationBootstrap {
       };
     }
 
+        // ── 🆕 1.5. Видео-референс (Seedance 2/2-fast) ──────────────
+    // rate[resolution] × (outDuration + refVideoSeconds). Считаем формулой
+    // ДО матрицы — она содержит только строки videoRef:false.
+    if ((model as any).videoRefPricing) {
+      const vr = params?.videoRef;
+      const videoRefOn = vr === true || vr === 'true';
+      if (videoRefOn) {
+        const rateMap = (model as any).videoRefRatePerSecond || {};
+        const resolution = String(params?.resolution || '');
+        const rate = Number(rateMap[resolution]);
+
+        if (Number.isFinite(rate) && rate > 0) {
+          const outSec = Math.max(0, Number(params?.duration) || 0);
+          const refSec = Math.min(
+            15,
+            Math.max(0, Math.ceil(Number(params?.refVideoSeconds) || 0)),
+          );
+          const totalSec = outSec + refSec;
+
+          if (totalSec > 0) {
+            const raw = rate * totalSec;
+            const minCost = model.minTokenCost || MIN_CHARGE_TOKENS;
+            const finalCost = finalizeTokenCost(Math.max(minCost, raw));
+
+            return {
+              costInDollars: 0,
+              costInTokens: finalCost,
+              matchedTier: `${resolution} × ${outSec}с + видео-реф ${refSec}с`,
+            };
+          }
+        }
+      }
+    }
+
     // ── 2. Медиа-модели с pricingMatrix ─────────────────────────
     const matrix = (model as any).pricingMatrix as Array<{
       conditions?: Record<string, any>;
