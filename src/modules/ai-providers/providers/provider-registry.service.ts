@@ -2132,11 +2132,11 @@ export class ProviderRegistryService implements OnModuleInit {
         inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
         // 🆕 Формула для видео-референса (videoRef=true считается в билинге, НЕ в матрице)
         videoRefPricing: true,
-        videoRefRatePerSecond: { '480p': 3.45, '720p': 7.5, '1080p': 18.6, '4k': 37.2 },
+        videoRefRatePerSecond: { '480p': 3.45, '720p': 7.5, '1080p': 18.6, '4k': 38.4 },
         // Матрица ТОЛЬКО для noVideo (videoRef=false)
         pricingMatrix: (() => {
           const rows: any[] = [];
-          const rate: Record<string, number> = { '480p': 5.7, '720p': 12.3, '1080p': 30.6, '4k': 61.2 };
+          const rate: Record<string, number> = { '480p': 5.7, '720p': 12.3, '1080p': 30.6, '4k': 62.4 };
           const dollarsPerToken = 1 / 90;
           for (const resolution of ['480p', '720p', '1080p', '4k']) {
             for (let d = 4; d <= 15; d++) {
@@ -2158,7 +2158,7 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '480p', label: '480p (от 13.8🔥)' },
               { value: '720p', label: '720p (от 30🔥)' },
               { value: '1080p', label: '1080p (от 74.4🔥)' },
-              { value: '4k', label: '4K (от 148.8🔥)' },
+              { value: '4k', label: '4K (от 153.6🔥)' },
             ],
           },
           {
