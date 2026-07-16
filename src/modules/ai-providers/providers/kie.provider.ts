@@ -111,6 +111,13 @@ const KIE_MODEL_PARAMS: Record<string, {
   },
 };
 
+// 🆕 GPT 5.6 модели — новый endpoint /codex/v1/responses (формат responses API)
+const KIE_CODEX_MODELS: Record<string, string> = {
+  'gpt-5.6-luna': 'gpt-5-6-luna',
+  'gpt-5.6-terra': 'gpt-5-6-terra',
+  'gpt-5.6-sol': 'gpt-5-6-sol',
+};
+
 interface VideoModelConfig {
   kieModel: string;
   apiType: 'jobs' | 'runway' | 'veo';
@@ -2109,8 +2116,14 @@ export class KieProvider extends BaseProvider {
     });
   }
 
-  async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
+    async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
+
+    // 🆕 GPT 5.6 — отдельный codex endpoint
+    if (KIE_CODEX_MODELS[request.model]) {
+      return this.generateCodexText(request, start);
+    }
+
     const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
 
     if (!endpoint) {
@@ -2158,7 +2171,177 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-  async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
+    // ═══════════════════════════════════════════════════════
+  // 🆕 GPT 5.6 CODEX TEXT (KIE /codex/v1/responses)
+  // Новый формат responses API: input[] + reasoning.effort,
+  // ответ в output[].content[].text
+  // ═══════════════════════════════════════════════════════
+  private async generateCodexText(
+    request: TextGenerationRequest,
+    start: number,
+  ): Promise<GenerationResult> {
+    const codexModel = KIE_CODEX_MODELS[request.model];
+
+    if (!codexModel) {
+      return {
+        success: false,
+        error: {
+          code: 'NOT_IMPLEMENTED',
+          message: `Codex model ${request.model} not supported by KIE`,
+          retryable: false,
+        },
+        responseTimeMs: 0,
+        providerSlug: this.slug,
+      };
+    }
+
+    try {
+      // ─── Конвертация messages → input[] (responses API формат) ───
+      const input = this.buildCodexInput(request.messages as any[]);
+
+      // reasoning.effort из defaultParams или дефолт 'low'
+      const effort = (request as any).reasoningEffort || 'low';
+
+      const body: Record<string, any> = {
+        model: codexModel,
+        input,
+        stream: false,
+        reasoning: { effort },
+      };
+
+      this.logger.debug(
+        `KIE Codex generate: model=${codexModel}, effort=${effort}, ` +
+        `inputBlocks=${input.length}`,
+      );
+
+      const response = await this.client.post('/codex/v1/responses', body, {
+        timeout: 180000,
+      });
+
+      const data = response.data;
+
+      // ─── Извлечение текста из output[].content[].text ───
+      let content = '';
+      const output = Array.isArray(data?.output) ? data.output : [];
+      for (const item of output) {
+        if (item?.type === 'message' && Array.isArray(item.content)) {
+          for (const part of item.content) {
+            if (part?.type === 'output_text' && typeof part.text === 'string') {
+              content += part.text;
+            } else if (typeof part?.text === 'string') {
+              content += part.text;
+            }
+          }
+        }
+      }
+
+      // Fallback: иногда текст может лежать в output_text напрямую
+      if (!content && typeof data?.output_text === 'string') {
+        content = data.output_text;
+      }
+
+      this.logger.debug(
+        `KIE Codex response: status=${data?.status}, contentLen=${content.length}, ` +
+        `usage=${JSON.stringify(data?.usage || {})}`,
+      );
+
+      return {
+        success: true,
+        data: {
+          content,
+          metadata: { model: codexModel },
+        },
+        usage: {
+          inputTokens: data?.usage?.input_tokens,
+          outputTokens: data?.usage?.output_tokens,
+          totalTokens: data?.usage?.total_tokens,
+        },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `KIE Codex generateText error: ${error?.response?.status} - ${error.message}`,
+      );
+      if (error?.response?.data) {
+        this.logger.error(
+          `KIE Codex error data: ${JSON.stringify(error.response.data).substring(0, 500)}`,
+        );
+      }
+      return this.handleError(error, start);
+    }
+  }
+
+  /**
+   * 🆕 Конвертирует messages[] (chat формат) в input[] (codex responses формат).
+   *
+   * Chat: { role, content: string | any[], imageUrls?: [] }
+   * Codex: { role, content: [{ type: 'input_text', text }, { type: 'input_image', image_url }] }
+   */
+  private buildCodexInput(messages: any[]): any[] {
+    const input: any[] = [];
+
+    for (const msg of messages) {
+      const role = msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user';
+      const content: any[] = [];
+
+      const textVal = typeof msg.content === 'string' ? msg.content : '';
+      if (textVal && textVal.trim().length > 0) {
+        content.push({ type: 'input_text', text: textVal });
+      }
+
+      // Vision: imageUrls → input_image
+      if (Array.isArray(msg.imageUrls) && msg.imageUrls.length > 0) {
+        for (const url of msg.imageUrls) {
+          if (url) content.push({ type: 'input_image', image_url: url });
+        }
+      }
+
+      // Если content уже массив (multimodal) — конвертируем OpenAI-формат
+      if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (part?.type === 'text' && part.text) {
+            content.push({ type: 'input_text', text: part.text });
+          } else if (part?.type === 'image_url') {
+            const url = part.image_url?.url || part.image_url;
+            if (url) content.push({ type: 'input_image', image_url: url });
+          }
+        }
+      }
+
+      // Пропускаем пустые сообщения
+      if (content.length === 0) continue;
+
+      input.push({ role, content });
+    }
+
+    return input;
+  }
+
+    async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
+    // 🆕 GPT 5.6 — codex API. Стримим через non-stream fallback
+    // (отдаём весь ответ одним чанком). Чат отобразит корректно.
+    if (KIE_CODEX_MODELS[request.model]) {
+      const result = await this.generateCodexText(request, Date.now());
+      if (!result.success) {
+        yield { content: '', done: true, error: result.error?.message || 'Codex generation failed' };
+        return;
+      }
+      const content = result.data?.content || '';
+      if (content) {
+        yield { content, done: false };
+      }
+      yield {
+        content: '',
+        done: true,
+        usage: {
+          inputTokens: result.usage?.inputTokens,
+          outputTokens: result.usage?.outputTokens,
+        },
+      };
+      return;
+    }
+
     const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
 
     if (!endpoint) {
