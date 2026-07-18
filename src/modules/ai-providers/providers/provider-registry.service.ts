@@ -735,7 +735,7 @@ export class ProviderRegistryService implements OnModuleInit {
       },
            // ─── GPT 5.6 (KIE /codex/v1/responses) ──────────────
       {
-        slug: 'gpt-5.6-luna',
+        slug: 'gpt-5-6-luna',
         name: 'GPT-5.6 Luna',
         displayName: 'GPT-5.6 Luna',
         description: 'Быстрая мультимодальная модель OpenAI (Luna) с управляемым мышлением',
@@ -751,13 +751,13 @@ export class ProviderRegistryService implements OnModuleInit {
         supportsVision: true,
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'gpt-5.6-luna', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'gpt-5-6-luna', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
       },
       {
-        slug: 'gpt-5.6-terra',
+        slug: 'gpt-5-6-terra',
         name: 'GPT-5.6 Terra',
         displayName: 'GPT-5.6 Terra',
         description: 'Сбалансированная мультимодальная модель OpenAI (Terra) с управляемым мышлением',
@@ -774,13 +774,13 @@ export class ProviderRegistryService implements OnModuleInit {
         supportsVision: true,
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'gpt-5.6-terra', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'gpt-5-6-terra', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
       },
       {
-        slug: 'gpt-5.6-sol',
+        slug: 'gpt-5-6-sol',
         name: 'GPT-5.6 Sol',
         displayName: 'GPT-5.6 Sol',
         description: 'Флагманская мультимодальная модель OpenAI (Sol) — максимальное качество мышления',
@@ -797,7 +797,7 @@ export class ProviderRegistryService implements OnModuleInit {
         supportsVision: true,
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
-          { providerSlug: 'kie', modelId: 'gpt-5.6-sol', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'gpt-5-6-sol', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
