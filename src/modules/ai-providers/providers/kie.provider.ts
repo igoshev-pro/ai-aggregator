@@ -2283,15 +2283,19 @@ export class KieProvider extends BaseProvider {
 
     for (const msg of messages) {
       const role = msg.role === 'assistant' ? 'assistant' : msg.role === 'system' ? 'system' : 'user';
+      // 🔧 KIE Codex responses API: assistant → output_text, user/system → input_text.
+      // input_text в блоке assistant вызывает 422 "The param is not a valid JSON object"
+      // (подтверждено curl). Это ломало каждый 2-й запрос (история диалога с ответом ассистента).
+      const textType = role === 'assistant' ? 'output_text' : 'input_text';
       const content: any[] = [];
 
       const textVal = typeof msg.content === 'string' ? msg.content : '';
       if (textVal && textVal.trim().length > 0) {
-        content.push({ type: 'input_text', text: textVal });
+        content.push({ type: textType, text: textVal });
       }
 
-      // Vision: imageUrls → input_image
-      if (Array.isArray(msg.imageUrls) && msg.imageUrls.length > 0) {
+      // Vision: imageUrls → input_image (только для user/system, у assistant входных картинок нет)
+      if (role !== 'assistant' && Array.isArray(msg.imageUrls) && msg.imageUrls.length > 0) {
         for (const url of msg.imageUrls) {
           if (url) content.push({ type: 'input_image', image_url: url });
         }
@@ -2301,8 +2305,8 @@ export class KieProvider extends BaseProvider {
       if (Array.isArray(msg.content)) {
         for (const part of msg.content) {
           if (part?.type === 'text' && part.text) {
-            content.push({ type: 'input_text', text: part.text });
-          } else if (part?.type === 'image_url') {
+            content.push({ type: textType, text: part.text });
+          } else if (part?.type === 'image_url' && role !== 'assistant') {
             const url = part.image_url?.url || part.image_url;
             if (url) content.push({ type: 'input_image', image_url: url });
           }
