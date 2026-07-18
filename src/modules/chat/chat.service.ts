@@ -35,6 +35,9 @@ export interface SendMessageDto {
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
+  // 🆕 GPT 5.6 codex-модели
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  webSearch?: boolean;
 }
 
 interface ContextMessage {
@@ -69,7 +72,7 @@ export class ChatService {
     private billingService: BillingService,
     @Inject(forwardRef(() => ProviderRegistryService))
     private providerRegistry: ProviderRegistryService,
-  ) {}
+  ) { }
 
   async getConversations(userId: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
@@ -252,6 +255,9 @@ export class ChatService {
         messages: contextMessages,
         maxTokens: dto.maxTokens || model.defaultParams?.maxTokens || 4096,
         temperature: dto.temperature ?? model.defaultParams?.temperature ?? 0.7,
+        // 🆕 codex-модели GPT 5.6
+        reasoningEffort: dto.reasoningEffort,
+        webSearch: dto.webSearch,
       });
 
       if (!result.success) {
@@ -283,8 +289,8 @@ export class ChatService {
       if (estimated) {
         this.logger.warn(
           `⚠️ [non-stream] usage missing from provider for ${dto.modelSlug}, ` +
-            `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
-            `(rawUsage=${JSON.stringify(result.usage)})`,
+          `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
+          `(rawUsage=${JSON.stringify(result.usage)})`,
         );
       }
 
@@ -301,7 +307,7 @@ export class ChatService {
 
       this.logger.log(
         `💸 Charged: ${costInTokens}🔥 (in=${inputTokens}, out=${outputTokens}, ` +
-          `estimated=${estimated}, providerCost=$${costInDollars})`,
+        `estimated=${estimated}, providerCost=$${costInDollars})`,
       );
 
       const assistantMessage = new this.messageModel({
@@ -469,6 +475,9 @@ export class ChatService {
           maxTokens: dto.maxTokens || model.defaultParams?.maxTokens || 4096,
           temperature: dto.temperature ?? model.defaultParams?.temperature ?? 0.7,
           stream: true,
+          // 🆕 codex-модели GPT 5.6
+          reasoningEffort: dto.reasoningEffort,
+          webSearch: dto.webSearch,
         });
 
         for await (const chunk of stream) {
@@ -524,8 +533,8 @@ export class ChatService {
         if (estimated) {
           this.logger.warn(
             `⚠️ [stream] usage missing from provider for ${dto.modelSlug}, ` +
-              `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
-              `(rawUsage=${JSON.stringify(lastUsage)})`,
+            `estimated: in≈${inputTokens}, out≈${outputTokens} ` +
+            `(rawUsage=${JSON.stringify(lastUsage)})`,
           );
         }
 
@@ -545,7 +554,7 @@ export class ChatService {
 
         this.logger.log(
           `💸 [stream] Charged: ${costInTokens}🔥 (in=${inputTokens}, out=${outputTokens}, ` +
-            `estimated=${estimated}, providerCost=$${costInDollars})`,
+          `estimated=${estimated}, providerCost=$${costInDollars})`,
         );
 
         // Обновляем сообщение ассистента
@@ -712,9 +721,9 @@ export class ChatService {
         if (att.text && att.text.trim()) {
           docBlocks.push(
             `Содержимое прикреплённого файла «${att.filename}»:\n` +
-              '```\n' +
-              att.text.trim() +
-              '\n```',
+            '```\n' +
+            att.text.trim() +
+            '\n```',
           );
         }
       }

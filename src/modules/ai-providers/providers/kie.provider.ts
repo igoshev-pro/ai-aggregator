@@ -373,7 +373,7 @@ export class KieProvider extends BaseProvider {
         `KIE generateImage: model=${modelId}, imgs=${incomingUrls.length}, prompt="${request.prompt?.substring(0, 60)}"`,
       );
 
-            const input: Record<string, any> = { prompt: request.prompt };
+      const input: Record<string, any> = { prompt: request.prompt };
 
       // 🔧 FIX: приоритет строкового aspectRatio от фронта.
       // Раньше aspect_ratio всегда вычислялся из width/height, которые
@@ -2116,7 +2116,7 @@ export class KieProvider extends BaseProvider {
     });
   }
 
-    async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
+  async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
 
     // 🆕 GPT 5.6 — отдельный codex endpoint
@@ -2171,7 +2171,7 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-    // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
   // 🆕 GPT 5.6 CODEX TEXT (KIE /codex/v1/responses)
   // Новый формат responses API: input[] + reasoning.effort,
   // ответ в output[].content[].text
@@ -2199,8 +2199,10 @@ export class KieProvider extends BaseProvider {
       // ─── Конвертация messages → input[] (responses API формат) ───
       const input = this.buildCodexInput(request.messages as any[]);
 
-      // reasoning.effort из defaultParams или дефолт 'low'
-      const effort = (request as any).reasoningEffort || 'low';
+      // 🆕 reasoning.effort: low | medium | high | xhigh (дефолт low)
+      const allowedEfforts = ['low', 'medium', 'high', 'xhigh'];
+      const rawEffort = (request as any).reasoningEffort;
+      const effort = allowedEfforts.includes(rawEffort) ? rawEffort : 'low';
 
       const body: Record<string, any> = {
         model: codexModel,
@@ -2208,6 +2210,11 @@ export class KieProvider extends BaseProvider {
         stream: false,
         reasoning: { effort },
       };
+
+      // 🆕 Web Access: добавляем инструмент web_search если включён на фронте
+      if ((request as any).webSearch === true) {
+        body.tools = [{ type: 'web_search' }];
+      }
 
       this.logger.debug(
         `KIE Codex generate: model=${codexModel}, effort=${effort}, ` +
@@ -2322,7 +2329,7 @@ export class KieProvider extends BaseProvider {
     return input;
   }
 
-    async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
+  async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
     // 🆕 GPT 5.6 — codex API. Стримим через non-stream fallback
     // (отдаём весь ответ одним чанком). Чат отобразит корректно.
     if (KIE_CODEX_MODELS[request.model]) {

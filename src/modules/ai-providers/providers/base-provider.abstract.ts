@@ -29,6 +29,9 @@ export interface TextGenerationRequest {
   temperature?: number;
   topP?: number;
   stream?: boolean;
+  // 🆕 GPT 5.6 codex-модели
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+  webSearch?: boolean;
 }
 
 export interface ImageGenerationRequest {
