@@ -2347,26 +2347,11 @@ export class KieProvider extends BaseProvider {
   }
 
   async *generateTextStream(request: TextGenerationRequest): AsyncGenerator<StreamChunk> {
-    // 🆕 GPT 5.6 — codex API. Стримим через non-stream fallback
-    // (отдаём весь ответ одним чанком). Чат отобразит корректно.
+    // 🆕 GPT 5.6 — codex API через настоящий SSE-стрим.
+    // stream:true обходит Cloudflare 524 (origin_response_timeout 120с),
+    // т.к. поток байтов идёт непрерывно и таймер "молчания" не срабатывает.
     if (KIE_CODEX_MODELS[request.model]) {
-      const result = await this.generateCodexText(request, Date.now());
-      if (!result.success) {
-        yield { content: '', done: true, error: result.error?.message || 'Codex generation failed' };
-        return;
-      }
-      const content = result.data?.content || '';
-      if (content) {
-        yield { content, done: false };
-      }
-      yield {
-        content: '',
-        done: true,
-        usage: {
-          inputTokens: result.usage?.inputTokens,
-          outputTokens: result.usage?.outputTokens,
-        },
-      };
+      yield* this.streamCodexText(request);
       return;
     }
 
@@ -2481,6 +2466,187 @@ export class KieProvider extends BaseProvider {
 
       this.logger.error(`KIE stream error: status=${status}, message=${errorMessage}`);
       yield { content: '', done: true, error: `KIE: ${status || 'NETWORK'} - ${errorMessage}` };
+    }
+  }
+
+    // ═══════════════════════════════════════════════════════
+  // 🆕 GPT 5.6 CODEX STREAM (KIE /codex/v1/responses, stream:true)
+  // Настоящий SSE-стрим — обходит Cloudflare 524 при long reasoning.
+  // Формат событий responses API:
+  //   response.output_text.delta  → { delta: "..." }
+  //   response.completed          → { response: { usage } }
+  //   response.failed / error     → ошибка
+  // ═══════════════════════════════════════════════════════
+  private async *streamCodexText(
+    request: TextGenerationRequest,
+  ): AsyncGenerator<StreamChunk> {
+    const codexModel = KIE_CODEX_MODELS[request.model];
+
+    if (!codexModel) {
+      yield { content: '', done: true, error: `Codex model ${request.model} not supported by KIE` };
+      return;
+    }
+
+    try {
+      const input = this.buildCodexInput(request.messages as any[]);
+
+      const allowedEfforts = ['low', 'medium', 'high', 'xhigh'];
+      const rawEffort = (request as any).reasoningEffort;
+      const effort = allowedEfforts.includes(rawEffort) ? rawEffort : 'low';
+
+      const body: Record<string, any> = {
+        model: codexModel,
+        input,
+        stream: true,
+        reasoning: { effort },
+      };
+
+      const webSearchEnabled = (request as any).webSearch === true;
+      if (webSearchEnabled) {
+        body.tools = [{ type: 'web_search' }];
+      }
+
+      // Таймаут на неактивность потока. При stream:true чанки идут
+      // регулярно, поэтому даём большой запас на паузы reasoning.
+      const timeoutByEffort: Record<string, number> = {
+        low: 300000,     // 5 мин
+        medium: 480000,  // 8 мин
+        high: 720000,    // 12 мин
+        xhigh: 900000,   // 15 мин
+      };
+      let codexTimeout = timeoutByEffort[effort] ?? 300000;
+      if (webSearchEnabled) codexTimeout += 180000; // +3 мин
+
+      this.logger.debug(
+        `KIE Codex STREAM: model=${codexModel}, effort=${effort}, ` +
+        `webSearch=${webSearchEnabled}, timeout=${codexTimeout}ms, inputBlocks=${input.length}`,
+      );
+
+      const response = await this.client.post('/codex/v1/responses', body, {
+        responseType: 'stream',
+        timeout: codexTimeout,
+      });
+
+      let buffer = '';
+      let emittedContent = false;
+      let usage: { inputTokens?: number; outputTokens?: number } = {};
+      const stream = response.data;
+
+      for await (const chunk of stream) {
+        buffer += chunk.toString();
+
+        // SSE-события разделены двойным переводом строки
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const evt of events) {
+          // В событии могут быть строки "event: ..." и "data: ..."
+          const dataLines = evt
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => l.slice(5).trim());
+
+          if (dataLines.length === 0) continue;
+          const dataStr = dataLines.join('');
+
+          if (dataStr === '[DONE]') {
+            yield { content: '', done: true, usage };
+            return;
+          }
+
+          let parsed: any;
+          try {
+            parsed = JSON.parse(dataStr);
+          } catch {
+            continue; // неполный/служебный чанк
+          }
+
+          const type = parsed?.type;
+
+          // ─── Дельта текста ───
+          if (type === 'response.output_text.delta') {
+            const delta = typeof parsed.delta === 'string' ? parsed.delta : '';
+            if (delta) {
+              emittedContent = true;
+              yield { content: delta, done: false };
+            }
+            continue;
+          }
+
+          // ─── Ошибки ───
+          if (type === 'response.failed' || type === 'error') {
+            const errMsg =
+              parsed?.response?.error?.message ||
+              parsed?.error?.message ||
+              parsed?.message ||
+              'Codex stream failed';
+            this.logger.error(`KIE Codex stream event error: ${errMsg}`);
+            yield { content: '', done: true, error: errMsg };
+            return;
+          }
+
+          // ─── Завершение: забираем usage ───
+          if (type === 'response.completed' || type === 'response.incomplete') {
+            const u = parsed?.response?.usage;
+            if (u) {
+              usage = {
+                inputTokens: u.input_tokens,
+                outputTokens: u.output_tokens,
+              };
+            }
+            // Fallback: если дельт не было, но есть готовый output — отдаём разом
+            if (!emittedContent) {
+              const out = Array.isArray(parsed?.response?.output)
+                ? parsed.response.output
+                : [];
+              let full = '';
+              for (const item of out) {
+                if (item?.type === 'message' && Array.isArray(item.content)) {
+                  for (const part of item.content) {
+                    if (typeof part?.text === 'string') full += part.text;
+                  }
+                }
+              }
+              if (full) yield { content: full, done: false };
+            }
+            yield { content: '', done: true, usage };
+            return;
+          }
+        }
+      }
+
+      // Поток закончился без явного завершающего события
+      this.logger.warn(`KIE Codex stream ended without completed event (model=${codexModel})`);
+      yield { content: '', done: true, usage };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      let errorMessage = error.message;
+
+      try {
+        if (error?.response?.data && typeof error.response.data.pipe === 'function') {
+          const chunks: Buffer[] = [];
+          for await (const c of error.response.data) {
+            chunks.push(Buffer.from(c));
+            if (chunks.length > 5) break;
+          }
+          const bodyStr = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+          try {
+            const parsed = JSON.parse(bodyStr);
+            errorMessage = parsed?.error?.message || parsed?.detail || parsed?.msg || bodyStr;
+          } catch {
+            errorMessage = bodyStr || error.message;
+          }
+        } else if (typeof error?.response?.data === 'string') {
+          errorMessage = error.response.data.substring(0, 500);
+        } else if (error?.response?.data?.detail) {
+          errorMessage = error.response.data.detail;
+        }
+      } catch {
+        errorMessage = `HTTP ${status}: ${error.message}`;
+      }
+
+      this.logger.error(`KIE Codex stream error: status=${status}, message=${errorMessage}`);
+      yield { content: '', done: true, error: `KIE Codex: ${status || 'NETWORK'} - ${errorMessage}` };
     }
   }
 
