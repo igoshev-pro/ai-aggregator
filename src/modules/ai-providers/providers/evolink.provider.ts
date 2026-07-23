@@ -30,6 +30,7 @@ const CLAUDE_MODEL_PREFIXES = [
   'claude-opus-4-7',   // 🆕
   'claude-opus-4-8',   // 🆕
   'claude-sonnet-4-6',
+  'claude-sonnet-5',   // 🆕 Sonnet 5
   'claude-haiku-4-5',
   'claude-sonnet-4-5',
   'claude-opus-4-1',
