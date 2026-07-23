@@ -2204,7 +2204,7 @@ export class KieProvider extends BaseProvider {
       const rawEffort = (request as any).reasoningEffort;
       const effort = allowedEfforts.includes(rawEffort) ? rawEffort : 'low';
 
-      const body: Record<string, any> = {
+            const body: Record<string, any> = {
         model: codexModel,
         input,
         stream: false,
@@ -2212,17 +2212,34 @@ export class KieProvider extends BaseProvider {
       };
 
       // 🆕 Web Access: добавляем инструмент web_search если включён на фронте
-      if ((request as any).webSearch === true) {
+      const webSearchEnabled = (request as any).webSearch === true;
+      if (webSearchEnabled) {
         body.tools = [{ type: 'web_search' }];
+      }
+
+      // 🆕 Динамический таймаут: high/xhigh effort думают дольше,
+      // web_search добавляет ещё время на обход источников.
+      // Базовый таймаут = 180с, наращиваем под тяжёлые режимы.
+      const timeoutByEffort: Record<string, number> = {
+        low: 180000,     // 3 мин
+        medium: 300000,  // 5 мин
+        high: 480000,    // 8 мин
+        xhigh: 600000,   // 10 мин
+      };
+      let codexTimeout = timeoutByEffort[effort] ?? 180000;
+      // web_search увеличивает время → добавляем запас
+      if (webSearchEnabled) {
+        codexTimeout += 120000; // +2 мин
       }
 
       this.logger.debug(
         `KIE Codex generate: model=${codexModel}, effort=${effort}, ` +
+        `webSearch=${webSearchEnabled}, timeout=${codexTimeout}ms, ` +
         `inputBlocks=${input.length}`,
       );
 
       const response = await this.client.post('/codex/v1/responses', body, {
-        timeout: 180000,
+        timeout: codexTimeout,
       });
 
       const data = response.data;
