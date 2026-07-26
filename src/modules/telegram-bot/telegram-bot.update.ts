@@ -19,7 +19,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     private readonly botAuthService: BotAuthService,
   ) {}
 
-  // ─── Bootstrap: команды + меню (для Telegram Ads) ────────
+  // ─── Bootstrap: команды + меню + описания (для Telegram Ads) ───
   async onModuleInit() {
     try {
       await this.bot.telegram.setMyCommands([
@@ -99,7 +99,7 @@ export class TelegramBotUpdate implements OnModuleInit {
       this.config.get<string>('SITE_URL') ||
       process.env.SITE_URL ||
       this.getMiniAppUrl() ||
-      'https://spichki.tw1.ru';
+      'https://spichki-ai.net';
     return raw.replace(/\/+$/, '');
   }
 
@@ -220,29 +220,16 @@ export class TelegramBotUpdate implements OnModuleInit {
     buttons.push([
       Markup.button.url('💬 Поддержка', this.getSupportUrl()),
     ]);
+    // 🆕 Юр. документы — показываем ВСЕМ (требование Telegram Ads)
+    buttons.push([
+      Markup.button.url('📄 Соглашение', this.getTermsUrl()),
+      Markup.button.url('🔒 Конфиденциальность', this.getPrivacyUrl()),
+    ]);
 
     await ctx.reply(greeting, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard(buttons),
     });
-
-    // Для новых пользователей — короткая юридическая сноска (требование РФ/Ads)
-    if (wasNew) {
-      await ctx
-        .reply(
-          'Используя бота, вы принимаете Пользовательское соглашение и ' +
-            'Политику конфиденциальности.',
-          {
-            ...Markup.inlineKeyboard([
-              [
-                Markup.button.url('📄 Соглашение', this.getTermsUrl()),
-                Markup.button.url('🔒 Конфиденциальность', this.getPrivacyUrl()),
-              ],
-            ]),
-          },
-        )
-        .catch(() => {});
-    }
   }
 
   @Help()
