@@ -48,8 +48,12 @@ export class DocumentParserService {
       if (
         mimeType === 'text/plain' ||
         mimeType === 'text/csv' ||
+        mimeType === 'text/markdown' ||   // 🆕
+        mimeType === 'text/x-markdown' ||  // 🆕
         ext === 'txt' ||
-        ext === 'csv'
+        ext === 'csv' ||
+        ext === 'md' ||        // 🆕
+        ext === 'markdown'     // 🆕
       ) {
         return this.truncate(buffer.toString('utf-8'));
       }

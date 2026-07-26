@@ -41,9 +41,11 @@ const ALLOWED_DOC_MIMES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/plain',
   'text/csv',
+  'text/markdown',   // 🆕
+  'text/x-markdown', // 🆕
 ];
 
-const ALLOWED_DOC_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'];
+const ALLOWED_DOC_EXT = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv', 'md', 'markdown'];
 
 @Controller('upload')
 @UseGuards(JwtAuthGuard)
@@ -307,6 +309,8 @@ export class UploadController {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
       'text/plain': 'txt',
       'text/csv': 'csv',
+      'text/markdown': 'md',    // 🆕
+      'text/x-markdown': 'md',  // 🆕
     };
     if (map[mimetype]) return map[mimetype];
     if (originalName) {
