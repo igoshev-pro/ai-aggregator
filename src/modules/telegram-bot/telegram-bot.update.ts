@@ -1,6 +1,6 @@
-import { Update, Start, Help, Command, Ctx } from 'nestjs-telegraf';
-import { Logger } from '@nestjs/common';
-import { Context, Markup } from 'telegraf';
+import { Update, Start, Help, Command, Ctx, InjectBot } from 'nestjs-telegraf';
+import { Logger, OnModuleInit } from '@nestjs/common';
+import { Context, Markup, Telegraf } from 'telegraf';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '../users/users.service';
 import { ReferralService } from '../referral/referral.service';
@@ -8,15 +8,59 @@ import { BotAuthService } from '../auth/bot-auth.service';
 import { TelegramUser } from '@/common/interfaces';
 
 @Update()
-export class TelegramBotUpdate {
+export class TelegramBotUpdate implements OnModuleInit {
   private readonly logger = new Logger(TelegramBotUpdate.name);
 
   constructor(
+    @InjectBot() private readonly bot: Telegraf<Context>,
     private readonly config: ConfigService,
     private readonly usersService: UsersService,
     private readonly referralService: ReferralService,
     private readonly botAuthService: BotAuthService,
   ) {}
+
+  // ─── Bootstrap: команды + меню (для Telegram Ads) ────────
+  async onModuleInit() {
+    try {
+      await this.bot.telegram.setMyCommands([
+        { command: 'start', description: 'Открыть приложение' },
+        { command: 'balance', description: 'Баланс спичек' },
+        { command: 'ref', description: 'Реферальная ссылка' },
+        { command: 'help', description: 'Справка' },
+        { command: 'about', description: 'О сервисе' },
+        { command: 'terms', description: 'Пользовательское соглашение' },
+        { command: 'privacy', description: 'Политика конфиденциальности' },
+      ]);
+
+      const miniAppUrl = this.getMiniAppUrl();
+      if (miniAppUrl) {
+        await this.bot.telegram.setChatMenuButton({
+          menuButton: {
+            type: 'web_app',
+            text: 'Открыть',
+            web_app: { url: miniAppUrl },
+          },
+        });
+      }
+
+      const desc =
+        this.config.get<string>('BOT_DESCRIPTION') ||
+        process.env.BOT_DESCRIPTION ||
+        'SPICHKI AI — все нейросети в одном месте: ChatGPT, Claude, Gemini, ' +
+          'Midjourney, Sora, Kling, Suno. Текст, изображения, видео, музыка и озвучка.';
+      const shortDesc =
+        this.config.get<string>('BOT_SHORT_DESCRIPTION') ||
+        process.env.BOT_SHORT_DESCRIPTION ||
+        'Все нейросети в одном боте: чат, картинки, видео, музыка.';
+
+      await this.bot.telegram.setMyDescription(desc).catch(() => {});
+      await this.bot.telegram.setMyShortDescription(shortDesc).catch(() => {});
+
+      this.logger.log('✅ Bot commands, menu button and descriptions set');
+    } catch (e: any) {
+      this.logger.warn(`Bot setup failed: ${e?.message}`);
+    }
+  }
 
   // ─── Helpers ─────────────────────────────────────────────
   /** Юзернейм поддержки без @ (из .env, fallback на macheezzz) */
@@ -36,6 +80,43 @@ export class TelegramBotUpdate {
   /** Юзернейм с @ для подстановки в текст */
   private getSupportHandle(): string {
     return `@${this.getSupportUsername()}`;
+  }
+
+  /** URL Mini App / фронта */
+  private getMiniAppUrl(): string {
+    return (
+      this.config.get<string>('MINI_APP_URL') ||
+      this.config.get<string>('FRONTEND_URL') ||
+      process.env.MINI_APP_URL ||
+      process.env.FRONTEND_URL ||
+      ''
+    );
+  }
+
+  /** Базовый URL сайта (для ссылок на юр. документы) */
+  private getSiteUrl(): string {
+    const raw =
+      this.config.get<string>('SITE_URL') ||
+      process.env.SITE_URL ||
+      this.getMiniAppUrl() ||
+      'https://spichki.tw1.ru';
+    return raw.replace(/\/+$/, '');
+  }
+
+  private getTermsUrl(): string {
+    return (
+      this.config.get<string>('TERMS_URL') ||
+      process.env.TERMS_URL ||
+      `${this.getSiteUrl()}/terms`
+    );
+  }
+
+  private getPrivacyUrl(): string {
+    return (
+      this.config.get<string>('PRIVACY_URL') ||
+      process.env.PRIVACY_URL ||
+      `${this.getSiteUrl()}/privacy`
+    );
   }
 
   @Start()
@@ -120,13 +201,7 @@ export class TelegramBotUpdate {
       }
     }
 
-    // Mini App URL
-    const miniAppUrl =
-      this.config.get<string>('MINI_APP_URL') ||
-      this.config.get<string>('FRONTEND_URL') ||
-      process.env.MINI_APP_URL ||
-      process.env.FRONTEND_URL ||
-      '';
+    const miniAppUrl = this.getMiniAppUrl();
 
     const greeting = wasNew
       ? `👋 Привет, ${from.first_name || 'друг'}!\n\n` +
@@ -143,27 +218,104 @@ export class TelegramBotUpdate {
       buttons.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
     }
     buttons.push([
-      Markup.button.url('💬 Поддержка', this.getSupportUrl()), // 🆕 из .env
+      Markup.button.url('💬 Поддержка', this.getSupportUrl()),
     ]);
 
     await ctx.reply(greeting, {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard(buttons),
     });
+
+    // Для новых пользователей — короткая юридическая сноска (требование РФ/Ads)
+    if (wasNew) {
+      await ctx
+        .reply(
+          'Используя бота, вы принимаете Пользовательское соглашение и ' +
+            'Политику конфиденциальности.',
+          {
+            ...Markup.inlineKeyboard([
+              [
+                Markup.button.url('📄 Соглашение', this.getTermsUrl()),
+                Markup.button.url('🔒 Конфиденциальность', this.getPrivacyUrl()),
+              ],
+            ]),
+          },
+        )
+        .catch(() => {});
+    }
   }
 
   @Help()
   async onHelp(@Ctx() ctx: Context) {
-    const support = this.getSupportHandle(); // 🆕
+    const support = this.getSupportHandle();
 
     await ctx.reply(
       '*SPICHKI AI* — все нейросети в Telegram\n\n' +
         '/start — открыть приложение\n' +
         '/balance — баланс спичек\n' +
         '/ref — реферальная ссылка\n' +
+        '/about — о сервисе\n' +
+        '/terms — пользовательское соглашение\n' +
+        '/privacy — политика конфиденциальности\n' +
         '/help — справка\n\n' +
         `💬 Поддержка: ${support}`,
       { parse_mode: 'Markdown' },
+    );
+  }
+
+  @Command('about')
+  async onAbout(@Ctx() ctx: Context) {
+    const support = this.getSupportHandle();
+    const buttons: any[] = [];
+    const miniAppUrl = this.getMiniAppUrl();
+    if (miniAppUrl) {
+      buttons.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
+    }
+    buttons.push([Markup.button.url('💬 Поддержка', this.getSupportUrl())]);
+
+    await ctx.reply(
+      '🔥 *SPICHKI AI*\n\n' +
+        'Агрегатор нейросетей в Telegram. Все популярные модели в одном месте:\n\n' +
+        '💬 Умный чат — ChatGPT, Claude, Gemini, Grok, DeepSeek\n' +
+        '🖼 Изображения — Midjourney, Flux, Imagen\n' +
+        '🎬 Видео — Sora, Kling, Veo, Runway\n' +
+        '🎵 Аудио — Suno, ElevenLabs\n\n' +
+        'Оплата за использование во внутренней валюте «спички» 🔥.\n\n' +
+        `💬 Поддержка: ${support}`,
+      { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) },
+    );
+  }
+
+  @Command('terms')
+  async onTerms(@Ctx() ctx: Context) {
+    const url = this.getTermsUrl();
+    await ctx.reply(
+      '📄 *Пользовательское соглашение*\n\n' +
+        'Полный текст доступен по ссылке ниже. Используя SPICHKI AI, ' +
+        'вы соглашаетесь с его условиями.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('Открыть соглашение', url)],
+        ]),
+      },
+    );
+  }
+
+  @Command('privacy')
+  async onPrivacy(@Ctx() ctx: Context) {
+    const url = this.getPrivacyUrl();
+    await ctx.reply(
+      '🔒 *Политика конфиденциальности*\n\n' +
+        'Мы обрабатываем персональные данные в соответствии с ' +
+        'Федеральным законом № 152-ФЗ «О персональных данных». ' +
+        'Полный текст — по ссылке ниже.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.url('Открыть политику', url)],
+        ]),
+      },
     );
   }
 
@@ -209,7 +361,7 @@ export class TelegramBotUpdate {
         (info as any).cashbackBalanceRub ??
         Math.round((info.cashbackBalance || 0) * 3 * 100) / 100;
 
-      const support = this.getSupportHandle(); // 🆕
+      const support = this.getSupportHandle();
 
       await ctx.reply(
         `🤝 *Твоя реферальная программа*\n\n` +
