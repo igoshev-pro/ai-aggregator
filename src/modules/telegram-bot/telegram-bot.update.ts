@@ -386,7 +386,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     rows.push([Markup.button.callback('◀️ Назад', 'menu:back')]);
 
     const body =
-      `${cat.emoji} *${cat.title}* — модели и цены «от»\n\n` +
+      `${cat.emoji} *${cat.title}* — модели и цены\n\n` +
       'Нажми на модель для подробностей 👇';
 
     try {
