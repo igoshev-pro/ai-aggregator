@@ -179,7 +179,7 @@ export class TelegramBotUpdate implements OnModuleInit {
   private categoriesText(): string {
     return (
       '🔥 *Нейросети SPICHKI AI*\n\n' +
-      'Выбери категорию, чтобы посмотреть модели и цены «от»:\n\n' +
+      'Выбери категорию, чтобы посмотреть модели и цены:\n\n' +
       `${CATEGORIES.text.emoji} *Текст* — ChatGPT, Claude, Gemini, Grok, DeepSeek\n` +
       `${CATEGORIES.image.emoji} *Фото* — Midjourney, Flux, Imagen, Nano Banana\n` +
       `${CATEGORIES.video.emoji} *Видео* — Sora, Veo, Kling, Runway, Seedance\n` +
