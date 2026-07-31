@@ -68,7 +68,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     const raw =
       this.config.get<string>('SUPPORT_USERNAME') ||
       process.env.SUPPORT_USERNAME ||
-      'macheezzz';
+      'spichki_ai_help';
     return raw.replace(/^@/, '').trim();
   }
 
