@@ -1,11 +1,25 @@
-import { Update, Start, Help, Command, Ctx, InjectBot } from 'nestjs-telegraf';
+import { Update, Start, Help, Command, Action, Ctx, InjectBot } from 'nestjs-telegraf';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { Context, Markup, Telegraf } from 'telegraf';
 import { ConfigService } from '@nestjs/config';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { UsersService } from '../users/users.service';
 import { ReferralService } from '../referral/referral.service';
 import { BotAuthService } from '../auth/bot-auth.service';
 import { TelegramUser } from '@/common/interfaces';
+import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
+
+// 🆕 Категории для меню нейросетей
+const CATEGORIES: Record<
+  string,
+  { title: string; emoji: string; type: string }
+> = {
+  text: { title: 'Текст', emoji: '💬', type: 'text' },
+  image: { title: 'Фото', emoji: '🖼', type: 'image' },
+  video: { title: 'Видео', emoji: '🎬', type: 'video' },
+  audio: { title: 'Аудио', emoji: '🎵', type: 'audio' },
+};
 
 @Update()
 export class TelegramBotUpdate implements OnModuleInit {
@@ -17,6 +31,8 @@ export class TelegramBotUpdate implements OnModuleInit {
     private readonly usersService: UsersService,
     private readonly referralService: ReferralService,
     private readonly botAuthService: BotAuthService,
+    // 🆕 read-only доступ к каталогу моделей
+    @InjectModel(AIModel.name) private readonly modelModel: Model<ModelDocument>,
   ) {}
 
   // ─── Bootstrap: команды + меню + описания (для Telegram Ads) ───
@@ -24,6 +40,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     try {
       await this.bot.telegram.setMyCommands([
         { command: 'start', description: 'Открыть приложение' },
+        { command: 'models', description: 'Нейросети и цены' },
         { command: 'balance', description: 'Баланс спичек' },
         { command: 'ref', description: 'Реферальная ссылка' },
         { command: 'help', description: 'Справка' },
@@ -116,6 +133,58 @@ export class TelegramBotUpdate implements OnModuleInit {
       this.config.get<string>('PRIVACY_URL') ||
       process.env.PRIVACY_URL ||
       `${this.getSiteUrl()}/privacy`
+    );
+  }
+
+  // ─── 🆕 Helpers для меню нейросетей ──────────────────────
+  /** Округление цены "от X🔥" для читаемости */
+  private fmtPrice(v: number): string {
+    if (!Number.isFinite(v) || v <= 0) return '—';
+    const rounded = Math.round(v * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  }
+
+  /** Инлайн-клавиатура выбора категорий */
+  private buildCategoriesKeyboard() {
+    const rows = [
+      [
+        Markup.button.callback(
+          `${CATEGORIES.text.emoji} ${CATEGORIES.text.title}`,
+          'cat:text',
+        ),
+        Markup.button.callback(
+          `${CATEGORIES.image.emoji} ${CATEGORIES.image.title}`,
+          'cat:image',
+        ),
+      ],
+      [
+        Markup.button.callback(
+          `${CATEGORIES.video.emoji} ${CATEGORIES.video.title}`,
+          'cat:video',
+        ),
+        Markup.button.callback(
+          `${CATEGORIES.audio.emoji} ${CATEGORIES.audio.title}`,
+          'cat:audio',
+        ),
+      ],
+    ];
+    const miniAppUrl = this.getMiniAppUrl();
+    if (miniAppUrl) {
+      // @ts-ignore
+      rows.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
+    }
+    return Markup.inlineKeyboard(rows);
+  }
+
+  private categoriesText(): string {
+    return (
+      '🔥 *Нейросети SPICHKI AI*\n\n' +
+      'Выбери категорию, чтобы посмотреть модели и цены «от»:\n\n' +
+      `${CATEGORIES.text.emoji} *Текст* — ChatGPT, Claude, Gemini, Grok, DeepSeek\n` +
+      `${CATEGORIES.image.emoji} *Фото* — Midjourney, Flux, Imagen, Nano Banana\n` +
+      `${CATEGORIES.video.emoji} *Видео* — Sora, Veo, Kling, Runway, Seedance\n` +
+      `${CATEGORIES.audio.emoji} *Аудио* — Suno, ElevenLabs\n\n` +
+      '💡 Цена указана «от» — минимальная стоимость за генерацию.'
     );
   }
 
@@ -217,6 +286,8 @@ export class TelegramBotUpdate implements OnModuleInit {
     if (miniAppUrl) {
       buttons.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
     }
+    // 🆕 Кнопка меню нейросетей
+    buttons.push([Markup.button.callback('🤖 Нейросети и цены', 'menu:back')]);
     buttons.push([
       Markup.button.url('💬 Поддержка', this.getSupportUrl()),
     ]);
@@ -232,6 +303,175 @@ export class TelegramBotUpdate implements OnModuleInit {
     });
   }
 
+  // ─── 🆕 /models — меню нейросетей ────────────────────────
+  @Command('models')
+  async onModels(@Ctx() ctx: Context) {
+    await ctx.reply(this.categoriesText(), {
+      parse_mode: 'Markdown',
+      ...this.buildCategoriesKeyboard(),
+    });
+  }
+
+  // ─── 🆕 Назад к выбору категорий ─────────────────────────
+  @Action('menu:back')
+  async onMenuBack(@Ctx() ctx: Context) {
+    try {
+      await ctx.answerCbQuery();
+    } catch {}
+    try {
+      await ctx.editMessageText(this.categoriesText(), {
+        parse_mode: 'Markdown',
+        ...this.buildCategoriesKeyboard(),
+      });
+    } catch {
+      // Если сообщение нельзя отредактировать (напр. пришли из /start) — новое
+      await ctx.reply(this.categoriesText(), {
+        parse_mode: 'Markdown',
+        ...this.buildCategoriesKeyboard(),
+      });
+    }
+  }
+
+  // ─── 🆕 Список моделей в категории ───────────────────────
+  @Action(/^cat:(text|image|video|audio)$/)
+  async onCategory(@Ctx() ctx: Context) {
+    try {
+      await ctx.answerCbQuery();
+    } catch {}
+
+    // @ts-ignore
+    const data: string = ctx.callbackQuery?.data || '';
+    const catKey = data.replace(/^cat:/, '');
+    const cat = CATEGORIES[catKey];
+    if (!cat) return;
+
+    let models: ModelDocument[] = [];
+    try {
+      models = await this.modelModel
+        .find({ type: cat.type, isActive: true })
+        .sort({ sortOrder: 1 })
+        .exec();
+    } catch (e: any) {
+      this.logger.warn(`load models failed (${cat.type}): ${e?.message}`);
+    }
+
+    if (!models.length) {
+      try {
+        await ctx.editMessageText(
+          `${cat.emoji} *${cat.title}*\n\nПока нет доступных моделей.`,
+          {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+              [Markup.button.callback('◀️ Назад', 'menu:back')],
+            ]),
+          },
+        );
+      } catch {}
+      return;
+    }
+
+    // Кнопки моделей (по 1 в ряд для читаемости названия + цены)
+    const rows = models.map((m) => {
+      const price = this.fmtPrice(Number(m.minTokenCost) || 0);
+      const premium = m.isPremium ? '⭐ ' : '';
+      const label = `${premium}${m.displayName || m.name} · от ${price}🔥`;
+      return [Markup.button.callback(label, `model:${m.slug}`)];
+    });
+
+    const miniAppUrl = this.getMiniAppUrl();
+    if (miniAppUrl) {
+      // @ts-ignore
+      rows.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
+    }
+    rows.push([Markup.button.callback('◀️ Назад', 'menu:back')]);
+
+    const body =
+      `${cat.emoji} *${cat.title}* — модели и цены «от»\n\n` +
+      'Нажми на модель для подробностей 👇';
+
+    try {
+      await ctx.editMessageText(body, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(rows),
+      });
+    } catch {
+      await ctx.reply(body, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(rows),
+      });
+    }
+  }
+
+  // ─── 🆕 Карточка модели ──────────────────────────────────
+  @Action(/^model:.+$/)
+  async onModelCard(@Ctx() ctx: Context) {
+    try {
+      await ctx.answerCbQuery();
+    } catch {}
+
+    // @ts-ignore
+    const data: string = ctx.callbackQuery?.data || '';
+    const slug = data.replace(/^model:/, '');
+
+    let model: ModelDocument | null = null;
+    try {
+      model = await this.modelModel.findOne({ slug, isActive: true }).exec();
+    } catch (e: any) {
+      this.logger.warn(`load model failed (${slug}): ${e?.message}`);
+    }
+
+    if (!model) {
+      try {
+        await ctx.editMessageText(
+          '⚠️ Модель недоступна.',
+          Markup.inlineKeyboard([
+            [Markup.button.callback('◀️ Назад', 'menu:back')],
+          ]),
+        );
+      } catch {}
+      return;
+    }
+
+    const catKey = model.type; // 'text' | 'image' | 'video' | 'audio'
+    const cat = CATEGORIES[catKey];
+    const price = this.fmtPrice(Number(model.minTokenCost) || 0);
+    const premium = model.isPremium ? '\n⭐ *Премиум-модель*' : '';
+    const desc = model.description ? `\n\n${model.description}` : '';
+
+    const body =
+      `${cat?.emoji || '🤖'} *${model.displayName || model.name}*` +
+      `${premium}${desc}\n\n` +
+      `💰 Цена: *от ${price}🔥* за генерацию\n\n` +
+      `Открой приложение, чтобы использовать модель 👇`;
+
+    const rows: any[] = [];
+    const miniAppUrl = this.getMiniAppUrl();
+    if (miniAppUrl) {
+      rows.push([
+        Markup.button.webApp('🚀 Открыть в приложении', miniAppUrl),
+      ]);
+    }
+    rows.push([
+      Markup.button.callback(
+        `◀️ К списку (${cat?.title || 'назад'})`,
+        `cat:${catKey}`,
+      ),
+    ]);
+    rows.push([Markup.button.callback('🏠 Категории', 'menu:back')]);
+
+    try {
+      await ctx.editMessageText(body, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(rows),
+      });
+    } catch {
+      await ctx.reply(body, {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(rows),
+      });
+    }
+  }
+
   @Help()
   async onHelp(@Ctx() ctx: Context) {
     const support = this.getSupportHandle();
@@ -239,6 +479,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     await ctx.reply(
       '*SPICHKI AI* — все нейросети в Telegram\n\n' +
         '/start — открыть приложение\n' +
+        '/models — нейросети и цены\n' +
         '/balance — баланс спичек\n' +
         '/ref — реферальная ссылка\n' +
         '/about — о сервисе\n' +
@@ -258,9 +499,11 @@ export class TelegramBotUpdate implements OnModuleInit {
     if (miniAppUrl) {
       buttons.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
     }
+    // 🆕 Кнопка меню нейросетей
+    buttons.push([Markup.button.callback('🤖 Нейросети и цены', 'menu:back')]);
     buttons.push([Markup.button.url('💬 Поддержка', this.getSupportUrl())]);
 
-    await ctx.reply(
+        await ctx.reply(
       '🔥 *SPICHKI AI*\n\n' +
         'Агрегатор нейросетей в Telegram. Все популярные модели в одном месте:\n\n' +
         '💬 Умный чат — ChatGPT, Claude, Gemini, Grok, DeepSeek\n' +
