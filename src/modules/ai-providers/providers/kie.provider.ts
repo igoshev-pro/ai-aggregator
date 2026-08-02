@@ -59,6 +59,21 @@ const KIE_MODEL_PARAMS: Record<string, {
     inputImagesField: 'image_urls',
     maxInputImages: 14,
   },
+    'seedream/5-pro-text-to-image': {
+    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '2:3', '3:2', '21:9'],
+    resolutions: ['basic', 'high'],
+    hasQuality: true,
+    hasOutputFormat: true,
+  },
+  'seedream/5-pro-image-to-image': {
+    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '2:3', '3:2', '21:9'],
+    resolutions: ['basic', 'high'],
+    hasQuality: true,
+    hasInputImages: true,
+    inputImagesField: 'image_urls',
+    maxInputImages: 10,
+    hasOutputFormat: true,
+  },
   'google/imagen4': {
     aspectRatios: ['1:1', '16:9', '9:16', '3:4', '4:3'],
     resolutions: [],
@@ -370,6 +385,13 @@ export class KieProvider extends BaseProvider {
         modelId = 'flux-2/flex-image-to-image';
       } else if (modelId === 'flux-2/flex-image-to-image' && incomingUrls.length === 0) {
         modelId = 'flux-2/flex-text-to-image';
+      }
+
+            // 🆕 Seedream 5 Pro: авто-переключение TTI ↔ ITI по наличию фото-референса
+      if (modelId === 'seedream/5-pro-text-to-image' && incomingUrls.length > 0) {
+        modelId = 'seedream/5-pro-image-to-image';
+      } else if (modelId === 'seedream/5-pro-image-to-image' && incomingUrls.length === 0) {
+        modelId = 'seedream/5-pro-text-to-image';
       }
 
       const modelParams = KIE_MODEL_PARAMS[modelId];

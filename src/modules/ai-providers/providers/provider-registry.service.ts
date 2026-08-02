@@ -1138,6 +1138,58 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
+            {
+        slug: 'seedream-5-pro',
+        name: 'Seedream 5.0 Pro',
+        displayName: 'Seedream 5.0 Pro',
+        description: 'Фотореалистичный генератор Seedream Pro — 1K/2K, текст и изображение',
+        type: 'image',
+        fixedCostPerGeneration: 0.035,
+        tokensPerDollar: 90,
+        minTokenCost: 3.2,
+        sortOrder: 6,
+        isPremium: true,
+        capabilities: ['text_to_image', 'image_to_image'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'seedream/5-pro-text-to-image', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspect_ratio: '1:1', quality: 'basic' },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        pricingMatrix: [
+          { conditions: { quality: 'high' }, costInTokens: 6.4, costInDollars: 0.07, label: 'High (2K)' },
+          { conditions: { quality: 'basic' }, costInTokens: 3.2, costInDollars: 0.035, label: 'Basic (1K)' },
+        ],
+        uiParameters: [
+          {
+            key: 'quality', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'basic',
+            options: [
+              { value: 'basic', label: 'Basic 1K (3.2🔥)' },
+              { value: 'high', label: 'High 2K (6.4🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Книга (2:3)' },
+              { value: '21:9', label: 'Панорама (21:9)' },
+            ],
+          },
+          {
+            key: 'outputFormat', label: 'Формат файла', type: 'select', affectsPrice: false, defaultValue: 'png',
+            options: [
+              { value: 'png', label: 'PNG' },
+              { value: 'jpeg', label: 'JPEG' },
+            ],
+          },
+        ],
+      },
       {
         slug: 'imagen-4',
         name: 'Imagen 4',
