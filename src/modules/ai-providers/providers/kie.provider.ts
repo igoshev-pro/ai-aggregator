@@ -94,6 +94,13 @@ const KIE_MODEL_PARAMS: Record<string, {
     maxInputImages: 14,
     hasOutputFormat: true,
   },
+  //@ts-ignore
+  'nano-banana-2-lite': {
+    aspectRatios: ['1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '4:1', '4:3', '4:5', '5:4', '8:1', '9:16', '16:9', '21:9', 'auto'],
+    hasInputImages: true,
+    inputImagesField: 'image_urls',
+    maxInputImages: 10,
+  },
   'nano-banana-pro': {
     aspectRatios: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9', 'auto'],
     resolutions: ['1K', '2K', '4K'],
