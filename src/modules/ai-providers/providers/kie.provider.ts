@@ -118,6 +118,11 @@ const KIE_CODEX_MODELS: Record<string, string> = {
   'gpt-5.6-sol': 'gpt-5-6-sol',
 };
 
+// 🆕 Grok 4.5 — endpoint /grok/v1/responses (тот же responses-формат, что и codex)
+const KIE_GROK_MODELS: Record<string, string> = {
+  'grok-4-5': 'grok-4-5',
+};
+
 interface VideoModelConfig {
   kieModel: string;
   apiType: 'jobs' | 'runway' | 'veo';
@@ -2120,7 +2125,7 @@ export class KieProvider extends BaseProvider {
     const start = Date.now();
 
     // 🆕 GPT 5.6 — отдельный codex endpoint
-    if (KIE_CODEX_MODELS[request.model]) {
+    if (KIE_CODEX_MODELS[request.model] || KIE_GROK_MODELS[request.model]) {
       return this.generateCodexText(request, start);
     }
 
@@ -2180,7 +2185,11 @@ export class KieProvider extends BaseProvider {
     request: TextGenerationRequest,
     start: number,
   ): Promise<GenerationResult> {
-    const codexModel = KIE_CODEX_MODELS[request.model];
+    const isGrok = !!KIE_GROK_MODELS[request.model];
+    const codexModel = isGrok
+      ? KIE_GROK_MODELS[request.model]
+      : KIE_CODEX_MODELS[request.model];
+    const responsesEndpoint = isGrok ? '/grok/v1/responses' : '/codex/v1/responses';
 
     if (!codexModel) {
       return {
@@ -2204,7 +2213,7 @@ export class KieProvider extends BaseProvider {
       const rawEffort = (request as any).reasoningEffort;
       const effort = allowedEfforts.includes(rawEffort) ? rawEffort : 'low';
 
-            const body: Record<string, any> = {
+      const body: Record<string, any> = {
         model: codexModel,
         input,
         stream: false,
@@ -2238,7 +2247,7 @@ export class KieProvider extends BaseProvider {
         `inputBlocks=${input.length}`,
       );
 
-      const response = await this.client.post('/codex/v1/responses', body, {
+      const response = await this.client.post(responsesEndpoint, body, {
         timeout: codexTimeout,
       });
 
@@ -2350,7 +2359,7 @@ export class KieProvider extends BaseProvider {
     // 🆕 GPT 5.6 — codex API через настоящий SSE-стрим.
     // stream:true обходит Cloudflare 524 (origin_response_timeout 120с),
     // т.к. поток байтов идёт непрерывно и таймер "молчания" не срабатывает.
-    if (KIE_CODEX_MODELS[request.model]) {
+    if (KIE_CODEX_MODELS[request.model] || KIE_GROK_MODELS[request.model]) {
       yield* this.streamCodexText(request);
       return;
     }
@@ -2469,7 +2478,7 @@ export class KieProvider extends BaseProvider {
     }
   }
 
-    // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
   // 🆕 GPT 5.6 CODEX STREAM (KIE /codex/v1/responses, stream:true)
   // Настоящий SSE-стрим — обходит Cloudflare 524 при long reasoning.
   // Формат событий responses API:
@@ -2480,10 +2489,14 @@ export class KieProvider extends BaseProvider {
   private async *streamCodexText(
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
-    const codexModel = KIE_CODEX_MODELS[request.model];
+    const isGrok = !!KIE_GROK_MODELS[request.model];
+    const codexModel = isGrok
+      ? KIE_GROK_MODELS[request.model]
+      : KIE_CODEX_MODELS[request.model];
+    const responsesEndpoint = isGrok ? '/grok/v1/responses' : '/codex/v1/responses';
 
     if (!codexModel) {
-      yield { content: '', done: true, error: `Codex model ${request.model} not supported by KIE` };
+      yield { content: '', done: true, error: `Codex/Grok model ${request.model} not supported by KIE` };
       return;
     }
 
@@ -2522,7 +2535,7 @@ export class KieProvider extends BaseProvider {
         `webSearch=${webSearchEnabled}, timeout=${codexTimeout}ms, inputBlocks=${input.length}`,
       );
 
-      const response = await this.client.post('/codex/v1/responses', body, {
+      const response = await this.client.post(responsesEndpoint, body, {
         responseType: 'stream',
         timeout: codexTimeout,
       });
