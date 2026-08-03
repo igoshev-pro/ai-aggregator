@@ -1138,15 +1138,15 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'seedream-5-pro',
         name: 'Seedream 5.0 Pro',
         displayName: 'Seedream 5.0 Pro',
         description: 'Фотореалистичный генератор Seedream Pro — 1K/2K, текст и изображение',
         type: 'image',
-        fixedCostPerGeneration: 0.035,
+        fixedCostPerGeneration: 0.028,
         tokensPerDollar: 90,
-        minTokenCost: 3.2,
+        minTokenCost: 2.5,
         sortOrder: 6,
         isPremium: true,
         capabilities: ['text_to_image', 'image_to_image'],
@@ -1157,15 +1157,15 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
         pricingMatrix: [
-          { conditions: { quality: 'high' }, costInTokens: 6.4, costInDollars: 0.07, label: 'High (2K)' },
-          { conditions: { quality: 'basic' }, costInTokens: 3.2, costInDollars: 0.035, label: 'Basic (1K)' },
+          { conditions: { quality: 'high' }, costInTokens: 5, costInDollars: 0.056, label: 'High (2K)' },
+          { conditions: { quality: 'basic' }, costInTokens: 2.5, costInDollars: 0.028, label: 'Basic (1K)' },
         ],
         uiParameters: [
           {
             key: 'quality', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: 'basic',
             options: [
-              { value: 'basic', label: 'Basic 1K (3.2🔥)' },
-              { value: 'high', label: 'High 2K (6.4🔥)' },
+              { value: 'basic', label: 'Basic 1K (2.5🔥)' },
+              { value: 'high', label: 'High 2K (5🔥)' },
             ],
           },
           {
@@ -1366,15 +1366,15 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-            {
+      {
         slug: 'nano-banana-2-lite',
         name: 'Nano Banana 2 Lite',
         displayName: 'Nano Banana 2 Lite',
         description: 'Быстрый и доступный генератор Google — 1K, текст и изображение',
         type: 'image',
-        fixedCostPerGeneration: 0.02,
+        fixedCostPerGeneration: 0.013,
         tokensPerDollar: 90,
-        minTokenCost: 1.8,
+        minTokenCost: 1.2,
         sortOrder: 3,
         isPremium: false,
         capabilities: ['text_to_image', 'image_to_image'],
@@ -1385,7 +1385,7 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxResolution: '1024x1024' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
         pricingMatrix: [
-          { conditions: {}, costInTokens: 1.8, costInDollars: 0.02, label: '1K' },
+          { conditions: {}, costInTokens: 1.2, costInDollars: 0.013, label: '1K' },
         ],
         uiParameters: [
           {
