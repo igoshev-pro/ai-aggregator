@@ -57,8 +57,8 @@ const MIN_CHARGE_TOKENS = 0.01;
 const TOKEN_PRECISION = 2;
 const FLOAT_EPSILON = 1e-9;
 
-// Кэшбек от реферальных покупок (10%)
-const REFERRAL_CASHBACK_RATE = 0.1;
+// Кэшбек от реферальных покупок (15% от купленных спичек)
+const REFERRAL_CASHBACK_RATE = 0.15;
 
 
 function roundTokens(value: number): number {
@@ -1852,9 +1852,10 @@ export class BillingService implements OnApplicationBootstrap {
   // Реферальный бонус
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Кэшбек = 10% от КУПЛЕННЫХ СПИЧЕК (transaction.amount).
+    /**
+   * Кэшбек = 15% от КУПЛЕННЫХ СПИЧЕК (transaction.amount).
    * Только для платных покупок (paymentAmountRub > 0).
+   * Начисление за регистрацию друга отсутствует — только с покупок.
    */
   private async processReferralBonus(transaction: TransactionDocument) {
     const userDoc = await this.usersService.findById(
@@ -1887,11 +1888,12 @@ export class BillingService implements OnApplicationBootstrap {
     await this.createTransaction(referrerId, {
       type: TransactionType.REFERRAL_BONUS,
       amount: cashbackAmount,
-      description: `Кэшбек 10% от покупки пользователя ${userDoc.firstName || 'друга'} (+${cashbackAmount}🔥)`,
+      description: `Кэшбек 15% от покупки пользователя ${userDoc.firstName || 'друга'} (+${cashbackAmount}🔥)`,
       paymentStatus: PaymentStatus.COMPLETED,
       referralUserId: transaction.userId,
       metadata: {
         cashback: true,
+        cashbackRate: REFERRAL_CASHBACK_RATE,
         sourcePurchasedTokens: purchasedTokens,
         sourcePaymentRub: paymentRub,
         sourceTransactionId: transaction._id.toString(),
@@ -1899,7 +1901,7 @@ export class BillingService implements OnApplicationBootstrap {
     });
 
     this.logger.log(
-      `💰 Cashback +${cashbackAmount}🔥 → user ${referrerId} (10% of ${purchasedTokens}🔥 purchased)`,
+      `💰 Cashback +${cashbackAmount}🔥 → user ${referrerId} (15% of ${purchasedTokens}🔥 purchased)`,
     );
   }
 

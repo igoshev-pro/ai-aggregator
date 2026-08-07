@@ -272,12 +272,10 @@ export class TelegramBotUpdate implements OnModuleInit {
 
     const miniAppUrl = this.getMiniAppUrl();
 
-    const greeting = wasNew
+        const greeting = wasNew
       ? `👋 Привет, ${from.first_name || 'друг'}!\n\n` +
         `🔥 *SPICHKI AI* — все нейросети в одном месте.\n\n` +
-        `🎁 Тебе начислено *9 спичек* на старт${
-          referralCode && user.referredBy ? ' + бонус за приглашение' : ''
-        }!\n\n` +
+        `🎁 Тебе начислено *9 спичек* на старт!\n\n` +
         `Жми кнопку ниже, чтобы начать 👇`
       : `👋 С возвращением, ${from.first_name || 'друг'}!\n\n` +
         `🔥 Все нейросети ждут тебя. Жми кнопку 👇`;
@@ -600,7 +598,7 @@ export class TelegramBotUpdate implements OnModuleInit {
           `💎 С покупками: *${info.activeReferrals}*\n` +
           `💸 Заработано: *${info.totalEarned}* 🔥 (≈ ${earnedRub} ₽)\n` +
           `💰 Доступно к выводу: *${info.cashbackBalance}* 🔥 (≈ ${availableRub} ₽)\n\n` +
-          `Делись ссылкой — получай +10 🔥 за каждого друга и 10% кэшбека с их покупок!\n\n` +
+          `Делись ссылкой — получай *15% кэшбека* спичками с каждой покупки друга!\n\n` +
           `💡 Вывод средств — через нашу поддержку: ${support}`,
         { parse_mode: 'Markdown' },
       );

@@ -33,7 +33,8 @@ export const MIN_WITHDRAWAL_TOKENS = Math.ceil(MIN_WITHDRAWAL_RUB / RUB_PER_TOKE
 export const MAX_WITHDRAWAL_RUB = 100_000;
 export const MAX_WITHDRAWAL_TOKENS = Math.ceil(MAX_WITHDRAWAL_RUB / RUB_PER_TOKEN); // 33334
 
-const REFERRAL_SIGNUP_BONUS = 10; // бонус за регистрацию реферала (спички)
+// ❌ Бонус за регистрацию отключён — реферер получает только кэшбек с покупок.
+const REFERRAL_SIGNUP_BONUS = 0; // было 10 (спички за регистрацию друга)
 const CASHBACK_PRECISION = 2; // округление до 0.01
 
 function roundCashback(value: number): number {
@@ -248,7 +249,7 @@ export class ReferralService {
   // Запись о реферальной связи
   // ═══════════════════════════════════════════════════════════════
 
-  async recordReferral(referrerId: string, referredId: string): Promise<void> {
+    async recordReferral(referrerId: string, referredId: string): Promise<void> {
     if (referrerId === referredId) {
       this.logger.warn(
         `recordReferral: self-referral blocked for user=${referredId}`,
@@ -270,13 +271,14 @@ export class ReferralService {
       const referral = new this.referralModel({
         referrerId: new Types.ObjectId(referrerId),
         referredId: new Types.ObjectId(referredId),
-        bonusEarned: REFERRAL_SIGNUP_BONUS,
+        // ❌ Спички за регистрацию больше НЕ начисляем — только кэшбек с покупок.
+        bonusEarned: 0,
         hasPurchased: false,
       });
       await referral.save();
 
       this.logger.log(
-        `✅ Referral recorded: referrer=${referrerId} → referred=${referredId}`,
+        `✅ Referral recorded (cashback-only): referrer=${referrerId} → referred=${referredId}`,
       );
     } catch (err: any) {
       if (err?.code === 11000) {
