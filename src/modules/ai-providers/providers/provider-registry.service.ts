@@ -577,7 +577,7 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['pro', 'unlimited'] },
       },
-            {
+      {
         slug: 'claude-sonnet-5',
         name: 'Claude Sonnet 5',
         displayName: 'Claude Sonnet 5',
@@ -756,7 +756,7 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384, includedInPlans: ['unlimited'] },
       },
-           // ─── GPT 5.6 (KIE /codex/v1/responses) ──────────────
+      // ─── GPT 5.6 (KIE /codex/v1/responses) ──────────────
       {
         slug: 'gpt-5.6-luna',
         name: 'GPT-5.6 Luna',
@@ -890,7 +890,7 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 256000, maxOutputTokens: 8192, includedInPlans: ['pro', 'unlimited'] },
       },
-            {
+      {
         slug: 'grok-4.5',
         name: 'Grok 4.5',
         displayName: 'Grok 4.5',
@@ -2337,7 +2337,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-            // ─── Seedance 2 (KIE) ────────────────────────────────
+      // ─── Seedance 2 (KIE) ────────────────────────────────
       // Ставки заказчика (🔥/сек):
       //   noVideo:   480p=5.7,  720p=12.3, 1080p=30.6
       //   withVideo: 480p=3.45, 720p=7.5,  1080p=18.6
@@ -2435,7 +2435,7 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-            // ─── Seedance 2 Fast (KIE) ───────────────────────────
+      // ─── Seedance 2 Fast (KIE) ───────────────────────────
       // Ставки заказчика (🔥/сек):
       //   noVideo:   480p=4.65, 720p=9.9
       //   withVideo: 480p=2.7,  720p=6
@@ -2522,6 +2522,45 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '4:3', label: 'Стандарт (4:3)' },
               { value: '3:4', label: 'Портрет (3:4)' },
               { value: '21:9', label: 'Кино (21:9)' },
+            ],
+          },
+        ],
+      },
+
+      // ─── Topaz Video Upscale (Evolink) — апскейл готового видео ─────
+      {
+        slug: 'topaz-video-upscale',
+        name: 'Topaz Video Upscale',
+        displayName: 'Topaz Video Upscale',
+        description: 'AI-апскейл видео: улучшение чёткости, 1x/2x/4x',
+        type: 'video',
+        fixedCostPerGeneration: 0.055, // справочно, реальная цена — по формуле ниже
+        tokensPerDollar: 90,
+        minTokenCost: 5,
+        sortOrder: 13,
+        capabilities: ['video_to_video', 'upscale'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'topaz-video-upscale', priority: 1, isActive: true },
+        ],
+        defaultParams: { resolution: '2', duration: 10 },
+        limits: { maxDuration: 600 },
+        inputCapabilities: { acceptsVideo: true, acceptsVideos: true, acceptsImages: false, maxInputImages: 0 },
+        // 🆕 Формула: rate[upscale_factor] × длительность входного видео (сек).
+        //    Переиспользуем механизм videoRefPricing (как у Seedance 2):
+        //    ключ ставки передаётся через поле "resolution" (=upscale_factor),
+        //    "videoRef" на фронте всегда true (видео обязательно),
+        //    "refVideoSeconds" не используется (0) — просто rate × duration.
+        //    Цена провайдера: 1x/2x = $0.055/сек, 4x = $0.088/сек (×90 = наши 🔥).
+        videoRefPricing: true,
+        videoRefRatePerSecond: { '1': 4.95, '2': 4.95, '4': 7.92 },
+        pricingMatrix: [],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Коэффициент увеличения', type: 'select', affectsPrice: true, defaultValue: '2',
+            options: [
+              { value: '1', label: '1x — улучшение без увеличения (4.95🔥/сек)' },
+              { value: '2', label: '2x увеличение (4.95🔥/сек)' },
+              { value: '4', label: '4x увеличение (7.92🔥/сек)' },
             ],
           },
         ],

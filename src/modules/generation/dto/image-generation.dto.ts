@@ -188,8 +188,8 @@ export class VideoGenerationDto {
   @ApiPropertyOptional({ default: 5, description: 'Duration in seconds' })
   @IsNumber()
   @IsOptional()
-  @Min(3)
-  @Max(30)
+  @Min(1)
+  @Max(600)
   duration?: number;
 
   @ApiPropertyOptional({
