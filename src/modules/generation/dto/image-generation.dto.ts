@@ -101,6 +101,13 @@ export class ImageGenerationDto {
   @IsOptional()
   @IsString()
   version?: string;
+
+  // 🆕 Gemini Omni Character: имя персонажа (опционально)
+  @ApiPropertyOptional({ description: 'Character name (Gemini Omni Character)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  characterName?: string;
 }
 
 // 🆕 Kling 3.0 multi-shot prompt
@@ -550,4 +557,11 @@ export class AudioGenerationDto {
   @IsNumber()
   @Min(0)
   textLength?: number;
+
+  // 🆕 Gemini Omni Audio: пример реплики для голоса (опционально)
+  @ApiPropertyOptional({ description: 'Example dialogue line (Gemini Omni Audio)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  exampleDialogue?: string;
 }

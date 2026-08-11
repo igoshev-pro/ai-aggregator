@@ -49,6 +49,7 @@ export interface ImageGenerationRequest {
   numImages?: number;
   style?: string;
   inputUrls?: string[];      // для img2img
+  characterName?: string;    // 🆕 Gemini Omni Character: имя персонажа (опц.)
 }
 
 export interface VideoGenerationRequest {
@@ -93,6 +94,9 @@ export interface AudioGenerationRequest {
   styleWeight?: number;      // 0..1
   weirdnessConstraint?: number; // 0..1
   audioWeight?: number;      // 0..1
+
+  // 🆕 Gemini Omni Audio (voice design)
+  exampleDialogue?: string;  // пример реплики для голоса (опц., ≤120 символов)
 }
 
 export interface GenerationResult {

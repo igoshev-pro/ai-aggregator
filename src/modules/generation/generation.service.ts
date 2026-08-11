@@ -238,6 +238,7 @@ export class GenerationService {
         inputUrls: dto.inputUrls,
         mode: dto.mode,
         version: dto.version,
+        characterName: dto.characterName,
       },
       tokensCost: costInTokens,
       costInDollars,
@@ -286,6 +287,7 @@ export class GenerationService {
           inputUrls: p.inputUrls,
           mode: p.mode,
           version: p.version,
+          characterName: p.characterName,
         },
       },
       {
@@ -588,6 +590,7 @@ export class GenerationService {
         promptInfluence: dto.promptInfluence,
         audioUrl: dto.audioUrl,
         dialogue: dto.dialogue,
+        exampleDialogue: dto.exampleDialogue,
       },
       tokensCost: costInTokens,
       costInDollars,
@@ -641,6 +644,7 @@ export class GenerationService {
       audio_url: p.audioUrl,
       audioUrl: p.audioUrl,
       dialogue: p.dialogue,
+      exampleDialogue: p.exampleDialogue,
     };
 
     await this.generationQueue.add(

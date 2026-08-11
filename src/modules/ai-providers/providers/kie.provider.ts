@@ -352,6 +352,15 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
+  // ─── Gemini Omni Video (KIE jobs) ─────────────────────────────
+  'gemini-omni-video': {
+    kieModel: 'gemini-omni-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    durations: ['4', '6', '8', '10'],
+    aspectRatios: ['16:9', '9:16'],
+  },
 };
 
 @Injectable()
@@ -378,6 +387,11 @@ export class KieProvider extends BaseProvider {
     const start = Date.now();
     try {
       let modelId = request.model;
+
+      // ─── Gemini Omni Character (KIE jobs) — свой формат input, без aspect_ratio/resolution ───
+      if (modelId === 'gemini-omni-character') {
+        return await this.generateGeminiOmniCharacter(request, start);
+      }
 
       // 🆕 GPT Image 2: авто-переключение TTI ↔ ITI по наличию фото-референса
       const incomingUrls: string[] = (request as any).inputUrls || [];
@@ -498,6 +512,58 @@ export class KieProvider extends BaseProvider {
       };
     } catch (error: any) {
       this.logger.error(`KIE generateImage error: ${error.message}`);
+      return this.handleError(error, start);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 🆕 GEMINI OMNI CHARACTER (KIE jobs) — консистентный персонаж
+  // input: character_name (опц.), image_urls (обяз.), descriptions (обяз.)
+  // ═══════════════════════════════════════════════════════
+  private async generateGeminiOmniCharacter(
+    request: ImageGenerationRequest,
+    start: number,
+  ): Promise<GenerationResult> {
+    try {
+      const r = request as any;
+      const imageUrls: string[] = (r.inputUrls || []).filter(Boolean);
+      if (imageUrls.length === 0) {
+        throw new Error('image_urls (reference image) is required for Gemini Omni Character');
+      }
+
+      const input: Record<string, any> = {
+        image_urls: imageUrls,
+        descriptions: request.prompt,
+      };
+      if (r.characterName && String(r.characterName).trim()) {
+        input.character_name = String(r.characterName).trim().substring(0, 100);
+      }
+
+      this.logger.debug(
+        `KIE Gemini Omni Character generate: input=${JSON.stringify(input).substring(0, 400)}`,
+      );
+
+      const response = await this.client.post('/api/v1/jobs/createTask', {
+        model: 'gemini-omni-character',
+        input,
+      });
+
+      const data = response.data;
+      if (data.code !== 200) {
+        throw new Error(data.msg || `KIE Gemini Omni Character task creation failed (code ${data.code})`);
+      }
+
+      const taskId = data.data?.taskId;
+      if (!taskId) throw new Error('No taskId in KIE Gemini Omni Character response');
+
+      return {
+        success: true,
+        data: { taskId, urls: [], metadata: { model: 'gemini-omni-character' } },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    } catch (error: any) {
+      this.logger.error(`KIE Gemini Omni Character error: ${error.message}`);
       return this.handleError(error, start);
     }
   }
@@ -1646,6 +1712,7 @@ export class KieProvider extends BaseProvider {
 
       if (status === 'completed') {
         let resultUrls: string[] = [];
+        let resultObject: Record<string, any> | undefined;
 
         if (task.resultUrls?.length > 0) {
           resultUrls = task.resultUrls;
@@ -1688,6 +1755,9 @@ export class KieProvider extends BaseProvider {
               resultUrls = [parsed.url];
             } else if (parsed.images?.length > 0) {
               resultUrls = parsed.images.map((img: any) => typeof img === 'string' ? img : img.url).filter(Boolean);
+            } else if (parsed.resultObject) {
+              // 🆕 Gemini Omni Audio: результат — объект голосового профиля, не URL
+              resultObject = parsed.resultObject;
             }
           } catch {
             this.logger.error(`Failed to parse resultJson: ${task.resultJson?.substring(0, 200)}`);
@@ -1698,7 +1768,7 @@ export class KieProvider extends BaseProvider {
           `Jobs task ${taskId} completed. Found ${resultUrls.length} URLs: ${JSON.stringify(resultUrls).substring(0, 300)}`,
         );
 
-        if (resultUrls.length === 0) {
+        if (resultUrls.length === 0 && !resultObject) {
           this.logger.warn(
             `Jobs task ${taskId} completed but NO URLs found! Full task keys: ${Object.keys(task).join(', ')}`,
           );
@@ -1708,6 +1778,7 @@ export class KieProvider extends BaseProvider {
           status: 'completed',
           resultUrls,
           progress: 100,
+          metadata: resultObject ? { resultObject } : undefined,
         };
       }
 
@@ -1734,6 +1805,11 @@ export class KieProvider extends BaseProvider {
       const r = request as any;
 
       this.logger.log(`KIE generateAudio: received modelId="${modelId}"`);
+
+      // ─── Gemini Omni Audio (KIE jobs) — дизайн голосового профиля ───
+      if (modelId === 'gemini-omni-audio') {
+        return await this.generateGeminiOmniAudio(request, start);
+      }
 
       const elevenLabsModels = new Set([
         'elevenlabs/audio-isolation',
@@ -2062,6 +2138,58 @@ export class KieProvider extends BaseProvider {
           `data=${JSON.stringify(error.response.data)?.substring(0, 500)}`
         );
       }
+      return this.handleError(error, start);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 🆕 GEMINI OMNI AUDIO (KIE jobs) — дизайн голосового профиля.
+  // Результат — resultObject (не URL трека), кладём его в metadata.
+  // input: name (обяз., ≤100), voice_description (опц., ≤20000), example_dialogue (опц., ≤120)
+  // ═══════════════════════════════════════════════════════
+  private async generateGeminiOmniAudio(
+    request: AudioGenerationRequest,
+    start: number,
+  ): Promise<GenerationResult> {
+    try {
+      const r = request as any;
+
+      const name = (r.title && String(r.title).trim())
+        || String(request.prompt || 'Voice profile').trim().substring(0, 100);
+
+      const input: Record<string, any> = { name };
+      if (request.prompt && request.prompt.trim()) {
+        input.voice_description = request.prompt.trim();
+      }
+      if (r.exampleDialogue && String(r.exampleDialogue).trim()) {
+        input.example_dialogue = String(r.exampleDialogue).trim().substring(0, 120);
+      }
+
+      this.logger.debug(
+        `KIE Gemini Omni Audio generate: input=${JSON.stringify(input).substring(0, 400)}`,
+      );
+
+      const response = await this.client.post('/api/v1/jobs/createTask', {
+        model: 'gemini-omni-audio',
+        input,
+      });
+
+      const data = response.data;
+      if (data.code !== 200) {
+        throw new Error(data.msg || `KIE Gemini Omni Audio task creation failed (code ${data.code})`);
+      }
+
+      const taskId = data.data?.taskId;
+      if (!taskId) throw new Error('No taskId in KIE Gemini Omni Audio response');
+
+      return {
+        success: true,
+        data: { taskId, urls: [], metadata: { model: 'gemini-omni-audio' } },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    } catch (error: any) {
+      this.logger.error(`KIE Gemini Omni Audio error: ${error.message}`);
       return this.handleError(error, start);
     }
   }

@@ -1458,6 +1458,30 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
+      // ─── Gemini Omni Character (KIE) — консистентный персонаж ───
+      {
+        slug: 'gemini-omni-character',
+        name: 'Gemini Omni Character',
+        displayName: 'Gemini Omni Character',
+        description: 'Консистентный персонаж по референс-фото и описанию',
+        type: 'image',
+        fixedCostPerGeneration: 0.1,
+        tokensPerDollar: 90,
+        minTokenCost: 9,
+        sortOrder: 11,
+        capabilities: ['image_to_image', 'character_consistency'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gemini-omni-character', priority: 1, isActive: true },
+        ],
+        defaultParams: {},
+        limits: {},
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: {}, costInTokens: 9, costInDollars: 0.1, label: 'Стандартная генерация' },
+        ],
+        uiParameters: [],
+      },
+
       // ════════════════════════════════════════════════════
       // VIDEO МОДЕЛИ
       // ════════════════════════════════════════════════════
@@ -2503,6 +2527,66 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
+      // ─── Gemini Omni Video (KIE jobs) ────────────────────
+      {
+        slug: 'gemini-omni-video',
+        name: 'Gemini Omni Video',
+        displayName: 'Gemini Omni Video',
+        description: 'Видеогенерация Google Gemini Omni — текст/фото → видео, 720p–4K',
+        type: 'video',
+        fixedCostPerGeneration: 0.525,
+        tokensPerDollar: 90,
+        minTokenCost: 47.3,
+        sortOrder: 11,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gemini-omni-video', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 8, resolution: '720p' },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: [
+          { conditions: { resolution: '720p', duration: 4 }, costInTokens: 28.4, costInDollars: 0.315, label: '720p × 4с' },
+          { conditions: { resolution: '720p', duration: 6 }, costInTokens: 37.8, costInDollars: 0.42, label: '720p × 6с' },
+          { conditions: { resolution: '720p', duration: 8 }, costInTokens: 47.3, costInDollars: 0.525, label: '720p × 8с' },
+          { conditions: { resolution: '720p', duration: 10 }, costInTokens: 56.7, costInDollars: 0.63, label: '720p × 10с' },
+          { conditions: { resolution: '1080p', duration: 4 }, costInTokens: 28.4, costInDollars: 0.315, label: '1080p × 4с' },
+          { conditions: { resolution: '1080p', duration: 6 }, costInTokens: 37.8, costInDollars: 0.42, label: '1080p × 6с' },
+          { conditions: { resolution: '1080p', duration: 8 }, costInTokens: 47.3, costInDollars: 0.525, label: '1080p × 8с' },
+          { conditions: { resolution: '1080p', duration: 10 }, costInTokens: 56.7, costInDollars: 0.63, label: '1080p × 10с' },
+          { conditions: { resolution: '4k', duration: 4 }, costInTokens: 66.2, costInDollars: 0.735, label: '4K × 4с' },
+          { conditions: { resolution: '4k', duration: 6 }, costInTokens: 75.6, costInDollars: 0.84, label: '4K × 6с' },
+          { conditions: { resolution: '4k', duration: 8 }, costInTokens: 85.1, costInDollars: 0.945, label: '4K × 8с' },
+          { conditions: { resolution: '4k', duration: 10 }, costInTokens: 94.5, costInDollars: 1.05, label: '4K × 10с' },
+        ],
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
+            options: [
+              { value: 4, label: '4 секунды' },
+              { value: 6, label: '6 секунд' },
+              { value: 8, label: '8 секунд' },
+              { value: 10, label: '10 секунд' },
+            ],
+          },
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '720p', label: '720p (от 28.4🔥)' },
+              { value: '1080p', label: '1080p (от 28.4🔥)' },
+              { value: '4k', label: '4K (от 66.2🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
+
       // ════════════════════════════════════════════════════
       // AUDIO МОДЕЛИ
       // ════════════════════════════════════════════════════
@@ -2860,6 +2944,30 @@ export class ProviderRegistryService implements OnModuleInit {
       //         },
       //       ],
       //     },
+
+      // ─── Gemini Omni Audio (KIE) — дизайн голосового профиля ───
+      {
+        slug: 'gemini-omni-audio',
+        name: 'Gemini Omni Audio',
+        displayName: 'Gemini Omni Audio',
+        description: 'Дизайн голосового профиля от Google Gemini Omni',
+        type: 'audio',
+        fixedCostPerGeneration: 0.05,
+        tokensPerDollar: 90,
+        minTokenCost: 4.5,
+        sortOrder: 6,
+        capabilities: ['voice_design'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gemini-omni-audio', priority: 1, isActive: true },
+        ],
+        defaultParams: {},
+        limits: { maxTextLength: 20000 },
+        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+        pricingMatrix: [
+          { conditions: {}, costInTokens: 4.5, costInDollars: 0.05, label: 'Стандартная генерация' },
+        ],
+        uiParameters: [],
+      },
     ];
   }
 }
