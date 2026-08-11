@@ -316,6 +316,14 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'],
   },
+  'bytedance/seedance-2-5': {
+  kieModel: 'bytedance/seedance-2-5',
+  apiType: 'jobs',
+  statusApiType: 'jobs',
+  hasImageInput: true,
+  durations: ['4', '5', '6', '7', '8', '9', '10', '15', '20', '25', '30'],
+  aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
+},
   'hailuo/02-text-to-video-standard': {
     kieModel: 'hailuo/02-text-to-video-standard',
     apiType: 'jobs',
@@ -1186,101 +1194,133 @@ export class KieProvider extends BaseProvider {
   // Поддержка: 1.5-pro / 2 / 2-fast — все параметры из доков
   // ═══════════════════════════════════════════════════════
   private async generateSeedanceVideo(
-    request: VideoGenerationRequest,
-    config: VideoModelConfig,
-    start: number,
-  ): Promise<GenerationResult> {
-    const r = request as any;
-    const kieModel = config.kieModel;
-    const isV15 = kieModel === 'bytedance/seedance-1.5-pro';
-    const isFast = kieModel === 'bytedance/seedance-2-fast';
+  request: VideoGenerationRequest,
+  config: VideoModelConfig,
+  start: number,
+): Promise<GenerationResult> {
+  const r = request as any;
+  const kieModel = config.kieModel;
+  const isV15 = kieModel === 'bytedance/seedance-1.5-pro';
+  const isFast = kieModel === 'bytedance/seedance-2-fast';
+  const isV25 = kieModel === 'bytedance/seedance-2-5'; // 🆕
 
-    const input: Record<string, any> = { prompt: request.prompt };
+  const input: Record<string, any> = { prompt: request.prompt };
 
-    // ─── resolution ───
-    let resolution = String(r.resolution || '720p').toLowerCase();
-    const allowedRes = isFast ? ['480p', '720p'] : ['480p', '720p', '1080p'];
-    if (!allowedRes.includes(resolution)) resolution = '720p';
-    input.resolution = resolution;
+  // ─── resolution ───
+  let resolution = String(r.resolution || '720p').toLowerCase();
+  const allowedRes = isV25 || isFast
+    ? ['480p', '720p']
+    : ['480p', '720p', '1080p'];
+  if (!allowedRes.includes(resolution)) resolution = '720p';
+  input.resolution = resolution;
 
-    // ─── duration ───
-    let duration = Number(r.duration);
-    if (isV15) {
-      if (![4, 6, 8, 10, 12].includes(duration)) duration = 8;
-    } else {
-      if (isNaN(duration) || duration < 4 || duration > 15) duration = 15;
-      duration = Math.round(duration);
-    }
-    input.duration = duration;
-
-    // ─── aspect_ratio ───
-    input.aspect_ratio = r.aspectRatio || '16:9';
-
-    // ─── generate_audio (sound) ───
-    input.generate_audio =
-      r.sound !== undefined ? !!r.sound
-        : (r.generateAudio !== undefined ? !!r.generateAudio : true);
-
-    // ─── nsfw_checker ───
-    input.nsfw_checker = r.nsfwChecker !== undefined ? !!r.nsfwChecker : true;
-
-    // ─── входные изображения ───
-    const imgs: string[] = [];
-    if (Array.isArray(r.imageUrls) && r.imageUrls.length > 0) {
-      imgs.push(...r.imageUrls.filter(Boolean));
-    } else if (r.imageUrl) {
-      imgs.push(r.imageUrl);
-    }
-    if (Array.isArray(r.referenceImages)) {
-      for (const u of r.referenceImages) if (u && !imgs.includes(u)) imgs.push(u);
-    }
-
-    if (isV15) {
-      // 1.5 Pro: input_urls (0-2), fixed_lens
-      input.fixed_lens = r.fixedLens !== undefined ? !!r.fixedLens : false;
-      if (imgs.length > 0) input.input_urls = imgs.slice(0, 2);
-    } else {
-      // 2 / 2-fast: reference_image_urls / video / audio + web_search
-      input.web_search = r.webSearch !== undefined ? !!r.webSearch : false;
-      if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 10);
-
-      const vids: string[] = Array.isArray(r.videoUrls)
-        ? r.videoUrls.filter(Boolean) : [];
-      if (vids.length > 0) input.reference_video_urls = vids.slice(0, 3);
-
-      const auds: string[] = Array.isArray(r.audioUrls)
-        ? r.audioUrls.filter(Boolean) : [];
-      if (auds.length > 0) input.reference_audio_urls = auds.slice(0, 3);
-    }
-
-    this.logger.debug(
-      `KIE Seedance generate: model=${kieModel}, input=${JSON.stringify(input).substring(0, 500)}`,
-    );
-
-    const response = await this.client.post('/api/v1/jobs/createTask', {
-      model: kieModel,
-      input,
-    });
-
-    const data = response.data;
-    this.logger.debug(
-      `KIE Seedance response: code=${data.code}, msg="${data.msg}", data=${JSON.stringify(data).substring(0, 300)}`,
-    );
-
-    if (data.code !== 200) {
-      throw new Error(data.msg || `KIE Seedance task creation failed (code ${data.code})`);
-    }
-
-    const taskId = data.data?.taskId;
-    if (!taskId) throw new Error('No taskId in KIE Seedance response');
-
-    return {
-      success: true,
-      data: { taskId, urls: [], metadata: { model: kieModel, apiType: 'jobs' } },
-      responseTimeMs: Date.now() - start,
-      providerSlug: this.slug,
-    };
+  // ─── duration ───
+  let duration = Number(r.duration);
+  if (isV15) {
+    if (![4, 6, 8, 10, 12].includes(duration)) duration = 8;
+  } else if (isV25) {
+    // 🆕 Seedance 2.5: диапазон -1..30, дефолт 5, -1 = "авто" (не используем на фронте)
+    if (isNaN(duration) || duration < 1 || duration > 30) duration = 5;
+    duration = Math.round(duration);
+  } else {
+    if (isNaN(duration) || duration < 4 || duration > 15) duration = 15;
+    duration = Math.round(duration);
   }
+  input.duration = duration;
+
+  // ─── aspect_ratio ───
+  input.aspect_ratio = r.aspectRatio || (isV25 ? 'adaptive' : '16:9');
+
+  // ─── generate_audio (sound) ───
+  input.generate_audio =
+    r.sound !== undefined ? !!r.sound
+      : (r.generateAudio !== undefined ? !!r.generateAudio : true);
+
+  // ─── nsfw_checker ───
+  input.nsfw_checker = r.nsfwChecker !== undefined ? !!r.nsfwChecker : true;
+
+  // ─── входные изображения ───
+  const imgs: string[] = [];
+  if (Array.isArray(r.imageUrls) && r.imageUrls.length > 0) {
+    imgs.push(...r.imageUrls.filter(Boolean));
+  } else if (r.imageUrl) {
+    imgs.push(r.imageUrl);
+  }
+  if (Array.isArray(r.referenceImages)) {
+    for (const u of r.referenceImages) if (u && !imgs.includes(u)) imgs.push(u);
+  }
+
+  if (isV15) {
+    input.fixed_lens = r.fixedLens !== undefined ? !!r.fixedLens : false;
+    if (imgs.length > 0) input.input_urls = imgs.slice(0, 2);
+  } else if (isV25) {
+    // 🆕 Seedance 2.5: first/last frame — ОТДЕЛЬНЫЕ поля от reference_image_urls
+    if (r.firstFrameUrl) input.first_frame_url = r.firstFrameUrl;
+    if (r.lastFrameUrl) input.last_frame_url = r.lastFrameUrl;
+
+    // reference_image_urls — до 4х картинок-референсов (персонаж/стиль),
+    // используем общий imgs (imageUrls/referenceImages), first/last сюда не попадают
+    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 4);
+
+    input.web_search = r.webSearch !== undefined ? !!r.webSearch : false;
+
+    const vids: string[] = Array.isArray(r.videoUrls)
+      ? r.videoUrls.filter(Boolean) : [];
+    if (vids.length > 0) input.reference_video_urls = vids.slice(0, 3);
+
+    const auds: string[] = Array.isArray(r.audioUrls)
+      ? r.audioUrls.filter(Boolean) : [];
+    if (auds.length > 0) input.reference_audio_urls = auds.slice(0, 3);
+
+    // 🆕 return_last_frame — нельзя true вместе с draft (у нас draft не используется)
+    if (r.returnLastFrame !== undefined) {
+      input.return_last_frame = !!r.returnLastFrame;
+    }
+
+    // 🆕 output_format: mp4 | mov
+    input.output_format = r.outputFormat === 'mov' ? 'mov' : 'mp4';
+  } else {
+    // Seedance 2 / 2-fast — без изменений
+    input.web_search = r.webSearch !== undefined ? !!r.webSearch : false;
+    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 10);
+
+    const vids: string[] = Array.isArray(r.videoUrls)
+      ? r.videoUrls.filter(Boolean) : [];
+    if (vids.length > 0) input.reference_video_urls = vids.slice(0, 3);
+
+    const auds: string[] = Array.isArray(r.audioUrls)
+      ? r.audioUrls.filter(Boolean) : [];
+    if (auds.length > 0) input.reference_audio_urls = auds.slice(0, 3);
+  }
+
+  this.logger.debug(
+    `KIE Seedance generate: model=${kieModel}, input=${JSON.stringify(input).substring(0, 500)}`,
+  );
+
+  const response = await this.client.post('/api/v1/jobs/createTask', {
+    model: kieModel,
+    input,
+  });
+
+  const data = response.data;
+  this.logger.debug(
+    `KIE Seedance response: code=${data.code}, msg="${data.msg}", data=${JSON.stringify(data).substring(0, 300)}`,
+  );
+
+  if (data.code !== 200) {
+    throw new Error(data.msg || `KIE Seedance task creation failed (code ${data.code})`);
+  }
+
+  const taskId = data.data?.taskId;
+  if (!taskId) throw new Error('No taskId in KIE Seedance response');
+
+  return {
+    success: true,
+    data: { taskId, urls: [], metadata: { model: kieModel, apiType: 'jobs' } },
+    responseTimeMs: Date.now() - start,
+    providerSlug: this.slug,
+  };
+}
 
   private async generateRunwayVideo(
     request: VideoGenerationRequest,

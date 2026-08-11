@@ -335,7 +335,7 @@ export class VideoGenerationDto {
   @IsBoolean()
   nsfwChecker?: boolean;
 
-    // 🆕 Seedance 1.5 Pro: фиксированная камера
+  // 🆕 Seedance 1.5 Pro: фиксированная камера
   @ApiPropertyOptional({ description: 'Seedance 1.5: fixed camera (no movement)' })
   @IsOptional()
   @IsBoolean()
@@ -347,7 +347,7 @@ export class VideoGenerationDto {
   @IsBoolean()
   webSearch?: boolean;
 
-    // 🆕 Seedance 2/2-fast: аудио-референсы (до 3, суммарно ≤15с)
+  // 🆕 Seedance 2/2-fast: аудио-референсы (до 3, суммарно ≤15с)
   @ApiPropertyOptional({ description: 'Seedance 2: reference audio URLs' })
   @IsOptional()
   @IsArray()
@@ -365,6 +365,27 @@ export class VideoGenerationDto {
   @Min(0)
   @Max(60)
   refVideoSeconds?: number;
+
+  // 🆕 Seedance 2.5: отдельные кадры (не путать с imageUrl/imageUrls = референсы)
+  @ApiPropertyOptional({ description: 'Seedance 2.5: first frame URL' })
+  @IsOptional()
+  @IsString()
+  firstFrameUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Seedance 2.5: last frame URL' })
+  @IsOptional()
+  @IsString()
+  lastFrameUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Seedance 2.5: return last frame in result' })
+  @IsOptional()
+  @IsBoolean()
+  returnLastFrame?: boolean;
+
+  @ApiPropertyOptional({ enum: ['mp4', 'mov'], description: 'Seedance 2.5: output format' })
+  @IsOptional()
+  @IsString()
+  outputFormat?: string;
 }
 
 export class DialogueLineDto {
@@ -454,7 +475,7 @@ export class AudioGenerationDto {
   @IsOptional()
   voiceId?: string;
 
-    // 🆕 Suno: что исключить из стиля
+  // 🆕 Suno: что исключить из стиля
   @ApiPropertyOptional({ description: 'Negative tags — стили для исключения (Suno)' })
   @IsOptional()
   @IsString()

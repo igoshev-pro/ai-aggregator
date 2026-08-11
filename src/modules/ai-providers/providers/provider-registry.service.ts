@@ -2527,6 +2527,104 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
+      // ─── Seedance 2.5 (KIE) — first/last frame, мультиреференс, до 30с ───
+{
+  slug: 'seedance-2-5',
+  name: 'Seedance 2.5',
+  displayName: 'Seedance 2.5',
+  description: 'Новое поколение ByteDance — first/last кадр, мультиреференс, до 30с',
+  type: 'video',
+  fixedCostPerGeneration: 0.315, // справочно (720p×1с no-video)
+  tokensPerDollar: 90,
+  minTokenCost: 12.6, // мин: 480p × 1с no-video
+  sortOrder: 12.15,
+  isPremium: true,
+  capabilities: ['text_to_video', 'image_to_video', 'audio', 'reference_to_video', 'first_last_frame'],
+  providerMappings: [
+    { providerSlug: 'kie', modelId: 'bytedance/seedance-2-5', priority: 1, isActive: true },
+  ],
+  defaultParams: { aspectRatio: 'adaptive', duration: 5, resolution: '720p', sound: true },
+  limits: { maxDuration: 30 },
+  inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
+  videoRefPricing: true,
+  videoRefRatePerSecond: { '480p': 7.65, '720p': 17.1 },
+  // Матрица ТОЛЬКО для no-video (videoRef=false)
+  pricingMatrix: (() => {
+    const rows: any[] = [];
+    const rate: Record<string, number> = { '480p': 12.6, '720p': 28.35 };
+    const dollarsPerToken = 1 / 90;
+    for (const resolution of ['480p', '720p']) {
+      for (let d = 1; d <= 30; d++) {
+        const tokens = Math.round(rate[resolution] * d * 10) / 10;
+        rows.push({
+          conditions: { resolution, videoRef: false, duration: d },
+          costInTokens: tokens,
+          costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+          label: `${resolution} × ${d}с`,
+        });
+      }
+    }
+    return rows;
+  })(),
+  uiParameters: [
+    {
+      key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+      options: [
+        { value: '480p', label: '480p (от 12.6🔥/сек)' },
+        { value: '720p', label: '720p (от 28.35🔥/сек)' },
+      ],
+    },
+    {
+      key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+      options: (() => {
+        const o: any[] = [];
+        for (let d = 1; d <= 30; d++) o.push({ value: d, label: `${d} сек` });
+        return o;
+      })(),
+    },
+    {
+      key: 'videoRef', label: 'Видео-референс', type: 'boolean', affectsPrice: true, defaultValue: false,
+      options: [
+        { value: false, label: 'Без видео (дороже за секунду вывода)' },
+        { value: true, label: 'С видео (дешевле, но платится и вход, и выход)' },
+      ],
+    },
+    {
+      key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: false, defaultValue: true,
+      options: [
+        { value: false, label: 'Без звука' },
+        { value: true, label: 'Со звуком' },
+      ],
+    },
+    {
+      key: 'webSearch', label: 'Онлайн-поиск', type: 'boolean', affectsPrice: false, defaultValue: false,
+      options: [
+        { value: false, label: 'Выкл' },
+        { value: true, label: 'Вкл' },
+      ],
+    },
+    {
+      key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: 'adaptive',
+      options: [
+        { value: 'adaptive', label: 'Адаптивный' },
+        { value: '16:9', label: 'Горизонталь (16:9)' },
+        { value: '9:16', label: 'Вертикаль (9:16)' },
+        { value: '1:1', label: 'Квадрат (1:1)' },
+        { value: '4:3', label: 'Стандарт (4:3)' },
+        { value: '3:4', label: 'Портрет (3:4)' },
+        { value: '21:9', label: 'Кино (21:9)' },
+      ],
+    },
+    {
+      key: 'outputFormat', label: 'Формат файла', type: 'select', affectsPrice: false, defaultValue: 'mp4',
+      options: [
+        { value: 'mp4', label: 'MP4' },
+        { value: 'mov', label: 'MOV' },
+      ],
+    },
+  ],
+},
+
       // ─── Topaz Video Upscale (Evolink) — апскейл готового видео ─────
       {
         slug: 'topaz-video-upscale',
