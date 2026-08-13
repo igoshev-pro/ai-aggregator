@@ -249,8 +249,59 @@ POST /api/v1/runway/generate   // только runway
 // VIDEO_MODEL_MAP содержит конфиги для:
 // sora-2-text-to-video/image-to-video (nFrames: 10/15)
 // kling-3.0/video, kling-3.0/motion-control (durations 3-15)
+// kling/v2-5-turbo-* (t2v/i2v, cfg_scale, nsfw_checker)
 // runway (durations 5/10, Runway API)
 // hailuo/* (durations 6/10, опционально image, resolution)
+// veo3 / veo3_fast / veo3_lite (apiType 'veo', отдельный эндпоинт)
+// wan/2-5-*, wan/2-7-* (свои билдеры)
+// bytedance/seedance-1.5-pro | -2 | -2-fast | -2-5 (generateSeedanceVideo)
+// gemini-omni-video (jobs, resolution 720p/1080p/4k)
+
+// Флаги конфига, влияющие на тело запроса:
+//   hasImageInput, hasSound, hasMode, hasSize, hasRemoveWatermark,
+//   hasPromptOptimizer, hasResolution (+ resolutionDefault), hasCfgScale,
+//   hasNegativePrompt, hasNsfwChecker, nFrames, durations, aspectRatios
+// ⚠️ hasResolution=false → поле resolution НЕ уходит к KIE.
+//    Для моделей, где цена зависит от разрешения, флаг обязателен,
+//    иначе пользователь платит за 4K и получает дефолт провайдера.
+//    resolutionDefault задаёт дефолт вместо общего '768P' (hailuo).
+
+Новые модели (Aug 2026)
+
+Typescript
+
+// ─── gemini-omni-video (KIE jobs) ───
+// input: prompt, image_urls?, duration '4'|'6'|'8'|'10',
+//        aspect_ratio '16:9'|'9:16', resolution '720p'|'1080p'|'4k'
+// Цена: 720p == 1080p (по прайсу KIE), 4K дороже ~2.3x
+
+// ─── gemini-omni-character (KIE jobs) — тип IMAGE ───
+// Обрабатывается ДО общего пути generateImage: generateGeminiOmniCharacter()
+// input: image_urls (ОБЯЗАТЕЛЬНО), descriptions (= prompt), character_name?
+// Без image_urls провайдер бросает ошибку → генерация фейлится + refund
+
+// ─── gemini-omni-audio (KIE jobs) — тип AUDIO — 🚫 ОТКЛЮЧЕНА ───
+// Причина: результат приходит как resultJson.resultObject (профиль
+// голоса), а не URL трека → resultUrls пустой, фронту нечего показать,
+// генерация «завершается» пустой при списанных спичках.
+// Как отключено: запись закомментирована в buildModelsCatalog()
+// + слаг добавлен в DEPRECATED_AUDIO_SLUGS (isActive=false в БД —
+// обязательно, т.к. isActive стоит в $setOnInsert и убрать модель
+// из каталога недостаточно: в БД она осталась бы активной).
+// Код generateGeminiOmniAudio() в kie.provider.ts СОХРАНЁН для возврата.
+
+// ─── bytedance/seedance-2-5 (KIE jobs) ───
+// Отличия от Seedance 2 внутри generateSeedanceVideo (isV25):
+//   resolution: только 480p/720p; duration 1..30 (дефолт 5)
+//   aspect_ratio дефолт 'adaptive'
+//   first_frame_url / last_frame_url — ОТДЕЛЬНЫЕ поля от reference_image_urls
+//   reference_image_urls: до 4 (у Seedance 2 — до 10)
+//   return_last_frame, output_format 'mp4'|'mov'
+
+// ─── topaz-video-upscale (Evolink, НЕ KIE) ───
+// buildTopazBody: { model, video_urls: [url], model_params: { upscale_factor } }
+// НЕТ prompt и image_urls. upscale_factor '1'|'2'|'4' приходит
+// через общее поле resolution (переиспользование VideoGenerationDto).
 Авто-переключение модели по наличию изображения:
 
 Typescript

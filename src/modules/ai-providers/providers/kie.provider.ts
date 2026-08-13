@@ -156,6 +156,7 @@ interface VideoModelConfig {
   hasRemoveWatermark?: boolean;
   hasPromptOptimizer?: boolean;
   hasResolution?: boolean;
+  resolutionDefault?: string;   // 🆕 дефолт для hasResolution (иначе '768P')
   hasCfgScale?: boolean;        // 🆕 kling 2.5 turbo
   hasNegativePrompt?: boolean;  // 🆕 kling 2.5 turbo
   hasNsfwChecker?: boolean;     // 🆕 kling 2.5 turbo
@@ -366,6 +367,10 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     apiType: 'jobs',
     statusApiType: 'jobs',
     hasImageInput: true,
+    // 🔧 без hasResolution KIE всегда отдавал 720p, хотя пользователь
+    //    платил по матрице за 1080p/4K
+    hasResolution: true,
+    resolutionDefault: '720p',
     durations: ['4', '6', '8', '10'],
     aspectRatios: ['16:9', '9:16'],
   },
@@ -1013,7 +1018,10 @@ export class KieProvider extends BaseProvider {
     if (config.hasSize) input.size = r.quality || 'standard';
     if (config.hasRemoveWatermark) input.remove_watermark = r.removeWatermark !== false;
     if (config.hasPromptOptimizer) input.prompt_optimizer = r.promptOptimizer !== false;
-    if (config.hasResolution) input.resolution = r.resolution || '768P';
+    if (config.hasResolution) {
+      input.resolution =
+        r.resolution || config.resolutionDefault || '768P';
+    }
 
     this.logger.debug(
       `KIE Jobs generate: model=${config.kieModel}, input=${JSON.stringify(input).substring(0, 500)}`,
@@ -2183,8 +2191,14 @@ export class KieProvider extends BaseProvider {
   }
 
   // ═══════════════════════════════════════════════════════
-  // 🆕 GEMINI OMNI AUDIO (KIE jobs) — дизайн голосового профиля.
-  // Результат — resultObject (не URL трека), кладём его в metadata.
+  // GEMINI OMNI AUDIO (KIE jobs) — дизайн голосового профиля.
+  // ⚠️ МОДЕЛЬ ОТКЛЮЧЕНА (isActive=false в реестре) — этот код сейчас
+  //    недостижим, но НЕ мёртвый: он нужен при возврате модели.
+  //    Причина отключения: результат приходит как resultObject
+  //    (профиль голоса), а не URL трека — фронту нечего показать.
+  //    Возврат: раскомментировать запись в provider-registry.service,
+  //    убрать слаг из DEPRECATED_AUDIO_SLUGS, добавить в MediaResult
+  //    отображение metadata.resultObject.
   // input: name (обяз., ≤100), voice_description (опц., ≤20000), example_dialogue (опц., ≤120)
   // ═══════════════════════════════════════════════════════
   private async generateGeminiOmniAudio(

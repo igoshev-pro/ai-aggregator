@@ -433,6 +433,11 @@ export class GenerationService {
         fixedLens: dto.fixedLens,
         webSearch: dto.webSearch,
         audioUrls: dto.audioUrls,
+        // 🆕 Seedance 2.5: отдельные кадры + формат вывода
+        firstFrameUrl: dto.firstFrameUrl,
+        lastFrameUrl: dto.lastFrameUrl,
+        returnLastFrame: dto.returnLastFrame,
+        outputFormat: dto.outputFormat,
         // 🆕 для пересчёта той же цены в billing (recordMediaGeneration)
         refVideoSeconds: Number(dto.refVideoSeconds) || 0,
         videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
@@ -497,6 +502,11 @@ export class GenerationService {
           fixedLens: p.fixedLens,
           webSearch: p.webSearch,
           audioUrls: p.audioUrls,
+          // 🆕 Seedance 2.5
+          firstFrameUrl: p.firstFrameUrl,
+          lastFrameUrl: p.lastFrameUrl,
+          returnLastFrame: p.returnLastFrame,
+          outputFormat: p.outputFormat,
         },
       },
       {

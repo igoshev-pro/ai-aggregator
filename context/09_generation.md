@@ -299,13 +299,21 @@ VideoGenerationDto
 Typescript
 
 modelSlug, prompt (@MaxLength(10000)), negativePrompt?
-imageUrl?, imageUrls?, videoUrls?
-duration?: @Min(3) @Max(20)
+imageUrl?, imageUrls?, videoUrls?, referenceImages?, audioUrls?
+duration?: @Min(1) @Max(600)   // 600 — из-за Topaz (апскейл до 10 мин видео)
 aspectRatio?, resolution?, mode?, quality?, sound?, stable?
 removeWatermark?, waterMark?, promptOptimizer?, style?
-// ⚠️ duration: @Min(3) но ElevenLabs/Suno используют duration от 1 секунды
-//    Ограничение Min(3) слишком агрессивно для аудио провайдеров
-//    (но AudioGenerationDto имеет свой Min(1))
+generateAudio?, resizeMode?, watermark?, generationType?
+multiShots?, multiPrompt?, klingElements?   // Kling 3.0
+cfgScale?, nsfwChecker?                     // Kling 2.5
+fixedLens?                                  // Seedance 1.5
+webSearch?, refVideoSeconds? (@Max(60))     // Seedance 2/2.5
+firstFrameUrl?, lastFrameUrl?, returnLastFrame?, outputFormat?  // Seedance 2.5
+// ⚠️ prompt обязателен даже для Topaz, где промпт не используется —
+//    фронт шлёт пустую строку (проходит @IsString, нет @IsNotEmpty)
+// ⚠️ ЛЮБОЕ новое поле нужно добавить в ТРЁХ местах generation.service:
+//    priceParams (если влияет на цену) → generation.params → queue request.
+//    Иначе поле молча теряется по пути к провайдеру.
 AudioGenerationDto
 
 Typescript
@@ -319,6 +327,9 @@ speed?: @Min(0.25) @Max(4)
 loop?, promptInfluence?: @Min(0) @Max(1)
 audioUrl?
 dialogue?: DialogueLineDto[]  // @ValidateNested + @Type
+negativeTags?, vocalGender?, styleWeight?, weirdnessConstraint?, audioWeight?
+textLength?                   // посимвольная тарификация ElevenLabs
+exampleDialogue? (@MaxLength(120))  // Gemini Omni Audio
 CalculatePriceDto
 
 Typescript

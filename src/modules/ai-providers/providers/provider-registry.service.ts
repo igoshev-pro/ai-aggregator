@@ -452,7 +452,9 @@ export class ProviderRegistryService implements OnModuleInit {
     }
 
     // 🆕 Деактивируем устаревшие slug'и Suno (заменены на единый 'suno')
-    const DEPRECATED_AUDIO_SLUGS = ['suno-v4', 'suno-v4_5'];
+    //    + gemini-omni-audio: отдаёт resultObject вместо аудиофайла,
+    //      результат нечем показать пользователю (см. каталог ниже)
+    const DEPRECATED_AUDIO_SLUGS = ['suno-v4', 'suno-v4_5', 'gemini-omni-audio'];
     const deactivated = await this.modelModel.updateMany(
       { slug: { $in: DEPRECATED_AUDIO_SLUGS }, isActive: true },
       { $set: { isActive: false } },
@@ -3082,29 +3084,35 @@ export class ProviderRegistryService implements OnModuleInit {
       //       ],
       //     },
 
-      // ─── Gemini Omni Audio (KIE) — дизайн голосового профиля ───
-      {
-        slug: 'gemini-omni-audio',
-        name: 'Gemini Omni Audio',
-        displayName: 'Gemini Omni Audio',
-        description: 'Дизайн голосового профиля от Google Gemini Omni',
-        type: 'audio',
-        fixedCostPerGeneration: 0.05,
-        tokensPerDollar: 90,
-        minTokenCost: 4.5,
-        sortOrder: 6,
-        capabilities: ['voice_design'],
-        providerMappings: [
-          { providerSlug: 'kie', modelId: 'gemini-omni-audio', priority: 1, isActive: true },
-        ],
-        defaultParams: {},
-        limits: { maxTextLength: 20000 },
-        inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
-        pricingMatrix: [
-          { conditions: {}, costInTokens: 4.5, costInDollars: 0.05, label: 'Стандартная генерация' },
-        ],
-        uiParameters: [],
-      },
+      // ─── Gemini Omni Audio (KIE) — ОТКЛЮЧЕНА ────────────────────
+      // Модель отдаёт не аудиофайл, а resultJson.resultObject (профиль
+      // голоса) — resultUrls остаётся пустым, и на фронте пользователю
+      // нечего показать: генерация «завершается» с пустым результатом.
+      // Слаг добавлен в DEPRECATED_AUDIO_SLUGS → isActive=false в БД.
+      // Чтобы вернуть: раскомментировать здесь, убрать слаг оттуда
+      // и сначала научить MediaResult отображать metadata.resultObject.
+      // {
+      //   slug: 'gemini-omni-audio',
+      //   name: 'Gemini Omni Audio',
+      //   displayName: 'Gemini Omni Audio',
+      //   description: 'Дизайн голосового профиля от Google Gemini Omni',
+      //   type: 'audio',
+      //   fixedCostPerGeneration: 0.05,
+      //   tokensPerDollar: 90,
+      //   minTokenCost: 4.5,
+      //   sortOrder: 6,
+      //   capabilities: ['voice_design'],
+      //   providerMappings: [
+      //     { providerSlug: 'kie', modelId: 'gemini-omni-audio', priority: 1, isActive: true },
+      //   ],
+      //   defaultParams: {},
+      //   limits: { maxTextLength: 20000 },
+      //   inputCapabilities: { acceptsImages: false, maxInputImages: 0 },
+      //   pricingMatrix: [
+      //     { conditions: {}, costInTokens: 4.5, costInDollars: 0.05, label: 'Стандартная генерация' },
+      //   ],
+      //   uiParameters: [],
+      // },
     ];
   }
 }
