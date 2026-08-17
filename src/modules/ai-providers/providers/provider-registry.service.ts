@@ -2536,9 +2536,9 @@ export class ProviderRegistryService implements OnModuleInit {
   displayName: 'Seedance 2.5',
   description: 'Новое поколение ByteDance — first/last кадр, мультиреференс, до 30с',
   type: 'video',
-  fixedCostPerGeneration: 0.315, // справочно (720p×1с no-video)
+  fixedCostPerGeneration: 0.21, // справочно (720p×1с no-video)
   tokensPerDollar: 90,
-  minTokenCost: 12.6, // мин: 480p × 1с no-video
+  minTokenCost: 8.4, // мин: 480p × 1с no-video
   sortOrder: 12.15,
   isPremium: true,
   capabilities: ['text_to_video', 'image_to_video', 'audio', 'reference_to_video', 'first_last_frame'],
@@ -2549,11 +2549,11 @@ export class ProviderRegistryService implements OnModuleInit {
   limits: { maxDuration: 30 },
   inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
   videoRefPricing: true,
-  videoRefRatePerSecond: { '480p': 7.65, '720p': 17.1 },
+  videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4 },
   // Матрица ТОЛЬКО для no-video (videoRef=false)
   pricingMatrix: (() => {
     const rows: any[] = [];
-    const rate: Record<string, number> = { '480p': 12.6, '720p': 28.35 };
+    const rate: Record<string, number> = { '480p': 8.4, '720p': 18.9 };
     const dollarsPerToken = 1 / 90;
     for (const resolution of ['480p', '720p']) {
       for (let d = 1; d <= 30; d++) {
@@ -2572,8 +2572,8 @@ export class ProviderRegistryService implements OnModuleInit {
     {
       key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
       options: [
-        { value: '480p', label: '480p (от 12.6🔥/сек)' },
-        { value: '720p', label: '720p (от 28.35🔥/сек)' },
+        { value: '480p', label: '480p (от 8.4🔥/сек)' },
+        { value: '720p', label: '720p (от 18.9🔥/сек)' },
       ],
     },
     {
