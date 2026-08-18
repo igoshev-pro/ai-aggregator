@@ -1216,7 +1216,8 @@ export class KieProvider extends BaseProvider {
 
   // ─── resolution ───
   let resolution = String(r.resolution || '720p').toLowerCase();
-  const allowedRes = isV25 || isFast
+  // Seedance 2-fast — только 480p/720p; 2.5 и 1.5 поддерживают 1080p.
+  const allowedRes = isFast
     ? ['480p', '720p']
     : ['480p', '720p', '1080p'];
   if (!allowedRes.includes(resolution)) resolution = '720p';

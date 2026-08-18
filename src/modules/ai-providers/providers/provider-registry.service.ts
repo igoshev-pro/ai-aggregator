@@ -2549,13 +2549,13 @@ export class ProviderRegistryService implements OnModuleInit {
   limits: { maxDuration: 30 },
   inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
   videoRefPricing: true,
-  videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4 },
+  videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4, '1080p': 25.7 },
   // Матрица ТОЛЬКО для no-video (videoRef=false)
   pricingMatrix: (() => {
     const rows: any[] = [];
-    const rate: Record<string, number> = { '480p': 8.4, '720p': 18.9 };
+    const rate: Record<string, number> = { '480p': 8.4, '720p': 18.9, '1080p': 42.5 };
     const dollarsPerToken = 1 / 90;
-    for (const resolution of ['480p', '720p']) {
+    for (const resolution of ['480p', '720p', '1080p']) {
       for (let d = 1; d <= 30; d++) {
         const tokens = Math.round(rate[resolution] * d * 10) / 10;
         rows.push({
@@ -2574,6 +2574,7 @@ export class ProviderRegistryService implements OnModuleInit {
       options: [
         { value: '480p', label: '480p (от 8.4🔥/сек)' },
         { value: '720p', label: '720p (от 18.9🔥/сек)' },
+        { value: '1080p', label: '1080p (от 42.5🔥/сек)' },
       ],
     },
     {
@@ -2634,9 +2635,9 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Topaz Video Upscale',
         description: 'AI-апскейл видео: улучшение чёткости, 1x/2x/4x',
         type: 'video',
-        fixedCostPerGeneration: 0.055, // справочно, реальная цена — по формуле ниже
+        fixedCostPerGeneration: 0.037, // справочно, реальная цена — по формуле ниже
         tokensPerDollar: 90,
-        minTokenCost: 5,
+        minTokenCost: 3.3,
         sortOrder: 13,
         capabilities: ['video_to_video', 'upscale'],
         providerMappings: [
@@ -2650,17 +2651,17 @@ export class ProviderRegistryService implements OnModuleInit {
         //    ключ ставки передаётся через поле "resolution" (=upscale_factor),
         //    "videoRef" на фронте всегда true (видео обязательно),
         //    "refVideoSeconds" не используется (0) — просто rate × duration.
-        //    Цена провайдера: 1x/2x = $0.055/сек, 4x = $0.088/сек (×90 = наши 🔥).
+        //    Ставки: 1x/2x = 3.3🔥/сек, 4x = 5.3🔥/сек.
         videoRefPricing: true,
-        videoRefRatePerSecond: { '1': 4.95, '2': 4.95, '4': 7.92 },
+        videoRefRatePerSecond: { '1': 3.3, '2': 3.3, '4': 5.3 },
         pricingMatrix: [],
         uiParameters: [
           {
             key: 'resolution', label: 'Коэффициент увеличения', type: 'select', affectsPrice: true, defaultValue: '2',
             options: [
-              { value: '1', label: '1x — улучшение без увеличения (4.95🔥/сек)' },
-              { value: '2', label: '2x увеличение (4.95🔥/сек)' },
-              { value: '4', label: '4x увеличение (7.92🔥/сек)' },
+              { value: '1', label: '1x — улучшение без увеличения (3.3🔥/сек)' },
+              { value: '2', label: '2x увеличение (3.3🔥/сек)' },
+              { value: '4', label: '4x увеличение (5.3🔥/сек)' },
             ],
           },
         ],
@@ -2673,9 +2674,9 @@ export class ProviderRegistryService implements OnModuleInit {
         displayName: 'Gemini Omni Video',
         description: 'Видеогенерация Google Gemini Omni — текст/фото → видео, 720p–4K',
         type: 'video',
-        fixedCostPerGeneration: 0.525,
+        fixedCostPerGeneration: 0.21,
         tokensPerDollar: 90,
-        minTokenCost: 47.3,
+        minTokenCost: 18.9,
         sortOrder: 11,
         capabilities: ['text_to_video', 'image_to_video'],
         providerMappings: [
@@ -2684,20 +2685,52 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { aspectRatio: '16:9', duration: 8, resolution: '720p' },
         limits: { maxDuration: 10 },
         inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
-        pricingMatrix: [
-          { conditions: { resolution: '720p', duration: 4 }, costInTokens: 28.4, costInDollars: 0.315, label: '720p × 4с' },
-          { conditions: { resolution: '720p', duration: 6 }, costInTokens: 37.8, costInDollars: 0.42, label: '720p × 6с' },
-          { conditions: { resolution: '720p', duration: 8 }, costInTokens: 47.3, costInDollars: 0.525, label: '720p × 8с' },
-          { conditions: { resolution: '720p', duration: 10 }, costInTokens: 56.7, costInDollars: 0.63, label: '720p × 10с' },
-          { conditions: { resolution: '1080p', duration: 4 }, costInTokens: 28.4, costInDollars: 0.315, label: '1080p × 4с' },
-          { conditions: { resolution: '1080p', duration: 6 }, costInTokens: 37.8, costInDollars: 0.42, label: '1080p × 6с' },
-          { conditions: { resolution: '1080p', duration: 8 }, costInTokens: 47.3, costInDollars: 0.525, label: '1080p × 8с' },
-          { conditions: { resolution: '1080p', duration: 10 }, costInTokens: 56.7, costInDollars: 0.63, label: '1080p × 10с' },
-          { conditions: { resolution: '4k', duration: 4 }, costInTokens: 66.2, costInDollars: 0.735, label: '4K × 4с' },
-          { conditions: { resolution: '4k', duration: 6 }, costInTokens: 75.6, costInDollars: 0.84, label: '4K × 6с' },
-          { conditions: { resolution: '4k', duration: 8 }, costInTokens: 85.1, costInDollars: 0.945, label: '4K × 8с' },
-          { conditions: { resolution: '4k', duration: 10 }, costInTokens: 94.5, costInDollars: 1.05, label: '4K × 10с' },
-        ],
+        // Цены заказчика (18.08.2026).
+        // Без видео — за длительность; 720p и 1080p тарифицируются одинаково.
+        // С видео (videoRef=true) — фиксированная цена за генерацию,
+        // независимо от длительности: 50.4🔥 для 720p/1080p, 75.6🔥 для 4K.
+        pricingMatrix: (() => {
+          const dollarsPerToken = 1 / 90;
+          const row = (
+            conditions: Record<string, any>,
+            tokens: number,
+            label: string,
+          ) => ({
+            conditions,
+            costInTokens: tokens,
+            costInDollars: Math.round(tokens * dollarsPerToken * 1000) / 1000,
+            label,
+          });
+
+          const noVideo: Record<string, Record<number, number>> = {
+            '720p': { 4: 18.9, 6: 25.2, 8: 31.5, 10: 37.8 },
+            '1080p': { 4: 18.9, 6: 25.2, 8: 31.5, 10: 37.8 },
+            '4k': { 4: 44.1, 6: 50.4, 8: 56.7, 10: 63 },
+          };
+
+          const rows: any[] = [];
+
+          for (const [resolution, byDuration] of Object.entries(noVideo)) {
+            const shown = resolution === '4k' ? '4K' : resolution;
+            for (const [duration, tokens] of Object.entries(byDuration)) {
+              rows.push(
+                row(
+                  { resolution, duration: Number(duration), videoRef: false },
+                  tokens,
+                  `${shown} × ${duration}с`,
+                ),
+              );
+            }
+          }
+
+          // Фиксированные строки "с видео" — без условия по duration,
+          // поэтому подходят под любую выбранную длительность.
+          rows.push(row({ resolution: '720p', videoRef: true }, 50.4, '720p с видео'));
+          rows.push(row({ resolution: '1080p', videoRef: true }, 50.4, '1080p с видео'));
+          rows.push(row({ resolution: '4k', videoRef: true }, 75.6, '4K с видео'));
+
+          return rows;
+        })(),
         uiParameters: [
           {
             key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
@@ -2711,9 +2744,9 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '720p', label: '720p (от 28.4🔥)' },
-              { value: '1080p', label: '1080p (от 28.4🔥)' },
-              { value: '4k', label: '4K (от 66.2🔥)' },
+              { value: '720p', label: '720p (от 18.9🔥)' },
+              { value: '1080p', label: '1080p (от 18.9🔥)' },
+              { value: '4k', label: '4K (от 44.1🔥)' },
             ],
           },
           {
