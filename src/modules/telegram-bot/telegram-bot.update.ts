@@ -63,7 +63,7 @@ export class TelegramBotUpdate implements OnModuleInit {
       const desc =
         this.config.get<string>('BOT_DESCRIPTION') ||
         process.env.BOT_DESCRIPTION ||
-        'SPICHKI AI — все нейросети в одном месте: ChatGPT, Claude, Gemini, ' +
+        'Spichki AI — все нейросети в одном месте: ChatGPT, Claude, Gemini, ' +
           'Midjourney, Sora, Kling, Suno. Текст, изображения, видео, музыка и озвучка.';
       const shortDesc =
         this.config.get<string>('BOT_SHORT_DESCRIPTION') ||
@@ -171,15 +171,15 @@ export class TelegramBotUpdate implements OnModuleInit {
     const miniAppUrl = this.getMiniAppUrl();
     if (miniAppUrl) {
       // @ts-ignore
-      rows.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
+      rows.push([Markup.button.webApp('🚀 Открыть Spichki AI', miniAppUrl)]);
     }
     return Markup.inlineKeyboard(rows);
   }
 
   private categoriesText(): string {
     return (
-      '🔥 *Нейросети SPICHKI AI*\n\n' +
-      'Выбери категорию, чтобы посмотреть модели и цены:\n\n' +
+      '🔥 *Нейросети Spichki AI*\n\n' +
+      'Выберите категорию, чтобы посмотреть модели и цены:\n\n' +
       `${CATEGORIES.text.emoji} *Текст* — ChatGPT, Claude, Gemini, Grok, DeepSeek\n` +
       `${CATEGORIES.image.emoji} *Фото* — Midjourney, Flux, Imagen, Nano Banana\n` +
       `${CATEGORIES.video.emoji} *Видео* — Sora, Veo, Kling, Runway, Seedance\n` +
@@ -233,7 +233,7 @@ export class TelegramBotUpdate implements OnModuleInit {
       user = await this.usersService.findOrCreateByTelegram(tgUser, referralCode);
     } catch (e: any) {
       this.logger.error(`findOrCreateByTelegram failed: ${e?.message}`);
-      await ctx.reply('Ой, что-то пошло не так. Попробуй ещё раз через минуту.');
+      await ctx.reply('Что-то пошло не так. Попробуйте ещё раз через минуту.');
       return;
     }
 
@@ -251,8 +251,8 @@ export class TelegramBotUpdate implements OnModuleInit {
 
       await ctx.reply(
         ok
-          ? '✅ Вход на сайте подтверждён!\n\nМожешь вернуться в браузер — там уже всё готово.'
-          : '⚠️ Ссылка для входа устарела или уже использована.\n\nПопробуй войти заново на сайте.',
+          ? '✅ Вход на сайте подтверждён.\n\nМожете вернуться в браузер — там уже всё готово.'
+          : '⚠️ Ссылка для входа устарела или уже использована.\n\nПопробуйте войти заново на сайте.',
         { parse_mode: 'Markdown' },
       );
       return; // не показываем стандартное приветствие
@@ -272,17 +272,21 @@ export class TelegramBotUpdate implements OnModuleInit {
 
     const miniAppUrl = this.getMiniAppUrl();
 
-        const greeting = wasNew
-      ? `👋 Привет, ${from.first_name || 'друг'}!\n\n` +
-        `🔥 *SPICHKI AI* — все нейросети в одном месте.\n\n` +
-        `🎁 Тебе начислено *9 спичек* на старт!\n\n` +
-        `Жми кнопку ниже, чтобы начать 👇`
-      : `👋 С возвращением, ${from.first_name || 'друг'}!\n\n` +
-        `🔥 Все нейросети ждут тебя. Жми кнопку 👇`;
+    // Имя может отсутствовать — тогда здороваемся без обращения,
+    // чтобы не получилось «Здравствуйте, !».
+    const name = from.first_name ? `, ${from.first_name}` : '';
+
+    const greeting = wasNew
+      ? `Здравствуйте${name}!\n\n` +
+        `*Spichki AI* — все нейросети в одном месте.\n\n` +
+        `Вам начислено *9 спичек* на старт.\n\n` +
+        `Нажмите кнопку ниже, чтобы начать.`
+      : `С возвращением${name}!\n\n` +
+        `Все нейросети доступны в приложении. Нажмите кнопку ниже.`;
 
     const buttons: any[] = [];
     if (miniAppUrl) {
-      buttons.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
+      buttons.push([Markup.button.webApp('🚀 Открыть Spichki AI', miniAppUrl)]);
     }
     // 🆕 Кнопка меню нейросетей
     buttons.push([Markup.button.callback('🤖 Нейросети и цены', 'menu:back')]);
@@ -379,13 +383,13 @@ export class TelegramBotUpdate implements OnModuleInit {
     const miniAppUrl = this.getMiniAppUrl();
     if (miniAppUrl) {
       // @ts-ignore
-      rows.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
+      rows.push([Markup.button.webApp('🚀 Открыть Spichki AI', miniAppUrl)]);
     }
     rows.push([Markup.button.callback('◀️ Назад', 'menu:back')]);
 
     const body =
       `${cat.emoji} *${cat.title}* — модели и цены\n\n` +
-      'Нажми на модель для подробностей 👇';
+      'Нажмите на модель, чтобы посмотреть подробности.';
 
     try {
       await ctx.editMessageText(body, {
@@ -440,7 +444,7 @@ export class TelegramBotUpdate implements OnModuleInit {
       `${cat?.emoji || '🤖'} *${model.displayName || model.name}*` +
       `${premium}${desc}\n\n` +
       `💰 Цена: *от ${price}🔥* за генерацию\n\n` +
-      `Открой приложение, чтобы использовать модель 👇`;
+      `Откройте приложение, чтобы использовать модель.`;
 
     const rows: any[] = [];
     const miniAppUrl = this.getMiniAppUrl();
@@ -475,7 +479,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     const support = this.getSupportHandle();
 
     await ctx.reply(
-      '*SPICHKI AI* — все нейросети в Telegram\n\n' +
+      '*Spichki AI* — все нейросети в Telegram\n\n' +
         '/start — открыть приложение\n' +
         '/models — нейросети и цены\n' +
         '/balance — баланс спичек\n' +
@@ -495,14 +499,14 @@ export class TelegramBotUpdate implements OnModuleInit {
     const buttons: any[] = [];
     const miniAppUrl = this.getMiniAppUrl();
     if (miniAppUrl) {
-      buttons.push([Markup.button.webApp('🚀 Открыть SPICHKI AI', miniAppUrl)]);
+      buttons.push([Markup.button.webApp('🚀 Открыть Spichki AI', miniAppUrl)]);
     }
     // 🆕 Кнопка меню нейросетей
     buttons.push([Markup.button.callback('🤖 Нейросети и цены', 'menu:back')]);
     buttons.push([Markup.button.url('💬 Поддержка', this.getSupportUrl())]);
 
         await ctx.reply(
-      '🔥 *SPICHKI AI*\n\n' +
+      '🔥 *Spichki AI*\n\n' +
         'Агрегатор нейросетей в Telegram. Все популярные модели в одном месте:\n\n' +
         '💬 Умный чат — ChatGPT, Claude, Gemini, Grok, DeepSeek\n' +
         '🖼 Изображения — Midjourney, Flux, Imagen\n' +
@@ -519,7 +523,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     const url = this.getTermsUrl();
     await ctx.reply(
       '📄 *Пользовательское соглашение*\n\n' +
-        'Полный текст доступен по ссылке ниже. Используя SPICHKI AI, ' +
+        'Полный текст доступен по ссылке ниже. Используя Spichki AI, ' +
         'вы соглашаетесь с его условиями.',
       {
         parse_mode: 'Markdown',
@@ -559,7 +563,7 @@ export class TelegramBotUpdate implements OnModuleInit {
       const cashbackRub = Math.round(cashback * 3 * 100) / 100;
 
       await ctx.reply(
-        `💰 *Твой баланс*\n\n` +
+        `💰 *Ваш баланс*\n\n` +
           `🪙 Куплено: *${user.tokenBalance ?? 0}* 🔥\n` +
           `🎁 Бонусных: *${user.bonusTokens ?? 0}* 🔥\n` +
           `💸 Кэшбек: *${cashback}* 🔥 (≈ ${cashbackRub} ₽)`,
@@ -567,7 +571,7 @@ export class TelegramBotUpdate implements OnModuleInit {
       );
     } catch (e: any) {
       this.logger.warn(`/balance failed for tg=${from.id}: ${e?.message}`);
-      await ctx.reply('Сначала нажми /start');
+      await ctx.reply('Сначала нажмите /start');
     }
   }
 
@@ -592,19 +596,19 @@ export class TelegramBotUpdate implements OnModuleInit {
       const support = this.getSupportHandle();
 
       await ctx.reply(
-        `🤝 *Твоя реферальная программа*\n\n` +
+        `🤝 *Ваша реферальная программа*\n\n` +
           `🔗 Ссылка:\n\`${info.referralLink}\`\n\n` +
           `👥 Приглашено: *${info.referralCount}*\n` +
           `💎 С покупками: *${info.activeReferrals}*\n` +
           `💸 Заработано: *${info.totalEarned}* 🔥 (≈ ${earnedRub} ₽)\n` +
           `💰 Доступно к выводу: *${info.cashbackBalance}* 🔥 (≈ ${availableRub} ₽)\n\n` +
-          `Делись ссылкой — получай *15% кэшбека* спичками с каждой покупки друга!\n\n` +
+          `Делитесь ссылкой и получайте *15% кэшбека* спичками с каждой покупки приглашённого пользователя.\n\n` +
           `💡 Вывод средств — через нашу поддержку: ${support}`,
         { parse_mode: 'Markdown' },
       );
     } catch (e: any) {
       this.logger.warn(`/ref failed for tg=${from.id}: ${e?.message}`);
-      await ctx.reply('Сначала нажми /start');
+      await ctx.reply('Сначала нажмите /start');
     }
   }
 }
