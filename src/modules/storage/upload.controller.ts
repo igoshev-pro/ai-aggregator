@@ -33,7 +33,7 @@ import {
   
   @ApiTags('Upload')
   @Controller('upload')
-  export class UploadController {
+  export class DownloadProxyController {
     private s3: S3Client;
     private bucket: string;
     private publicUrl: string;
@@ -56,59 +56,16 @@ import {
       });
     }
   
-    @Post('image')
-    @UseGuards(JwtAuthGuard)
-    @ApiBearerAuth()
-    @ApiConsumes('multipart/form-data')
-    @ApiBody({
-      schema: {
-        type: 'object',
-        properties: {
-          file: { type: 'string', format: 'binary' },
-        },
-      },
-    })
-    @UseInterceptors(
-      FileInterceptor('file', {
-        storage: memoryStorage(),
-        limits: { fileSize: 10 * 1024 * 1024 },
-        fileFilter: (_req, file, cb) => {
-          if (!file.mimetype.match(/image\/(jpeg|png|webp)/)) {
-            cb(new BadRequestException('Only JPEG, PNG, WebP allowed'), false);
-            return;
-          }
-          cb(null, true);
-        },
-      }),
-    )
-    async uploadImage(
-      @CurrentUser('sub') userId: string,
-      @UploadedFile() file: UploadedFileType,
-    ) {
-      if (!file) {
-        throw new BadRequestException('No file provided');
-      }
-  
-      const ext = file.mimetype.split('/')[1].replace('jpeg', 'jpg');
-      const key = `uploads/${userId}/${uuidv4()}.${ext}`;
-  
-      await this.s3.send(
-        new PutObjectCommand({
-          Bucket: this.bucket,
-          Key: key,
-          Body: file.buffer,
-          ContentType: file.mimetype,
-          ACL: 'public-read',
-        }),
-      );
-  
-      const url = `${this.publicUrl}/${key}`;
-  
-      return {
-        success: true,
-        data: { url, key, size: file.size, mimetype: file.mimetype },
-      };
-    }
+    /**
+     * ⚠️ POST /upload/image жил здесь ДУБЛЁМ такого же маршрута в
+     * modules/upload/upload.controller.ts. Два контроллера объявляли один
+     * путь, и какой из них обслужит запрос, зависело от порядка разрешения
+     * модулей — то есть от случайности. Оставлен один, в UploadModule:
+     * он принимает GIF, раскладывает файлы по папкам (uploads/image/…)
+     * и пишет запись в БД для вкладки «Загруженные».
+     *
+     * Здесь остаётся только download-прокси — своего маршрута он не дублирует.
+     */
 
     @Get('download')
     async proxyDownload(

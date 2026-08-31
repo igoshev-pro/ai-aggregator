@@ -1,6 +1,10 @@
 import {
   Controller,
   Post,
+  Get,
+  Delete,
+  Param,
+  Query,
   UseInterceptors,
   UploadedFile,
   UseGuards,
@@ -12,6 +16,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { StorageService } from '../storage/storage.service';
 import { DocumentParserService } from './document-parser.service';
+import { UserUploadService } from './user-upload.service';
+import { UploadKind } from './schemas/user-upload.schema';
 import { v4 as uuidv4 } from 'uuid';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
@@ -55,6 +61,7 @@ export class UploadController {
   constructor(
     private readonly storage: StorageService,
     private readonly documentParser: DocumentParserService,
+    private readonly userUploads: UserUploadService,
   ) {}
 
   // ─────────────────────────────────────────────────────
@@ -83,7 +90,17 @@ export class UploadController {
       const ext = this.getExtension(file.mimetype, file.originalname);
       const key = `uploads/audio/${userId}/${uuidv4()}.${ext}`;
       const url = await this.storage.uploadBuffer(file.buffer, key, file.mimetype);
-      this.scheduleDelete(key, 60 * 60 * 1000);
+
+      await this.userUploads.record({
+        userId,
+        kind: UploadKind.AUDIO,
+        url,
+        key,
+        originalName: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+      });
+
       return {
         success: true,
         data: {
@@ -126,7 +143,17 @@ export class UploadController {
       const ext = this.getExtension(file.mimetype, file.originalname);
       const key = `uploads/image/${userId}/${uuidv4()}.${ext}`;
       const url = await this.storage.uploadBuffer(file.buffer, key, file.mimetype);
-      this.scheduleDelete(key, 60 * 60 * 1000);
+
+      await this.userUploads.record({
+        userId,
+        kind: UploadKind.IMAGE,
+        url,
+        key,
+        originalName: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+      });
+
       return {
         success: true,
         data: { url, key, size: file.size, mimetype: file.mimetype },
@@ -178,8 +205,15 @@ export class UploadController {
       const key = `uploads/video/${userId}/${uuidv4()}.${ext}`;
       const url = await this.storage.uploadBuffer(file.buffer, key, file.mimetype);
 
-      // видео нужно дольше для генерации → удаляем через 2 часа
-      this.scheduleDelete(key, 2 * 60 * 60 * 1000);
+      await this.userUploads.record({
+        userId,
+        kind: UploadKind.VIDEO,
+        url,
+        key,
+        originalName: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+      });
 
       this.logger.log(
         `[VIDEO] uploaded: name=${file.originalname} | size=${file.size} | by=${userId}`,
@@ -265,8 +299,15 @@ export class UploadController {
         file.mimetype,
       );
 
-      // Документ может понадобиться дольше изображений → удаляем через 2 часа
-      this.scheduleDelete(key, 2 * 60 * 60 * 1000);
+      await this.userUploads.record({
+        userId,
+        kind: UploadKind.DOCUMENT,
+        url,
+        key,
+        originalName: file.originalname,
+        size: file.size,
+        mimetype: file.mimetype,
+      });
 
       return {
         success: true,
@@ -288,6 +329,32 @@ export class UploadController {
       );
       throw new BadRequestException('Ошибка загрузки документа');
     }
+  }
+
+  // ─────────────────────────────────────────────────────
+  // 🆕 МОИ ЗАГРУЗКИ — вкладка «Загруженные»
+  // ─────────────────────────────────────────────────────
+  @Get('my')
+  async listMyUploads(
+    @Req() req: any,
+    @Query('kind') kind?: UploadKind,
+    @Query('page') page = 1,
+    @Query('limit') limit = 24,
+  ) {
+    const userId = req.user?.sub || req.user?.id || req.user?._id;
+    if (!userId) throw new BadRequestException('Не удалось определить пользователя');
+
+    const data = await this.userUploads.list(userId, kind, page, limit);
+    return { success: true, data };
+  }
+
+  @Delete('my/:id')
+  async deleteMyUpload(@Req() req: any, @Param('id') id: string) {
+    const userId = req.user?.sub || req.user?.id || req.user?._id;
+    if (!userId) throw new BadRequestException('Не удалось определить пользователя');
+
+    await this.userUploads.remove(userId, id);
+    return { success: true };
   }
 
   // ─────────────────────────────────────────────────────
@@ -320,14 +387,4 @@ export class UploadController {
     return 'bin';
   }
 
-  private scheduleDelete(key: string, delayMs: number) {
-    setTimeout(async () => {
-      try {
-        await this.storage.deleteFile(key);
-        this.logger.log(`Auto-deleted temp file: ${key}`);
-      } catch (e: any) {
-        this.logger.error(`Auto-delete failed for ${key}: ${e.message}`);
-      }
-    }, delayMs);
-  }
 }

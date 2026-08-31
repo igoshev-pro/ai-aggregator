@@ -17,11 +17,19 @@ export class AdminBootstrapService {
 
   private readonly adminTgIds: Set<number>;
   private readonly superAdminTgIds: Set<number>;
+  // 🆕 Те же списки для входа по почте/Google: у таких аккаунтов нет
+  // telegramId, и без этого назначить им админку было невозможно.
+  private readonly adminEmails: Set<string>;
+  private readonly superAdminEmails: Set<string>;
 
   constructor(private readonly config: ConfigService) {
     this.adminTgIds = this.parseTgIds(this.config.get<string>('ADMIN_TG_IDS'));
     this.superAdminTgIds = this.parseTgIds(
       this.config.get<string>('SUPER_ADMIN_TG_IDS'),
+    );
+    this.adminEmails = this.parseEmails(this.config.get<string>('ADMIN_EMAILS'));
+    this.superAdminEmails = this.parseEmails(
+      this.config.get<string>('SUPER_ADMIN_EMAILS'),
     );
 
     if (this.adminTgIds.size > 0) {
@@ -52,6 +60,17 @@ export class AdminBootstrapService {
     );
   }
 
+  /** Парсит "a@mail.ru, B@Mail.ru" в Set нормализованных адресов. */
+  private parseEmails(raw?: string): Set<string> {
+    if (!raw) return new Set();
+    return new Set(
+      raw
+        .split(',')
+        .map((s) => s.trim().toLowerCase())
+        .filter((s) => s.includes('@')),
+    );
+  }
+
   /**
    * Синхронизирует роль пользователя с .env.
    * Вызывается при каждом логине.
@@ -63,12 +82,21 @@ export class AdminBootstrapService {
    *  - Premium роль не трогаем
    */
   async syncRoleFromEnv(user: UserDocument): Promise<UserDocument> {
-    if (!user.telegramId) return user;
+    const tgId = user.telegramId ? Number(user.telegramId) : null;
+    const email = (user.email || '').trim().toLowerCase();
 
-    const tgId = Number(user.telegramId);
-    const isSuperAdmin = this.superAdminTgIds.has(tgId);
-    const isAdmin = this.adminTgIds.has(tgId);
+    // Идентификаторов нет вообще — синхронизировать не по чему.
+    if (!tgId && !email) return user;
+
+    const isSuperAdmin =
+      (tgId !== null && this.superAdminTgIds.has(tgId)) ||
+      (!!email && this.superAdminEmails.has(email));
+    const isAdmin =
+      (tgId !== null && this.adminTgIds.has(tgId)) ||
+      (!!email && this.adminEmails.has(email));
+
     const currentRole = user.role;
+    const label = tgId ?? email;
 
     let targetRole: UserRole | null = null;
 
@@ -80,14 +108,23 @@ export class AdminBootstrapService {
         targetRole = UserRole.ADMIN;
       }
     } else {
-      // Не в списках — если был ADMIN/SUPER_ADMIN, понижаем до USER
-      if (
-        currentRole === UserRole.ADMIN ||
-        currentRole === UserRole.SUPER_ADMIN
-      ) {
+      // Понижаем, только если списки для ЭТОГО способа входа заданы.
+      //
+      // Иначе почтовый админ терял бы роль при каждом входе просто потому,
+      // что ADMIN_EMAILS не заполнен: пустой список означает «управление
+      // ролями по почте не настроено», а не «здесь никого нет».
+      const managedByTg = tgId !== null &&
+        (this.adminTgIds.size > 0 || this.superAdminTgIds.size > 0);
+      const managedByEmail = !!email &&
+        (this.adminEmails.size > 0 || this.superAdminEmails.size > 0);
+
+      const elevated =
+        currentRole === UserRole.ADMIN || currentRole === UserRole.SUPER_ADMIN;
+
+      if (elevated && (managedByTg || managedByEmail)) {
         targetRole = UserRole.USER;
         this.logger.warn(
-          `⬇️  Demoting user ${tgId} (${user.username}) from ${currentRole} to USER (not in env lists)`,
+          `⬇️  Demoting user ${label} (${user.username}) from ${currentRole} to USER (not in env lists)`,
         );
       }
     }
@@ -96,7 +133,7 @@ export class AdminBootstrapService {
       user.role = targetRole;
       await user.save();
       this.logger.log(
-        `✅ Role synced: user ${tgId} (${user.username}) → ${targetRole}`,
+        `✅ Role synced: user ${label} (${user.username}) → ${targetRole}`,
       );
     }
 

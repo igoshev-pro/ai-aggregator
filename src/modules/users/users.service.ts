@@ -23,6 +23,15 @@ function roundTokens(value: number): number {
   return Math.round(value * factor) / factor;
 }
 
+/**
+ * Приводит почту к единому виду: Ivan@Mail.RU и ivan@mail.ru — один и тот
+ * же ящик, и без нормализации на них завелись бы два аккаунта с разными
+ * балансами. Сравнение и запись всегда идут через эту функцию.
+ */
+export function normalizeEmail(email: string): string {
+  return (email || '').trim().toLowerCase();
+}
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
@@ -126,7 +135,183 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<UserDocument | null> {
-    return this.userModel.findOne({ email }).select('+passwordHash');
+    return this.userModel.findOne({ email: normalizeEmail(email) }).select('+passwordHash');
+  }
+
+  async findByGoogleId(googleId: string): Promise<UserDocument | null> {
+    return this.userModel.findOne({ googleId });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // 🆕 РЕГИСТРАЦИЯ НЕ ЧЕРЕЗ TELEGRAM (почта, Google)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Привязывает реферала к новому пользователю и начисляет бонус
+   * пригласившему. Вынесено из findOrCreateByTelegram, чтобы почта и
+   * Google давали ровно те же 9/10 🔥 — иначе способ входа незаметно
+   * менял бы условия реферальной программы.
+   *
+   * Возвращает документ уже сохранённым.
+   */
+  private async applyReferral(
+    user: UserDocument,
+    referralCode?: string,
+  ): Promise<UserDocument> {
+    if (referralCode) {
+      const referrer = await this.userModel.findOne({
+        referralCode: referralCode.toUpperCase(),
+      });
+
+      // Защита от self-referral: у нового юзера ещё нет _id до save(),
+      // поэтому сравниваем по already-known полям.
+      if (referrer && referrer._id.toString() !== user._id?.toString()) {
+        user.referredBy = referrer._id;
+      }
+    }
+
+    await user.save();
+
+    if (user.referredBy) {
+      await this.userModel.findByIdAndUpdate(user.referredBy, {
+        $inc: {
+          referralCount: 1,
+          bonusTokens: 10,
+          referralEarnings: 10,
+        },
+      });
+    }
+
+    return user;
+  }
+
+  /**
+   * Создаёт пользователя с почтой и паролем.
+   *
+   * Уникальность email обеспечена partial-unique индексом в схеме; при
+   * гонке двух одновременных регистраций Mongo вернёт E11000, и мы
+   * превращаем его в понятную ошибку вместо 500.
+   */
+  async createWithEmail(params: {
+    email: string;
+    passwordHash: string;
+    firstName?: string;
+    referralCode?: string;
+  }): Promise<UserDocument> {
+    const email = normalizeEmail(params.email);
+
+    const user = new this.userModel({
+      authProvider: AuthProvider.EMAIL,
+      email,
+      passwordHash: params.passwordHash,
+      isEmailVerified: false,
+      firstName: params.firstName || '',
+      username: email.split('@')[0],
+      referralCode: this.generateReferralCode(),
+      tokenBalance: 0,
+      bonusTokens: 9,
+      lastActiveAt: new Date(),
+    });
+
+    try {
+      return await this.applyReferral(user, params.referralCode);
+    } catch (e: any) {
+      if (e?.code === 11000) {
+        throw new BadRequestException('Аккаунт с такой почтой уже существует');
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Вход/регистрация через Google.
+   *
+   * Порядок поиска важен:
+   *  1. по googleId — этот аккаунт уже связывали;
+   *  2. по подтверждённой почте — тот же человек заходил другим способом
+   *     (в том числе через Telegram), привязываем googleId к нему, чтобы
+   *     не разводить два баланса;
+   *  3. иначе — новый пользователь.
+   *
+   * Шаг 2 выполняем ТОЛЬКО для verified-адреса от Google: непроверенную
+   * почту можно вписать в чужой профиль и увести аккаунт.
+   */
+  async findOrCreateByGoogle(profile: {
+    googleId: string;
+    email: string;
+    emailVerified: boolean;
+    firstName?: string;
+    lastName?: string;
+    photoUrl?: string;
+  }, referralCode?: string): Promise<{ user: UserDocument; isNew: boolean }> {
+    const email = normalizeEmail(profile.email);
+
+    const byGoogle = await this.userModel.findOne({ googleId: profile.googleId });
+    if (byGoogle) {
+      await this.userModel.updateOne(
+        { _id: byGoogle._id },
+        { $set: { lastActiveAt: new Date() } },
+      );
+      return { user: byGoogle, isNew: false };
+    }
+
+    if (profile.emailVerified && email) {
+      const byEmail = await this.userModel.findOne({ email });
+      if (byEmail) {
+        // Связываем аккаунты: один человек — один баланс.
+        byEmail.googleId = profile.googleId;
+        byEmail.isEmailVerified = true;
+        if (!byEmail.photoUrl && profile.photoUrl) byEmail.photoUrl = profile.photoUrl;
+        if (!byEmail.firstName && profile.firstName) byEmail.firstName = profile.firstName;
+        byEmail.lastActiveAt = new Date();
+        await byEmail.save();
+        return { user: byEmail, isNew: false };
+      }
+    }
+
+    const user = new this.userModel({
+      authProvider: AuthProvider.GOOGLE,
+      googleId: profile.googleId,
+      email: email || null,
+      isEmailVerified: !!profile.emailVerified,
+      firstName: profile.firstName || '',
+      lastName: profile.lastName || '',
+      username: email ? email.split('@')[0] : '',
+      photoUrl: profile.photoUrl || '',
+      referralCode: this.generateReferralCode(),
+      tokenBalance: 0,
+      bonusTokens: 9,
+      lastActiveAt: new Date(),
+    });
+
+    try {
+      const saved = await this.applyReferral(user, referralCode);
+      return { user: saved, isNew: true };
+    } catch (e: any) {
+      if (e?.code === 11000) {
+        // Гонка: пока мы создавали, аккаунт уже завели. Берём существующий.
+        const existing = await this.userModel.findOne({
+          $or: [{ googleId: profile.googleId }, ...(email ? [{ email }] : [])],
+        });
+        if (existing) return { user: existing, isNew: false };
+      }
+      throw e;
+    }
+  }
+
+  /** Установка/смена пароля. Хеш готовит AuthService. */
+  async setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { passwordHash } },
+    );
+  }
+
+  async setLastActive(userId: string): Promise<void> {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { lastActiveAt: new Date() } },
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════

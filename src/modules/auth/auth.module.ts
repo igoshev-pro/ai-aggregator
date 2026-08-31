@@ -10,6 +10,8 @@ import { UsersModule } from '../users/users.module';
 import { ReferralModule } from '../referral/referral.module';
 import { AdminBootstrapService } from './admin-bootstrap.service';
 import { BotAuthService } from './bot-auth.service';
+import { MailService } from './mail.service';
+import { PasswordResetService } from './password-reset.service';
 
 @Module({
   imports: [
@@ -26,7 +28,14 @@ import { BotAuthService } from './bot-auth.service';
      forwardRef(() => ReferralModule),
   ],
   controllers: [AuthController],
-  providers: [AuthService, BotAuthService, AdminBootstrapService, JwtStrategy],
+  providers: [
+    AuthService,
+    BotAuthService,
+    AdminBootstrapService,
+    JwtStrategy,
+    MailService,
+    PasswordResetService,
+  ],
   exports: [AuthService, AdminBootstrapService, BotAuthService],
 })
 export class AuthModule {}

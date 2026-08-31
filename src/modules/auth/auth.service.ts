@@ -1,14 +1,26 @@
 // src/modules/auth/auth.service.ts
-import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/modules/users/users.service';
 import { TelegramUser, JwtPayload, AuthProvider } from '@/common/interfaces';
 import { TelegramAuthDto, TelegramWidgetAuthDto, AuthResponseDto } from './dto/telegram-auth.dto';
+import { RegisterEmailDto, LoginEmailDto } from './dto/email-auth.dto';
 import { UserDocument } from '@/modules/users/schemas/user.schema';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { ReferralService } from '@/modules/referral/referral.service';
 import { AdminBootstrapService } from './admin-bootstrap.service';
+import { MailService } from './mail.service';
+import { PasswordResetService } from './password-reset.service';
+
+/** Стоимость bcrypt. 12 — разумный баланс: ~250мс на вход. */
+const BCRYPT_ROUNDS = 12;
 
 @Injectable()
 export class AuthService {
@@ -21,6 +33,8 @@ export class AuthService {
     private configService: ConfigService,
     private referralService: ReferralService,
     private adminBootstrap: AdminBootstrapService,
+    private mailService: MailService,
+    private passwordReset: PasswordResetService,
   ) {
     this.isDev = this.configService.get('NODE_ENV') !== 'production';
   }
@@ -176,6 +190,135 @@ export class AuthService {
     this.logger.log(
       `✅ Telegram Widget auth successful for user ${dto.id} (@${dto.username || 'no-username'})`,
     );
+
+    return this.buildAuthResponse(user);
+  }
+
+  // ─── Email Auth ───────────────────────────────────────────────
+
+  /**
+   * Регистрация по почте.
+   *
+   * Если аккаунт с такой почтой уже есть — не создаём второй. Возможны два
+   * случая: у человека уже был пароль (пусть входит) либо аккаунт заводился
+   * через Telegram/Google и пароля не имеет. Во втором случае предлагаем
+   * восстановление: так пароль привяжется к существующему балансу, а не
+   * появится дубль с нулевым.
+   */
+  async registerWithEmail(dto: RegisterEmailDto): Promise<AuthResponseDto> {
+    const existing = await this.usersService.findByEmail(dto.email);
+
+    if (existing) {
+      if (existing.passwordHash) {
+        throw new BadRequestException(
+          'Аккаунт с такой почтой уже существует — войдите или восстановите пароль',
+        );
+      }
+      throw new BadRequestException(
+        'Эта почта уже привязана к аккаунту. Задайте пароль через «Забыли пароль?» — ' +
+          'баланс и история сохранятся',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
+
+    const user = await this.usersService.createWithEmail({
+      email: dto.email,
+      passwordHash,
+      firstName: dto.firstName,
+      referralCode: dto.referralCode,
+    });
+
+    if (user.referredBy) {
+      try {
+        await this.referralService.recordReferral(
+          user.referredBy.toString(),
+          user._id.toString(),
+        );
+      } catch (e: any) {
+        this.logger.warn(`Не записал реферала: ${e.message}`);
+      }
+    }
+
+    await this.adminBootstrap.syncRoleFromEnv(user);
+
+    this.logger.log(`Регистрация по почте: ${dto.email}`);
+    return this.buildAuthResponse(user);
+  }
+
+  /**
+   * Вход по почте и паролю.
+   *
+   * Сообщение об ошибке одинаковое и для неизвестной почты, и для неверного
+   * пароля — иначе форма превращается в инструмент проверки, кто
+   * зарегистрирован в сервисе.
+   */
+  async loginWithEmail(dto: LoginEmailDto): Promise<AuthResponseDto> {
+    const invalid = () =>
+      new UnauthorizedException('Неверная почта или пароль');
+
+    const user = await this.usersService.findByEmail(dto.email);
+
+    // Сравниваем даже без пользователя: без этого по времени ответа
+    // видно, существует ли аккаунт.
+    const hash =
+      user?.passwordHash ||
+      '$2a$12$0000000000000000000000000000000000000000000000000000u';
+
+    const ok = await bcrypt.compare(dto.password, hash);
+
+    if (!user || !user.passwordHash || !ok) throw invalid();
+
+    if (!user.isActive || user.isBanned) {
+      throw new UnauthorizedException(
+        'Аккаунт недоступен: ' + (user.banReason || 'заблокирован'),
+      );
+    }
+
+    // Роль из ADMIN_EMAILS / SUPER_ADMIN_EMAILS — как и для Telegram-входа.
+    await this.adminBootstrap.syncRoleFromEnv(user);
+
+    await this.usersService.setLastActive(user._id.toString());
+    return this.buildAuthResponse(user);
+  }
+
+  /**
+   * Запрос восстановления пароля.
+   *
+   * Всегда отвечает одинаково, даже если почты нет в базе — ответ не должен
+   * подсказывать, кто у нас зарегистрирован. Письмо уходит только реальному
+   * пользователю.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      this.logger.log(`Сброс пароля запрошен для неизвестной почты: ${email}`);
+      return;
+    }
+    if (!user.isActive || user.isBanned) return;
+
+    const token = await this.passwordReset.issue(user._id.toString());
+    await this.mailService.sendPasswordReset(email, token);
+  }
+
+  /** Смена пароля по токену из письма. Токен одноразовый. */
+  async resetPassword(token: string, password: string): Promise<AuthResponseDto> {
+    const userId = await this.passwordReset.consume(token);
+    if (!userId) {
+      throw new BadRequestException(
+        'Ссылка недействительна или устарела — запросите восстановление заново',
+      );
+    }
+
+    const user = await this.usersService.findById(userId);
+    if (!user) throw new BadRequestException('Пользователь не найден');
+
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    await this.usersService.setPasswordHash(userId, passwordHash);
+
+    // Сразу пускаем внутрь: человек только что подтвердил владение почтой.
+    user.passwordHash = passwordHash;
+    this.logger.log(`Пароль изменён: ${user.email}`);
 
     return this.buildAuthResponse(user);
   }
