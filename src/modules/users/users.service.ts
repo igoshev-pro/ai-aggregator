@@ -47,8 +47,9 @@ export class UsersService {
   /**
    * Найти или создать пользователя по Telegram ID.
    * При создании с реферальным кодом:
-   *  - приглашённый получает 9 🔥 в bonusTokens
-   *  - пригласивший получает 10 🔥 в bonusTokens (атомарно)
+   *  - приглашённый получает 9 🔥 в bonusTokens (стартовый бонус всем новым)
+   *  - пригласивший НЕ получает спичек за регистрацию — только кэшбек
+   *    с последующих покупок приглашённого (markReferralPurchase)
    *  - запись в Referral создаёт ReferralService (вызывается из AuthService).
    */
   async findOrCreateByTelegram(
@@ -108,14 +109,11 @@ export class UsersService {
 
     await user.save();
 
-    // 🆕 Атомарное начисление бонуса пригласившему через $inc
+    // Считаем приглашённого, но спички за регистрацию НЕ начисляем:
+    // реферер зарабатывает только кэшбеком с покупок (см. referral.service).
     if (user.referredBy) {
       await this.userModel.findByIdAndUpdate(user.referredBy, {
-        $inc: {
-          referralCount: 1,
-          bonusTokens: 10,
-          referralEarnings: 10,
-        },
+        $inc: { referralCount: 1 },
       });
     }
 
@@ -147,10 +145,11 @@ export class UsersService {
   // ═══════════════════════════════════════════════════════════════
 
   /**
-   * Привязывает реферала к новому пользователю и начисляет бонус
-   * пригласившему. Вынесено из findOrCreateByTelegram, чтобы почта и
-   * Google давали ровно те же 9/10 🔥 — иначе способ входа незаметно
-   * менял бы условия реферальной программы.
+   * Привязывает реферала к новому пользователю. Вынесено из
+   * findOrCreateByTelegram, чтобы почта и Google вели себя ровно так же —
+   * иначе способ входа незаметно менял бы условия реферальной программы.
+   * Спички за саму регистрацию не начисляются: реферер получает только
+   * кэшбек с покупок приглашённого.
    *
    * Возвращает документ уже сохранённым.
    */
@@ -172,13 +171,10 @@ export class UsersService {
 
     await user.save();
 
+    // Спички за регистрацию не начисляем — только счётчик приглашённых.
     if (user.referredBy) {
       await this.userModel.findByIdAndUpdate(user.referredBy, {
-        $inc: {
-          referralCount: 1,
-          bonusTokens: 10,
-          referralEarnings: 10,
-        },
+        $inc: { referralCount: 1 },
       });
     }
 
