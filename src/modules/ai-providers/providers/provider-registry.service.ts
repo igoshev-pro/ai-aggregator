@@ -827,6 +827,32 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
       },
+      // ─── GPT 6 Astra (KIE /codex/v1/responses) ──────────────
+      // providerCost — прайс OpenAI ($10 / $50 за 1M); KIE свой тариф в доке не публикует,
+      // при необходимости поправить в админке.
+      {
+        slug: 'gpt-6-astra',
+        name: 'GPT-6 Astra',
+        displayName: 'GPT-6 Astra',
+        description: 'Флагманская модель OpenAI нового поколения (Astra) — управляемое мышление, vision, web search',
+        type: 'text',
+        pricePerMillionInputTokens: 900,
+        pricePerMillionOutputTokens: 4500,
+        providerCostPerMillionInput: 10,
+        providerCostPerMillionOutput: 50,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 5,
+        sortOrder: 15.5,
+        isPremium: true,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gpt-6-astra', priority: 1, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
+      },
       {
         slug: 'gpt-oss-120b',
         name: 'GPT-OSS 120B',
@@ -942,6 +968,115 @@ export class ProviderRegistryService implements OnModuleInit {
       // ════════════════════════════════════════════════════
       // IMAGE МОДЕЛИ (без изменений)
       // ════════════════════════════════════════════════════
+      // ─── GPT Image 2.5 (KIE jobs, Flare/Sunburst) ───────────
+      {
+        slug: 'gpt-image-2.5-flare',
+        name: 'GPT Image 2.5 Flare',
+        displayName: 'GPT Image 2.5 Flare',
+        description: 'GPT Image 2.5 Flare — быстрый генератор OpenAI нового поколения, до 16 референсов',
+        type: 'image',
+        fixedCostPerGeneration: 0.03,
+        tokensPerDollar: 90,
+        minTokenCost: 2.7,
+        sortOrder: 0.5,
+        capabilities: ['text_rendering', 'image_editing'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gpt-image-2-5-flare-text-to-image', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
+        limits: { maxResolution: '4096x4096' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 16 },
+        pricingMatrix: [
+          { conditions: { resolution: '4K' }, costInTokens: 7.2, costInDollars: 0.08, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 4.5, costInDollars: 0.05, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 2.7, costInDollars: 0.03, label: '1K разрешение' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K (2.7🔥)' },
+              { value: '2K', label: '2K (4.5🔥)' },
+              { value: '4K', label: '4K (7.2🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Портрет (2:3)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '21:9', label: 'Кино (21:9)' },
+            ],
+          },
+          {
+            key: 'background', label: 'Фон', type: 'select', affectsPrice: false, defaultValue: 'auto',
+            options: [
+              { value: 'auto', label: 'Авто' },
+              { value: 'opaque', label: 'Непрозрачный' },
+              { value: 'transparent', label: 'Прозрачный' },
+            ],
+          },
+        ],
+      },
+      {
+        slug: 'gpt-image-2.5-sunburst',
+        name: 'GPT Image 2.5 Sunburst',
+        displayName: 'GPT Image 2.5 Sunburst',
+        description: 'GPT Image 2.5 Sunburst — премиум-версия с более точным редактированием и деталями',
+        type: 'image',
+        fixedCostPerGeneration: 0.03,
+        tokensPerDollar: 90,
+        minTokenCost: 2.7,
+        sortOrder: 0.6,
+        capabilities: ['text_rendering', 'image_editing'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gpt-image-2-5-sunburst-text-to-image', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
+        limits: { maxResolution: '4096x4096' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 16 },
+        pricingMatrix: [
+          { conditions: { resolution: '4K' }, costInTokens: 7.2, costInDollars: 0.08, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 4.5, costInDollars: 0.05, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 2.7, costInDollars: 0.03, label: '1K разрешение' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K (2.7🔥)' },
+              { value: '2K', label: '2K (4.5🔥)' },
+              { value: '4K', label: '4K (7.2🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Портрет (2:3)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '21:9', label: 'Кино (21:9)' },
+            ],
+          },
+          {
+            key: 'background', label: 'Фон', type: 'select', affectsPrice: false, defaultValue: 'auto',
+            options: [
+              { value: 'auto', label: 'Авто' },
+              { value: 'opaque', label: 'Непрозрачный' },
+              { value: 'transparent', label: 'Прозрачный' },
+            ],
+          },
+        ],
+      },
       {
         slug: 'gpt-5-image',
         name: 'GPT Image 2',

@@ -44,6 +44,7 @@ export interface ImageGenerationRequest {
   resolution?: string;       // '1K', '2K', '4K'
   quality?: string;          // 'basic', 'high' (seedream)
   outputFormat?: string;     // 'png', 'jpg' (nano-banana)
+  background?: string;       // 🆕 GPT Image 2.5: 'auto' | 'opaque' | 'transparent'
   steps?: number;
   seed?: number;
   numImages?: number;

@@ -23,6 +23,7 @@ const KIE_MODEL_PARAMS: Record<string, {
   inputImagesField?: string;
   maxInputImages?: number;
   hasOutputFormat?: boolean;
+  hasBackground?: boolean;   // 🆕 GPT Image 2.5: background auto|opaque|transparent
 }> = {
   'flux-2/flex-text-to-image': {
     aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3'],
@@ -131,6 +132,34 @@ const KIE_MODEL_PARAMS: Record<string, {
     inputImagesField: 'input_urls',
     maxInputImages: 4,
   },
+  // 🆕 GPT Image 2.5 (Flare — быстрый, Sunburst — премиум). KIE jobs API.
+  // 27:16, 16:27, 9:8, 8:9 поддерживаются только в 1K — в UI не выдаём.
+  'gpt-image-2-5-flare-text-to-image': {
+    aspectRatios: ['auto', '1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9', '27:16', '16:27', '9:8', '8:9'],
+    resolutions: ['1K', '2K', '4K'],
+    hasBackground: true,
+  },
+  'gpt-image-2-5-flare-image-to-image': {
+    aspectRatios: ['auto', '1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9', '27:16', '16:27', '9:8', '8:9'],
+    resolutions: ['1K', '2K', '4K'],
+    hasInputImages: true,
+    inputImagesField: 'input_urls',
+    maxInputImages: 16,
+    hasBackground: true,
+  },
+  'gpt-image-2-5-sunburst-text-to-image': {
+    aspectRatios: ['auto', '1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9', '27:16', '16:27', '9:8', '8:9'],
+    resolutions: ['1K', '2K', '4K'],
+    hasBackground: true,
+  },
+  'gpt-image-2-5-sunburst-image-to-image': {
+    aspectRatios: ['auto', '1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9', '27:16', '16:27', '9:8', '8:9'],
+    resolutions: ['1K', '2K', '4K'],
+    hasInputImages: true,
+    inputImagesField: 'input_urls',
+    maxInputImages: 16,
+    hasBackground: true,
+  },
 };
 
 // 🆕 GPT 5.6 модели — новый endpoint /codex/v1/responses (формат responses API)
@@ -138,6 +167,8 @@ const KIE_CODEX_MODELS: Record<string, string> = {
   'gpt-5.6-luna': 'gpt-5-6-luna',
   'gpt-5.6-terra': 'gpt-5-6-terra',
   'gpt-5.6-sol': 'gpt-5-6-sol',
+  // 🆕 GPT 6 Astra — тот же /codex/v1/responses
+  'gpt-6-astra': 'gpt-6-astra',
 };
 
 // 🆕 Grok 4.5 — endpoint /grok/v1/responses (тот же responses-формат, что и codex)
@@ -414,6 +445,14 @@ export class KieProvider extends BaseProvider {
         modelId = 'gpt-image-2-text-to-image';
       }
 
+      // 🆕 GPT Image 2.5 (Flare / Sunburst): авто-переключение TTI ↔ ITI
+      for (const tier of ['flare', 'sunburst']) {
+        const tti = `gpt-image-2-5-${tier}-text-to-image`;
+        const iti = `gpt-image-2-5-${tier}-image-to-image`;
+        if (modelId === tti && incomingUrls.length > 0) modelId = iti;
+        else if (modelId === iti && incomingUrls.length === 0) modelId = tti;
+      }
+
       // 🆕 Flux 2: авто-переключение TTI ↔ ITI по наличию фото-референса
       if (modelId === 'flux-2/flex-text-to-image' && incomingUrls.length > 0) {
         modelId = 'flux-2/flex-image-to-image';
@@ -497,6 +536,14 @@ export class KieProvider extends BaseProvider {
 
       if (modelParams?.hasOutputFormat) {
         input.output_format = (request as any).outputFormat || 'png';
+      }
+
+      // 🆕 GPT Image 2.5: фон (transparent требует png-совместимого вывода на стороне KIE)
+      if (modelParams?.hasBackground) {
+        const bg = (request as any).background;
+        if (bg && ['auto', 'opaque', 'transparent'].includes(bg)) {
+          input.background = bg;
+        }
       }
 
       const response = await this.client.post('/api/v1/jobs/createTask', {

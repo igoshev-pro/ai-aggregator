@@ -59,6 +59,11 @@ export class ImageGenerationDto {
   @IsString()
   outputFormat?: string;
 
+  @ApiPropertyOptional({ description: 'Background (GPT Image 2.5): auto, opaque, transparent' })
+  @IsOptional()
+  @IsString()
+  background?: string;
+
   @ApiPropertyOptional({ description: 'Input images for img2img (URLs)' })
   @IsOptional()
   @IsArray()
