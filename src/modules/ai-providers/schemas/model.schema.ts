@@ -210,7 +210,7 @@ export class AIModel {
   // 🆕 ПОСЕКУНДНАЯ ТАРИФИКАЦИЯ С ВИДЕО-РЕФЕРЕНСОМ (Seedance 2 / 2-fast)
   // Когда params.videoRef === true, цена считается по формуле:
   //   cost = videoRefRatePerSecond[resolution] × (outDuration + refVideoSeconds)
-  // где refVideoSeconds = min(15, сумма ceil() длительностей входных видео).
+  // где refVideoSeconds = min(videoRefMaxSeconds, сумма ceil() длительностей входных видео).
   // Если videoRefPricing=false (или videoRef!==true) → работает обычная
   // pricingMatrix (строки videoRef:false с noVideo-ставками).
   // ═══════════════════════════════════════════════════════════════
@@ -224,6 +224,11 @@ export class AIModel {
   //   { '480p': 5.175, '720p': 11.25, '1080p': 27.9, '4k': 57.6 }
   @Prop({ type: SchemaTypes.Mixed, default: {} })
   videoRefRatePerSecond!: Record<string, number>;
+
+  // Потолок тарифицируемых секунд входного видео. У Seedance 2/2-fast — 15,
+  // у Seedance 2.5 — 30 (модель принимает видео-референсы до 30с).
+  @Prop({ default: 15 })
+  videoRefMaxSeconds!: number;
 
   // ═══════════════════════════════════════════════════════════════
   // ⚠️ DEPRECATED — оставлены для обратной совместимости и миграции.

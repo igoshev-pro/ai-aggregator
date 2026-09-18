@@ -361,7 +361,7 @@ export class VideoGenerationDto {
   // 🆕 Seedance 2/2-fast: суммарная длительность видео-референсов (сек).
   // Используется для посекундной тарификации при videoRef=true:
   //   cost = rate[resolution] × (duration + refVideoSeconds).
-  // Фронт передаёт сумму ceil() длительностей загруженных видео (макс 15).
+  // Фронт передаёт сумму ceil() длительностей загруженных видео (макс 15, у Seedance 2.5 — 30).
   @ApiPropertyOptional({
     description: 'Seedance 2: total reference video seconds (for pricing)',
   })

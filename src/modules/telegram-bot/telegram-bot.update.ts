@@ -353,6 +353,14 @@ export class TelegramBotUpdate implements OnModuleInit {
         .find({ type: cat.type, isActive: true })
         .sort({ sortOrder: 1 })
         .exec();
+      // Как в мини-аппе: список по алфавиту, «Seedance 2» перед «Seedance 2.5»
+      models.sort((a, b) =>
+        String((a as any).displayName || a.name).localeCompare(
+          String((b as any).displayName || b.name),
+          'en',
+          { numeric: true, sensitivity: 'base' },
+        ),
+      );
     } catch (e: any) {
       this.logger.warn(`load models failed (${cat.type}): ${e?.message}`);
     }

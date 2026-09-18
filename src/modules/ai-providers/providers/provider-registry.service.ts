@@ -305,6 +305,7 @@ export class ProviderRegistryService implements OnModuleInit {
         videoRefPricing: (modelData as any).videoRefPricing ?? false,
         videoRefRatePerSecond:
           (modelData as any).videoRefRatePerSecond ?? {},
+        videoRefMaxSeconds: (modelData as any).videoRefMaxSeconds ?? 15,
       };
 
       const setOnCreate: Record<string, any> = {
@@ -430,6 +431,7 @@ export class ProviderRegistryService implements OnModuleInit {
           videoRefPricing: (modelData as any).videoRefPricing ?? false,
           videoRefRatePerSecond:
             (modelData as any).videoRefRatePerSecond ?? {},
+          videoRefMaxSeconds: (modelData as any).videoRefMaxSeconds ?? 15,
         };
 
         const matrix = (modelData as any).pricingMatrix;
@@ -973,11 +975,11 @@ export class ProviderRegistryService implements OnModuleInit {
         slug: 'gpt-image-2.5-flare',
         name: 'GPT Image 2.5 Flare',
         displayName: 'GPT Image 2.5 Flare',
-        description: 'GPT Image 2.5 Flare — быстрый генератор OpenAI нового поколения, до 16 референсов',
+        description: 'GPT Image 2.5 Flare (скорость) — быстрая версия, до 16 референсов',
         type: 'image',
-        fixedCostPerGeneration: 0.03,
+        fixedCostPerGeneration: 0.02,
         tokensPerDollar: 90,
-        minTokenCost: 2.7,
+        minTokenCost: 1.8,
         sortOrder: 0.5,
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
@@ -987,17 +989,17 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxResolution: '4096x4096' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 16 },
         pricingMatrix: [
-          { conditions: { resolution: '4K' }, costInTokens: 7.2, costInDollars: 0.08, label: '4K разрешение' },
-          { conditions: { resolution: '2K' }, costInTokens: 4.5, costInDollars: 0.05, label: '2K разрешение' },
-          { conditions: { resolution: '1K' }, costInTokens: 2.7, costInDollars: 0.03, label: '1K разрешение' },
+          { conditions: { resolution: '4K' }, costInTokens: 4.8, costInDollars: 0.053, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 3, costInDollars: 0.033, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.02, label: '1K разрешение' },
         ],
         uiParameters: [
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
             options: [
-              { value: '1K', label: '1K (2.7🔥)' },
-              { value: '2K', label: '2K (4.5🔥)' },
-              { value: '4K', label: '4K (7.2🔥)' },
+              { value: '1K', label: '1K (1.8🔥)' },
+              { value: '2K', label: '2K (3🔥)' },
+              { value: '4K', label: '4K (4.8🔥)' },
             ],
           },
           {
@@ -1027,11 +1029,11 @@ export class ProviderRegistryService implements OnModuleInit {
         slug: 'gpt-image-2.5-sunburst',
         name: 'GPT Image 2.5 Sunburst',
         displayName: 'GPT Image 2.5 Sunburst',
-        description: 'GPT Image 2.5 Sunburst — премиум-версия с более точным редактированием и деталями',
+        description: 'GPT Image 2.5 Sunburst (качество) — максимум деталей и точное редактирование',
         type: 'image',
-        fixedCostPerGeneration: 0.03,
+        fixedCostPerGeneration: 0.02,
         tokensPerDollar: 90,
-        minTokenCost: 2.7,
+        minTokenCost: 1.8,
         sortOrder: 0.6,
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
@@ -1041,17 +1043,17 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxResolution: '4096x4096' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 16 },
         pricingMatrix: [
-          { conditions: { resolution: '4K' }, costInTokens: 7.2, costInDollars: 0.08, label: '4K разрешение' },
-          { conditions: { resolution: '2K' }, costInTokens: 4.5, costInDollars: 0.05, label: '2K разрешение' },
-          { conditions: { resolution: '1K' }, costInTokens: 2.7, costInDollars: 0.03, label: '1K разрешение' },
+          { conditions: { resolution: '4K' }, costInTokens: 4.8, costInDollars: 0.053, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 3, costInDollars: 0.033, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.02, label: '1K разрешение' },
         ],
         uiParameters: [
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
             options: [
-              { value: '1K', label: '1K (2.7🔥)' },
-              { value: '2K', label: '2K (4.5🔥)' },
-              { value: '4K', label: '4K (7.2🔥)' },
+              { value: '1K', label: '1K (1.8🔥)' },
+              { value: '2K', label: '2K (3🔥)' },
+              { value: '4K', label: '4K (4.8🔥)' },
             ],
           },
           {
@@ -2684,11 +2686,12 @@ export class ProviderRegistryService implements OnModuleInit {
   limits: { maxDuration: 30 },
   inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
   videoRefPricing: true,
-  videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4, '1080p': 25.7 },
+  videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4, '1080p': 20.6 },
+  videoRefMaxSeconds: 30, // видео-референсы до 30с (у Seedance 2 — 15)
   // Матрица ТОЛЬКО для no-video (videoRef=false)
   pricingMatrix: (() => {
     const rows: any[] = [];
-    const rate: Record<string, number> = { '480p': 8.4, '720p': 18.9, '1080p': 42.5 };
+    const rate: Record<string, number> = { '480p': 8.4, '720p': 18.9, '1080p': 34.2 };
     const dollarsPerToken = 1 / 90;
     for (const resolution of ['480p', '720p', '1080p']) {
       for (let d = 1; d <= 30; d++) {
@@ -2709,7 +2712,7 @@ export class ProviderRegistryService implements OnModuleInit {
       options: [
         { value: '480p', label: '480p (от 8.4🔥/сек)' },
         { value: '720p', label: '720p (от 18.9🔥/сек)' },
-        { value: '1080p', label: '1080p (от 42.5🔥/сек)' },
+        { value: '1080p', label: '1080p (от 34.2🔥/сек)' },
       ],
     },
     {
