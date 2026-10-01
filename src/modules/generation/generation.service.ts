@@ -342,6 +342,22 @@ export class GenerationService {
         Number((model.defaultParams as any)?.duration) || 5;
     }
 
+    // 🆕 Seedance 2.5 «авто»-длительность: модель делает ролик той же длины,
+    // что и видео-исходник, поэтому для цены берём длину исходника, а не то,
+    // что прислал клиент в duration. Без видео-референса режим не действует
+    // (провайдер тоже его игнорирует) — остаётся обычная длительность.
+    if (
+      dto.autoDuration &&
+      Array.isArray(dto.videoUrls) &&
+      dto.videoUrls.length > 0 &&
+      Number(dto.refVideoSeconds) > 0
+    ) {
+      effectiveDuration = Math.min(
+        30,
+        Math.max(4, Math.ceil(Number(dto.refVideoSeconds))),
+      );
+    }
+
     // 🔧 Дефолты из модели — чтобы pricingMatrix точно сматчилась.
     // resolution: Seedance/Wan/Runway матрицы зависят от него.
     // sound: приводим к явному boolean (undefined ломает матч по conditions.sound).
@@ -440,6 +456,7 @@ export class GenerationService {
         lastFrameUrl: dto.lastFrameUrl,
         returnLastFrame: dto.returnLastFrame,
         outputFormat: dto.outputFormat,
+        autoDuration: dto.autoDuration,
         // 🆕 для пересчёта той же цены в billing (recordMediaGeneration)
         refVideoSeconds: Number(dto.refVideoSeconds) || 0,
         videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
@@ -509,6 +526,7 @@ export class GenerationService {
           lastFrameUrl: p.lastFrameUrl,
           returnLastFrame: p.returnLastFrame,
           outputFormat: p.outputFormat,
+          autoDuration: p.autoDuration,
         },
       },
       {

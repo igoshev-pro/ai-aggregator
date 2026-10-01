@@ -391,6 +391,13 @@ export class VideoGenerationDto {
   @IsOptional()
   @IsString()
   outputFormat?: string;
+  // 🆕 Seedance 2.5: «авто»-длительность (KIE duration = -1) — модель сама
+  // подбирает длину под видео-исходник. Работает только с видео-референсом;
+  // цена считается по duration, куда фронт кладёт длину исходника.
+  @ApiPropertyOptional({ description: 'Seedance 2.5: auto duration (matches reference video length)' })
+  @IsOptional()
+  @IsBoolean()
+  autoDuration?: boolean;
 }
 
 export class DialogueLineDto {

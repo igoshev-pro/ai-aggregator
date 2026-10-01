@@ -169,6 +169,12 @@ const KIE_CODEX_MODELS: Record<string, string> = {
   'gpt-5.6-sol': 'gpt-5-6-sol',
   // 🆕 GPT 6 Astra — тот же /codex/v1/responses
   'gpt-6-astra': 'gpt-6-astra',
+  // 🆕 GPT 6 Luna / Sol, GPT 6.1 Sol, GPT 5.5 и GPT 5.4 — тот же /codex/v1/responses
+  'gpt-6-luna': 'gpt-6-luna',
+  'gpt-6-sol': 'gpt-6-sol',
+  'gpt-6.1-sol': 'gpt-6-1-sol',
+  'gpt-5.5': 'gpt-5-5',
+  'gpt-5.4': 'gpt-5-4',
 };
 
 // 🆕 Grok 4.5 — endpoint /grok/v1/responses (тот же responses-формат, что и codex)
@@ -348,12 +354,20 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
     aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'],
   },
+  // 🆕 Topaz Video Upscale (KIE jobs) — апскейл готового видео, без промпта
+  'topaz/video-upscale': {
+    kieModel: 'topaz/video-upscale',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: false,
+    aspectRatios: [],
+  },
   'bytedance/seedance-2-5': {
   kieModel: 'bytedance/seedance-2-5',
   apiType: 'jobs',
   statusApiType: 'jobs',
   hasImageInput: true,
-  durations: ['4', '5', '6', '7', '8', '9', '10', '15', '20', '25', '30'],
+  durations: Array.from({ length: 27 }, (_, i) => String(i + 4)), // 4–30 сек
   aspectRatios: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
 },
   'hailuo/02-text-to-video-standard': {
@@ -680,6 +694,10 @@ export class KieProvider extends BaseProvider {
       // 🆕 Seedance (1.5 Pro / 2 / 2 Fast)
       if (config.kieModel.startsWith('bytedance/seedance')) {
         return await this.generateSeedanceVideo(request, config, start);
+      }
+      // 🆕 Topaz Video Upscale
+      if (config.kieModel === 'topaz/video-upscale') {
+        return await this.generateTopazUpscale(request, config, start);
       }
       if (config.kieModel.startsWith('wan/')) {
         return await this.generateWanVideo(request, config, start, hasImage);
@@ -1275,9 +1293,18 @@ export class KieProvider extends BaseProvider {
   if (isV15) {
     if (![4, 6, 8, 10, 12].includes(duration)) duration = 8;
   } else if (isV25) {
-    // 🆕 Seedance 2.5: диапазон -1..30, дефолт 5, -1 = "авто" (не используем на фронте)
-    if (isNaN(duration) || duration < 1 || duration > 30) duration = 5;
-    duration = Math.round(duration);
+    // 🆕 Seedance 2.5: 4–30 сек, дефолт 5. Спец-значение -1 = «авто»:
+    // модель сама подбирает длину (для задач с видео-исходником — равную ему).
+    // Включаем только при наличии видео-референса: без него длина результата
+    // заранее неизвестна и цену посчитать нельзя. Цена в этом режиме считается
+    // по dto.duration, куда фронт кладёт длину исходника.
+    const hasRefVideo = Array.isArray(r.videoUrls) && r.videoUrls.filter(Boolean).length > 0;
+    if (r.autoDuration === true && hasRefVideo) {
+      duration = -1;
+    } else {
+      if (isNaN(duration) || duration > 30) duration = 5;
+      duration = Math.max(4, Math.round(duration));
+    }
   } else {
     if (isNaN(duration) || duration < 4 || duration > 15) duration = 15;
     duration = Math.round(duration);
@@ -1314,9 +1341,10 @@ export class KieProvider extends BaseProvider {
     if (r.firstFrameUrl) input.first_frame_url = r.firstFrameUrl;
     if (r.lastFrameUrl) input.last_frame_url = r.lastFrameUrl;
 
-    // reference_image_urls — до 4х картинок-референсов (персонаж/стиль),
-    // используем общий imgs (imageUrls/referenceImages), first/last сюда не попадают
-    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 4);
+    // reference_image_urls — картинки-референсы (персонаж/стиль); KIE допускает до 30,
+    // у нас лимит 10 (как у Seedance 2). Общий imgs (imageUrls/referenceImages),
+    // first/last сюда не попадают.
+    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 10);
 
     input.web_search = r.webSearch !== undefined ? !!r.webSearch : false;
 
@@ -1377,6 +1405,54 @@ export class KieProvider extends BaseProvider {
     providerSlug: this.slug,
   };
 }
+
+  /**
+   * 🆕 Topaz Video Upscale (KIE jobs) — апскейл существующего видео.
+   * Без prompt: только video_url + upscale_factor ('1' | '2' | '4').
+   * upscale_factor приходит через общее поле `resolution` (как было у Evolink),
+   * чтобы не заводить отдельное поле в DTO. Лимит KIE на входной файл — 50 МБ.
+   */
+  private async generateTopazUpscale(
+    request: VideoGenerationRequest,
+    config: VideoModelConfig,
+    start: number,
+  ): Promise<GenerationResult> {
+    const r = request as any;
+    const videoUrl = Array.isArray(r.videoUrls) ? r.videoUrls.filter(Boolean)[0] : undefined;
+    if (!videoUrl) {
+      throw new Error('Topaz Video Upscale: требуется исходное видео (videoUrls[0])');
+    }
+
+    const factorRaw = String(r.resolution || '2');
+    const factor = ['1', '2', '4'].includes(factorRaw) ? factorRaw : '2';
+    const input = { video_url: videoUrl, upscale_factor: factor };
+
+    this.logger.debug(`KIE Topaz generate: input=${JSON.stringify(input).substring(0, 300)}`);
+
+    const response = await this.client.post('/api/v1/jobs/createTask', {
+      model: config.kieModel,
+      input,
+    });
+
+    const data = response.data;
+    this.logger.debug(
+      `KIE Topaz response: code=${data.code}, msg="${data.msg}", data=${JSON.stringify(data).substring(0, 300)}`,
+    );
+
+    if (data.code !== 200) {
+      throw new Error(data.msg || `KIE Topaz task creation failed (code ${data.code})`);
+    }
+
+    const taskId = data.data?.taskId;
+    if (!taskId) throw new Error('No taskId in KIE Topaz response');
+
+    return {
+      success: true,
+      data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: 'jobs' } },
+      responseTimeMs: Date.now() - start,
+      providerSlug: this.slug,
+    };
+  }
 
   private async generateRunwayVideo(
     request: VideoGenerationRequest,
@@ -2512,6 +2588,11 @@ export class KieProvider extends BaseProvider {
 
       const data = response.data;
 
+      // KIE возвращает часть ошибок с HTTP 200 и телом {code, msg}
+      if (data?.code !== undefined && Number(data.code) !== 200) {
+        throw new Error(data.msg || `KIE Codex error (code ${data.code})`);
+      }
+
       // ─── Извлечение текста из output[].content[].text ───
       let content = '';
       const output = Array.isArray(data?.output) ? data.output : [];
@@ -2884,6 +2965,25 @@ export class KieProvider extends BaseProvider {
             yield { content: '', done: true, usage };
             return;
           }
+        }
+      }
+
+      // KIE отдаёт часть ошибок (нет доступа, перегрузка модели, лимиты) с HTTP 200
+      // и обычным JSON {code, msg} вместо SSE. Такой ответ не содержит событий,
+      // поэтому раньше поток завершался пустым ответом без объяснения причины.
+      if (!emittedContent && buffer.trim().startsWith('{')) {
+        try {
+          const plain = JSON.parse(buffer.trim());
+          if (plain?.code !== undefined && Number(plain.code) !== 200) {
+            const errMsg = plain.msg || plain.message || `KIE error code ${plain.code}`;
+            this.logger.error(
+              `KIE Codex stream: non-SSE error body (model=${codexModel}): code=${plain.code}, msg="${errMsg}"`,
+            );
+            yield { content: '', done: true, error: `KIE Codex: ${plain.code} - ${errMsg}` };
+            return;
+          }
+        } catch {
+          // не JSON — падаем в обычное завершение ниже
         }
       }
 

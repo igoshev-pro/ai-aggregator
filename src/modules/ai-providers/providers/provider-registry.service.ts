@@ -753,9 +753,10 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 11,
         isPremium: true,
         supportsVision: true,
-        capabilities: ['streaming', 'vision', 'function_calling'],
+        capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'gpt-5.4', priority: 1, isActive: true },
+          // Evolink убрал модель из каталога — берём через KIE /codex/v1/responses
+          { providerSlug: 'kie', modelId: 'gpt-5.4', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384, includedInPlans: ['unlimited'] },
@@ -830,27 +831,120 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
       },
       // ─── GPT 6 Astra (KIE /codex/v1/responses) ──────────────
-      // providerCost — прайс OpenAI ($10 / $50 за 1M); KIE свой тариф в доке не публикует,
-      // при необходимости поправить в админке.
+      // providerCost — тариф KIE со страницы kie.ai/gpt-6-astra: $2.80 / $14.00 за 1M.
+      // Цена для пользователя — та же формула, что у остальных текстовых (cost × 90).
       {
         slug: 'gpt-6-astra',
         name: 'GPT-6 Astra',
         displayName: 'GPT-6 Astra',
         description: 'Флагманская модель OpenAI нового поколения (Astra) — управляемое мышление, vision, web search',
         type: 'text',
-        pricePerMillionInputTokens: 900,
-        pricePerMillionOutputTokens: 4500,
-        providerCostPerMillionInput: 10,
-        providerCostPerMillionOutput: 50,
+        pricePerMillionInputTokens: 252,
+        pricePerMillionOutputTokens: 1260,
+        providerCostPerMillionInput: 2.8,
+        providerCostPerMillionOutput: 14,
         avgTokensPerRequest: 1500,
         tokensPerDollar: 90,
-        minTokenCost: 5,
+        minTokenCost: 1,
         sortOrder: 15.5,
         isPremium: true,
         supportsVision: true,
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-6-astra', priority: 1, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
+      },
+      // ─── GPT 6 Luna / Sol, GPT 6.1 Sol, GPT 5.5 (KIE /codex/v1/responses) ───
+      // providerCost — тарифы KIE (kie.ai/gpt-6-sol-and-luna, /gpt-6-1-sol, /gpt-5-5), цена = cost × 90.
+      {
+        slug: 'gpt-6-luna',
+        name: 'GPT-6 Luna',
+        displayName: 'GPT-6 Luna',
+        description: 'Быстрая и самая доступная модель OpenAI нового поколения (Luna)',
+        type: 'text',
+        pricePerMillionInputTokens: 2.7,
+        pricePerMillionOutputTokens: 13.5,
+        providerCostPerMillionInput: 0.03,
+        providerCostPerMillionOutput: 0.15,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.1,
+        sortOrder: 15.6,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gpt-6-luna', priority: 1, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
+      },
+      {
+        slug: 'gpt-6-sol',
+        name: 'GPT-6 Sol',
+        displayName: 'GPT-6 Sol',
+        description: 'Сбалансированная модель OpenAI нового поколения (Sol) — мышление, vision, web search',
+        type: 'text',
+        pricePerMillionInputTokens: 54,
+        pricePerMillionOutputTokens: 270,
+        providerCostPerMillionInput: 0.6,
+        providerCostPerMillionOutput: 3,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.5,
+        sortOrder: 15.7,
+        isPremium: true,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gpt-6-sol', priority: 1, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
+      },
+      {
+        slug: 'gpt-6.1-sol',
+        name: 'GPT-6.1 Sol',
+        displayName: 'GPT-6.1 Sol',
+        description: 'Обновлённая GPT-6.1 Sol — точнее в сложных многошаговых задачах',
+        type: 'text',
+        pricePerMillionInputTokens: 54,
+        pricePerMillionOutputTokens: 270,
+        providerCostPerMillionInput: 0.6,
+        providerCostPerMillionOutput: 3,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.5,
+        sortOrder: 15.8,
+        isPremium: true,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gpt-6.1-sol', priority: 1, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
+      },
+      {
+        slug: 'gpt-5.5',
+        name: 'GPT-5.5',
+        displayName: 'GPT-5.5',
+        description: 'Продвинутая reasoning-модель OpenAI для кода, аналитики и сложных задач',
+        type: 'text',
+        pricePerMillionInputTokens: 126,
+        pricePerMillionOutputTokens: 756,
+        providerCostPerMillionInput: 1.4,
+        providerCostPerMillionOutput: 8.4,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.9,
+        sortOrder: 15.9,
+        isPremium: true,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'gpt-5.5', priority: 1, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -974,8 +1068,8 @@ export class ProviderRegistryService implements OnModuleInit {
       {
         slug: 'gpt-image-2.5-flare',
         name: 'GPT Image 2.5 Flare',
-        displayName: 'GPT Image 2.5 Flare',
-        description: 'GPT Image 2.5 Flare (скорость) — быстрая версия, до 16 референсов',
+        displayName: 'GPT Image 2.5 Flare (скорость)',
+        description: 'Скорость — результат за секунды, подходит для черновиков и перебора идей',
         type: 'image',
         fixedCostPerGeneration: 0.02,
         tokensPerDollar: 90,
@@ -1028,8 +1122,8 @@ export class ProviderRegistryService implements OnModuleInit {
       {
         slug: 'gpt-image-2.5-sunburst',
         name: 'GPT Image 2.5 Sunburst',
-        displayName: 'GPT Image 2.5 Sunburst',
-        description: 'GPT Image 2.5 Sunburst (качество) — максимум деталей и точное редактирование',
+        displayName: 'GPT Image 2.5 Sunburst (качество)',
+        description: 'Качество — максимум деталей и точное редактирование, генерирует дольше',
         type: 'image',
         fixedCostPerGeneration: 0.02,
         tokensPerDollar: 90,
@@ -2684,7 +2778,8 @@ export class ProviderRegistryService implements OnModuleInit {
   ],
   defaultParams: { aspectRatio: 'adaptive', duration: 5, resolution: '720p', sound: true },
   limits: { maxDuration: 30 },
-  inputCapabilities: { acceptsImages: true, maxInputImages: 4 },
+  // KIE допускает до 30 картинок-референсов; держим 10, как у Seedance 2
+  inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
   videoRefPricing: true,
   videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4, '1080p': 20.6 },
   videoRefMaxSeconds: 30, // видео-референсы до 30с (у Seedance 2 — 15)
@@ -2719,7 +2814,8 @@ export class ProviderRegistryService implements OnModuleInit {
       key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
       options: (() => {
         const o: any[] = [];
-        for (let d = 1; d <= 30; d++) o.push({ value: d, label: `${d} сек` });
+        // KIE принимает 4–30 сек (1–3 сек провайдер отклоняет)
+        for (let d = 4; d <= 30; d++) o.push({ value: d, label: `${d} сек` });
         return o;
       })(),
     },
@@ -2766,7 +2862,7 @@ export class ProviderRegistryService implements OnModuleInit {
   ],
 },
 
-      // ─── Topaz Video Upscale (Evolink) — апскейл готового видео ─────
+      // ─── Topaz Video Upscale (KIE jobs; Evolink убрал модель) — апскейл готового видео ─────
       {
         slug: 'topaz-video-upscale',
         name: 'Topaz Video Upscale',
@@ -2779,7 +2875,7 @@ export class ProviderRegistryService implements OnModuleInit {
         sortOrder: 13,
         capabilities: ['video_to_video', 'upscale'],
         providerMappings: [
-          { providerSlug: 'evolink', modelId: 'topaz-video-upscale', priority: 1, isActive: true },
+          { providerSlug: 'kie', modelId: 'topaz/video-upscale', priority: 1, isActive: true },
         ],
         defaultParams: { resolution: '2', duration: 10 },
         limits: { maxDuration: 600 },

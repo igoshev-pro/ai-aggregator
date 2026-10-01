@@ -43,6 +43,7 @@ export class TelegramBotUpdate implements OnModuleInit {
         { command: 'models', description: 'Нейросети и цены' },
         { command: 'balance', description: 'Баланс спичек' },
         { command: 'ref', description: 'Реферальная ссылка' },
+        { command: 'site', description: 'Сайт — версия для браузера' },
         { command: 'help', description: 'Справка' },
         { command: 'about', description: 'О сервисе' },
         { command: 'terms', description: 'Пользовательское соглашение' },
@@ -291,6 +292,7 @@ export class TelegramBotUpdate implements OnModuleInit {
     // 🆕 Кнопка меню нейросетей
     buttons.push([Markup.button.callback('🤖 Нейросети и цены', 'menu:back')]);
     buttons.push([
+      Markup.button.url('🌐 Сайт', this.getSiteUrl()),
       Markup.button.url('💬 Поддержка', this.getSupportUrl()),
     ]);
     // 🆕 Юр. документы — показываем ВСЕМ (требование Telegram Ads)
@@ -492,12 +494,28 @@ export class TelegramBotUpdate implements OnModuleInit {
         '/models — нейросети и цены\n' +
         '/balance — баланс спичек\n' +
         '/ref — реферальная ссылка\n' +
+        '/site — сайт, версия для браузера\n' +
         '/about — о сервисе\n' +
         '/terms — пользовательское соглашение\n' +
         '/privacy — политика конфиденциальности\n' +
         '/help — справка\n\n' +
         `💬 Поддержка: ${support}`,
       { parse_mode: 'Markdown' },
+    );
+  }
+
+  /** Ссылка на сайт: то же приложение в обычном браузере, баланс общий */
+  @Command('site')
+  async onSite(@Ctx() ctx: Context) {
+    const url = this.getSiteUrl();
+    await ctx.reply(
+      '🌐 *Spichki AI в браузере*\n\n' +
+        'Тот же сервис на сайте — удобно с компьютера. ' +
+        'Баланс и история общие с ботом: войдите через Telegram.',
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([[Markup.button.url('Открыть сайт', url)]]),
+      },
     );
   }
 
@@ -511,7 +529,10 @@ export class TelegramBotUpdate implements OnModuleInit {
     }
     // 🆕 Кнопка меню нейросетей
     buttons.push([Markup.button.callback('🤖 Нейросети и цены', 'menu:back')]);
-    buttons.push([Markup.button.url('💬 Поддержка', this.getSupportUrl())]);
+    buttons.push([
+      Markup.button.url('🌐 Сайт', this.getSiteUrl()),
+      Markup.button.url('💬 Поддержка', this.getSupportUrl()),
+    ]);
 
         await ctx.reply(
       '🔥 *Spichki AI*\n\n' +
