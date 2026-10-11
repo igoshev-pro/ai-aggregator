@@ -1,3 +1,4 @@
+import { outboundAxiosConfig } from '../../../common/net/outbound-proxy';
 import axios, { AxiosInstance } from 'axios';
 import {
   BaseProvider,
@@ -17,6 +18,7 @@ export class ReplicateProvider extends BaseProvider {
   constructor(config: ProviderConfig) {
     super('replicate', config);
     this.client = axios.create({
+      ...outboundAxiosConfig(),
       baseURL: 'https://api.replicate.com/v1',
       timeout: config.timeout || 120000,
       headers: {

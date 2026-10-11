@@ -1,4 +1,5 @@
 // src/modules/ai-providers/providers/openrouter-image.provider.ts
+import { outboundAxiosConfig } from '../../../common/net/outbound-proxy';
 import { Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import {
@@ -20,6 +21,7 @@ export class OpenRouterImageProvider extends BaseProvider {
   constructor(config: ProviderConfig) {
     super('openrouter', config); // тот же slug что у текстового
     this.client = axios.create({
+      ...outboundAxiosConfig(),
       baseURL: config.baseUrl || 'https://openrouter.ai/api/v1',
       timeout: config.timeout || 120000,
       headers: {

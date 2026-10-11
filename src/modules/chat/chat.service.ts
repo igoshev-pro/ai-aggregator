@@ -18,6 +18,7 @@ import { AiProvidersService } from '../ai-providers/ai-providers.service';
 import { UsersService } from '../users/users.service';
 import { BillingService } from '../billing/billing.service';
 import { ProviderRegistryService } from '../ai-providers/providers/provider-registry.service';
+import { userFacingProviderError } from '../../common/errors/provider-outage';
 
 export interface ChatAttachment {
   url: string;
@@ -273,7 +274,9 @@ export class ChatService {
         });
         await errorMessage.save();
 
-        throw new BadRequestException(result.error?.message || 'Generation failed');
+        throw new BadRequestException(
+          userFacingProviderError(result.error?.message, { refunded: false }),
+        );
       }
 
       const responseContent = result.data?.content || '';
@@ -484,7 +487,10 @@ export class ChatService {
           const chunkError = (chunk as any).error;
           if (chunkError) {
             this.logger.error(`Stream error in chunk: ${chunkError}`);
-            yield { type: 'error', data: { message: chunkError } };
+            yield {
+              type: 'error',
+              data: { message: userFacingProviderError(chunkError, { refunded: false }) },
+            };
             success = false;
             break;
           }
@@ -492,7 +498,10 @@ export class ChatService {
           if (chunk.content) {
             if (chunk.content.startsWith('Error:') && chunk.done) {
               this.logger.error(`Stream returned legacy error: ${chunk.content}`);
-              yield { type: 'error', data: { message: chunk.content } };
+              yield {
+                type: 'error',
+                data: { message: userFacingProviderError(chunk.content, { refunded: false }) },
+              };
               success = false;
               break;
             }
@@ -508,7 +517,7 @@ export class ChatService {
               this.logger.error('Stream ended with empty content — likely a provider error');
               yield {
                 type: 'error',
-                data: { message: 'Model returned empty response. Please try again.' },
+                data: { message: userFacingProviderError(null, { refunded: false }) },
               };
             }
             break;
@@ -516,7 +525,10 @@ export class ChatService {
         }
       } catch (error: any) {
         this.logger.error(`Stream error: ${error.message}`);
-        yield { type: 'error', data: { message: error.message || 'Stream generation failed' } };
+        yield {
+          type: 'error',
+          data: { message: userFacingProviderError(error.message, { refunded: false }) },
+        };
         success = false;
       }
 

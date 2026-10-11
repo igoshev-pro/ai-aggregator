@@ -328,6 +328,7 @@ export class AIModel {
     maxImagesPerRequest?: number;
     maxResolution?: string;
     maxDuration?: number;
+    maxPromptLength?: number; // видео: лимит символов промпта (по умолчанию 10000)
     cooldownSeconds?: number;
     includedInPlans?: string[];
     freeLimitPerHour?: number;

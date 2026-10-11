@@ -1,4 +1,5 @@
 // src/modules/ai-providers/providers/openrouter.provider.ts
+import { outboundAxiosConfig } from '../../../common/net/outbound-proxy';
 import { Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import {
@@ -20,6 +21,7 @@ export class OpenRouterProvider extends BaseProvider {
   constructor(config: ProviderConfig) {
     super('openrouter', config);
     this.client = axios.create({
+      ...outboundAxiosConfig(),
       baseURL: config.baseUrl || 'https://openrouter.ai/api/v1',
       timeout: config.timeout || 120000,
       headers: {
@@ -164,6 +166,9 @@ export class OpenRouterProvider extends BaseProvider {
 
       for await (const chunk of stream) {
         buffer += chunk.toString();
+        // Пульс: провайдер жив и шлёт байты, даже если текста ещё нет
+        // (reasoning, keep-alive). По нему сервис отличает «думает» от «завис».
+        yield { content: '', done: false };
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 

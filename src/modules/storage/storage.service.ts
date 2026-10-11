@@ -8,6 +8,7 @@ import {
   HeadBucketCommand,
 } from '@aws-sdk/client-s3';
 import axios from 'axios';
+import { outboundAxiosConfig } from '../../common/net/outbound-proxy';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -55,7 +56,9 @@ export class StorageService {
         return this.saveBase64(url, userId, type);
       }
 
+      // Файл лежит у провайдера за рубежом — забираем тем же путём, что и API
       const response = await axios.get(url, {
+        ...outboundAxiosConfig(),
         responseType: 'arraybuffer',
         timeout: 60000,
         headers: { 'User-Agent': 'Mozilla/5.0' },

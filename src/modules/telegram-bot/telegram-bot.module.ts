@@ -3,6 +3,7 @@ import { TelegrafModule } from 'nestjs-telegraf';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TelegramBotUpdate } from './telegram-bot.update';
+import { telegramAgent } from '../../common/net/outbound-proxy';
 import { UsersModule } from '../users/users.module';
 import { ReferralModule } from '../referral/referral.module';
 import { AuthModule } from '../auth/auth.module';
@@ -20,7 +21,9 @@ import { AIModel, AIModelSchema } from '../ai-providers/schemas/model.schema';
         if (!token) {
           throw new Error('TELEGRAM_BOT_TOKEN is not set in .env');
         }
-        return { token };
+        // TELEGRAM_USE_PROXY=true — бот ходит в Telegram через второй сервер
+        const agent = telegramAgent();
+        return agent ? { token, options: { telegram: { agent } } } : { token };
       },
     }),
     // 🆕 Доступ к каталогу моделей напрямую из MongoDB (read-only для бота)

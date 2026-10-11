@@ -1,3 +1,4 @@
+import { outboundAxiosConfig } from '../../../common/net/outbound-proxy';
 import axios, { AxiosInstance } from 'axios';
 import {
   BaseProvider,
@@ -55,6 +56,15 @@ const SEEDANCE_MODELS = ['seedance-1.5-pro'];
 
 const TOPAZ_MODELS = ['topaz-video-upscale'];
 
+// 🆕 Wan 3.0 / Wan 3.0 Prime — в реестре привязан text-to-video,
+// при наличии картинки переключаемся на image-to-video той же линейки.
+const WAN3_MODELS = [
+  'wan3.0-text-to-video',
+  'wan3.0-image-to-video',
+  'wan3.0-prime-text-to-video',
+  'wan3.0-prime-image-to-video',
+];
+
 export class EvolinkProvider extends BaseProvider {
   private client: AxiosInstance;
   private readonly logger = new Logger(EvolinkProvider.name);
@@ -62,6 +72,7 @@ export class EvolinkProvider extends BaseProvider {
   constructor(config: ProviderConfig) {
     super('evolink', config);
     this.client = axios.create({
+      ...outboundAxiosConfig(),
       baseURL: config.baseUrl,
       timeout: config.timeout || 120000,
       headers: {
@@ -275,6 +286,9 @@ export class EvolinkProvider extends BaseProvider {
       let buffer = '';
       for await (const chunk of response.data) {
         buffer += chunk.toString();
+        // Пульс: провайдер жив и шлёт байты, даже если текста ещё нет
+        // (reasoning, keep-alive). По нему сервис отличает «думает» от «завис».
+        yield { content: '', done: false };
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -457,6 +471,9 @@ export class EvolinkProvider extends BaseProvider {
 
       for await (const chunk of response.data) {
         buffer += chunk.toString();
+        // Пульс: провайдер жив и шлёт байты, даже если текста ещё нет
+        // (reasoning, keep-alive). По нему сервис отличает «думает» от «завис».
+        yield { content: '', done: false };
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -765,6 +782,8 @@ export class EvolinkProvider extends BaseProvider {
         body = this.buildSeedanceBody(request);
       } else if (TOPAZ_MODELS.includes(request.model)) {          // 🆕
         body = this.buildTopazBody(request);
+      } else if (WAN3_MODELS.includes(request.model)) {           // 🆕
+        body = this.buildWan3Body(request);
       } else if (KLING_I2V_MODELS.includes(request.model)) {
         body = this.buildKlingI2VBody(request);
       } else if (KLING_MOTION_MODELS.includes(request.model)) {
@@ -910,6 +929,47 @@ export class EvolinkProvider extends BaseProvider {
  * image_urls: 0=t2v, 1=i2v, 2=first-last-frame
  * generate_audio: bool
  */
+  private buildWan3Body(request: VideoGenerationRequest): any {
+    const imgs: string[] = [];
+    if (request.imageUrl) imgs.push(request.imageUrl);
+    for (const u of (request as any).imageUrls || []) {
+      if (u && !imgs.includes(u)) imgs.push(u);
+    }
+
+    // t2v ↔ i2v: модель выбираем по наличию первого кадра
+    const base = request.model.replace(/-(text|image)-to-video$/, '');
+    const body: any = {
+      model: `${base}-${imgs.length > 0 ? 'image' : 'text'}-to-video`,
+      prompt: (request.prompt || '').substring(0, 20000),
+    };
+
+    if (imgs.length > 0) {
+      body.image_start = imgs[0];
+      if (imgs[1]) body.image_end = imgs[1];
+    }
+
+    // duration: 2..30 сек (режим -1 «на усмотрение модели» не используем —
+    // цена считается заранее по выбранной длительности)
+    const reqDur = Number(request.duration) || 5;
+    body.duration = Math.min(30, Math.max(2, Math.round(reqDur)));
+
+    const q = request.resolution;
+    body.quality = q === '480p' || q === '1080p' ? q : '720p';
+
+    const ar = request.aspectRatio || '';
+    body.aspect_ratio = ['adaptive', '16:9', '9:16', '1:1', '4:3', '3:4'].includes(ar)
+      ? ar
+      : 'adaptive';
+
+    const audioFlag =
+      (request as any).generateAudio !== undefined
+        ? (request as any).generateAudio
+        : (request as any).sound;
+    if (audioFlag !== undefined) body.generate_audio = !!audioFlag;
+
+    return body;
+  }
+
   private buildSeedanceBody(request: VideoGenerationRequest): any {
     const body: any = {
       model: request.model,

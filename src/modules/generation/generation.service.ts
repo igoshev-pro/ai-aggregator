@@ -316,6 +316,16 @@ export class GenerationService {
   async generateVideo(userId: string, dto: VideoGenerationDto) {
     const model = await this.aiProvidersService.getModelBySlug(dto.modelSlug);
 
+    // Лимит длины промпта зависит от модели: DTO пропускает до 30 000
+    // (Seedance 2.5), остальные видеомодели остаются на 10 000.
+    const maxPromptLength =
+      Number((model.limits as any)?.maxPromptLength) || 10000;
+    if ((dto.prompt || '').length > maxPromptLength) {
+      throw new BadRequestException(
+        `Промпт слишком длинный: ${dto.prompt.length} символов, максимум ${maxPromptLength}.`,
+      );
+    }
+
     // 🆕 Kling 3.0 мультисцены: реальная длительность = сумма шотов
     // (каждый шот клампится 1–12, как в KIE provider), затем clamp 3–15.
     let effectiveDuration = dto.duration;

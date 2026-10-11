@@ -151,9 +151,11 @@ export class VideoGenerationDto {
   @IsString()
   modelSlug: string;
 
+  // Потолок по всем видеомоделям. Лимит конкретной модели
+  // (limits.maxPromptLength, по умолчанию 10000) проверяется в generateVideo.
   @ApiProperty()
   @IsString()
-  @MaxLength(10000)
+  @MaxLength(30000)
   prompt: string;
 
   @ApiPropertyOptional()

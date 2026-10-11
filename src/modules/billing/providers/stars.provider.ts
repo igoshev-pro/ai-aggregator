@@ -1,3 +1,4 @@
+import { telegramAxiosConfig } from '../../../common/net/outbound-proxy';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
@@ -28,6 +29,7 @@ export class StarsProvider implements PaymentProviderInterface {
           currency: 'XTR',
           prices: [{ label: `${dto.tokens} спичек`, amount: dto.amount }],
         },
+        telegramAxiosConfig(),
       );
 
       if (response.data.ok) {

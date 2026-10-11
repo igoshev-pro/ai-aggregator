@@ -531,6 +531,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'claude-opus-4-7', priority: 1, isActive: true },
+          // Запасной канал, если Evolink не ответил
+          { providerSlug: 'openrouter', modelId: 'anthropic/claude-opus-4.7', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['unlimited'] },
@@ -554,6 +556,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'claude-opus-4-8', priority: 1, isActive: true },
+          // Запасной канал, если Evolink не ответил
+          { providerSlug: 'openrouter', modelId: 'anthropic/claude-opus-4.8', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['unlimited'] },
@@ -577,6 +581,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'claude-sonnet-4-6', priority: 1, isActive: true },
+          // Запасной канал, если Evolink не ответил
+          { providerSlug: 'openrouter', modelId: 'anthropic/claude-sonnet-4.6', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['pro', 'unlimited'] },
@@ -600,9 +606,112 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'thinking'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'claude-sonnet-5', priority: 1, isActive: true },
+          // Запасной канал, если Evolink не ответил
+          { providerSlug: 'openrouter', modelId: 'anthropic/claude-sonnet-5', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 200000, maxOutputTokens: 8192, includedInPlans: ['pro', 'unlimited'] },
+      },
+      // 🆕 Claude Sonnet 5.5 (KIE) — себестоимость $0.8/$4.0 за 1M, цена = себестоимость × 90
+      {
+        slug: 'claude-sonnet-5.5',
+        name: 'Claude Sonnet 5.5',
+        displayName: 'Claude Sonnet 5.5',
+        description: 'Сбалансированная модель Anthropic поколения 5.5',
+        type: 'text',
+        pricePerMillionInputTokens: 72.0,
+        pricePerMillionOutputTokens: 360.0,
+        providerCostPerMillionInput: 0.8,
+        providerCostPerMillionOutput: 4.0,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.3,
+        sortOrder: 4.6,
+        isPremium: true,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'claude-sonnet-5-5', priority: 1, isActive: true },
+          // Запасной канал, если KIE не ответил
+          { providerSlug: 'openrouter', modelId: 'anthropic/claude-sonnet-5.5', priority: 2, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 1000000, maxOutputTokens: 8192, includedInPlans: ['pro', 'unlimited'] },
+      },
+      // 🆕 Claude Opus 5.5 (KIE) — себестоимость $1.6/$8.0 за 1M, цена = себестоимость × 90
+      {
+        slug: 'claude-opus-5.5',
+        name: 'Claude Opus 5.5',
+        displayName: 'Claude Opus 5.5',
+        description: 'Самая мощная модель Anthropic поколения 5.5',
+        type: 'text',
+        pricePerMillionInputTokens: 144.0,
+        pricePerMillionOutputTokens: 720.0,
+        providerCostPerMillionInput: 1.6,
+        providerCostPerMillionOutput: 8.0,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.6,
+        sortOrder: 4.7,
+        isPremium: true,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'claude-opus-5-5', priority: 1, isActive: true },
+          // Запасной канал, если KIE не ответил
+          { providerSlug: 'openrouter', modelId: 'anthropic/claude-opus-5.5', priority: 2, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 1000000, maxOutputTokens: 8192, includedInPlans: ['unlimited'] },
+      },
+      // 🆕 Claude Haiku 5.5 (KIE) — себестоимость $0.06/$0.3 за 1M, цена = себестоимость × 90
+      {
+        slug: 'claude-haiku-5.5',
+        name: 'Claude Haiku 5.5',
+        displayName: 'Claude Haiku 5.5',
+        description: 'Быстрая и недорогая модель Anthropic поколения 5.5',
+        type: 'text',
+        pricePerMillionInputTokens: 5.4,
+        pricePerMillionOutputTokens: 27.0,
+        providerCostPerMillionInput: 0.06,
+        providerCostPerMillionOutput: 0.3,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.1,
+        sortOrder: 4.8,
+        supportsVision: true,
+        capabilities: ['streaming', 'vision'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'claude-haiku-5-5', priority: 1, isActive: true },
+          // Запасной канал, если KIE не ответил
+          { providerSlug: 'openrouter', modelId: 'anthropic/claude-haiku-5.5', priority: 2, isActive: true },
+        ],
+        defaultParams: { maxTokens: 8192, temperature: 0.7 },
+        limits: { maxInputTokens: 1000000, maxOutputTokens: 8192 },
+      },
+      // 🆕 DeepSeek V4.1 Flash (KIE) — себестоимость $0.12/$0.475 за 1M, цена = себестоимость × 90
+      {
+        slug: 'deepseek-v4.1-flash',
+        name: 'DeepSeek V4.1 Flash',
+        displayName: 'DeepSeek V4.1 Flash',
+        description: 'Быстрая модель DeepSeek с управляемым мышлением, контекст 1M',
+        type: 'text',
+        pricePerMillionInputTokens: 10.8,
+        pricePerMillionOutputTokens: 42.75,
+        providerCostPerMillionInput: 0.12,
+        providerCostPerMillionOutput: 0.475,
+        avgTokensPerRequest: 1500,
+        tokensPerDollar: 90,
+        minTokenCost: 0.1,
+        sortOrder: 5.05,
+        capabilities: ['streaming', 'reasoning'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'deepseek-v4-1-flash', priority: 1, isActive: true },
+          // Запасной канал, если KIE не ответил
+          { providerSlug: 'openrouter', modelId: 'deepseek/deepseek-v4.1-flash', priority: 2, isActive: true },
+        ],
+        defaultParams: { maxTokens: 16384, temperature: 0.7 },
+        limits: { maxInputTokens: 1000000, maxOutputTokens: 16384 },
       },
       {
         slug: 'deepseek-v4-flash',
@@ -621,6 +730,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'function_calling'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'deepseek-v4-flash', priority: 1, isActive: true },
+          // Запасной канал, если Evolink не ответил
+          { providerSlug: 'openrouter', modelId: 'deepseek/deepseek-v4-flash', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 1000000, maxOutputTokens: 16384 },
@@ -643,6 +754,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'reasoning', 'function_calling'],
         providerMappings: [
           { providerSlug: 'evolink', modelId: 'deepseek-v4-pro', priority: 1, isActive: true },
+          // Запасной канал, если Evolink не ответил
+          { providerSlug: 'openrouter', modelId: 'deepseek/deepseek-v4-pro', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 1000000, maxOutputTokens: 16384 },
@@ -665,6 +778,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gemini-3-flash', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'google/gemini-3-flash-preview', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 1000000, maxOutputTokens: 8192 },
@@ -687,6 +801,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gemini-3.1-pro', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'google/gemini-3.1-pro-preview', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 1000000, maxOutputTokens: 8192 },
@@ -757,6 +872,7 @@ export class ProviderRegistryService implements OnModuleInit {
         providerMappings: [
           // Evolink убрал модель из каталога — берём через KIE /codex/v1/responses
           { providerSlug: 'kie', modelId: 'gpt-5.4', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-5.4', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384, includedInPlans: ['unlimited'] },
@@ -780,6 +896,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-5.6-luna', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-5.6-luna', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -803,6 +920,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-5.6-terra', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-5.6-terra', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -826,6 +944,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-5.6-sol', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-5.6-sol', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -852,6 +971,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-6-astra', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-6-astra', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -876,6 +996,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-6-luna', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-6-luna', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -899,6 +1020,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-6-sol', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-6-sol', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -922,6 +1044,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-6.1-sol', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-6.1-sol', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -945,6 +1068,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'vision', 'reasoning', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-5.5', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'openai/gpt-5.5', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 128000, maxOutputTokens: 16384 },
@@ -1033,6 +1157,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['streaming', 'reasoning', 'vision', 'web_search'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'grok-4-5', priority: 1, isActive: true },
+          { providerSlug: 'openrouter', modelId: 'x-ai/grok-4.5', priority: 2, isActive: true },
         ],
         defaultParams: { maxTokens: 8192, temperature: 0.7 },
         limits: { maxInputTokens: 256000, maxOutputTokens: 8192, includedInPlans: ['pro', 'unlimited'] },
@@ -1547,6 +1672,106 @@ export class ProviderRegistryService implements OnModuleInit {
       //     },
       //   ],
       // },
+      // 🆕 Nano Banana 2.1 (KIE) — $0.02 / $0.03 / $0.045 за 1K / 2K / 4K
+      {
+        slug: 'nano-banana-2.1',
+        name: 'Nano Banana 2.1',
+        displayName: 'Nano Banana 2.1',
+        description: 'Новая версия Nano Banana — 1K–4K, до 10 референсов',
+        type: 'image',
+        fixedCostPerGeneration: 0.02,
+        tokensPerDollar: 90,
+        minTokenCost: 1.8,
+        sortOrder: 9.1,
+        capabilities: ['text_to_image', 'image_to_image'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'nano-banana-2-1', priority: 1, isActive: true },
+        ],
+        defaultParams: { width: 1024, height: 1024 },
+        limits: { maxResolution: '4096x4096' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        pricingMatrix: [
+          { conditions: { resolution: '4K' }, costInTokens: 4.1, costInDollars: 0.045, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 2.7, costInDollars: 0.03, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.02, label: '1K разрешение' },
+        ],
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K (1.8🔥)' },
+              { value: '2K', label: '2K (2.7🔥)' },
+              { value: '4K', label: '4K (4.1🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+            ],
+          },
+          {
+            key: 'outputFormat', label: 'Формат файла', type: 'select', affectsPrice: false, defaultValue: 'png',
+            options: [
+              { value: 'png', label: 'PNG' },
+              { value: 'jpg', label: 'JPG' },
+            ],
+          },
+        ],
+      },
+      // 🆕 Seedream 5.0 Flash (KIE) — $0.0162 за картинку, одна цена на 1K / 1.5K / 2K
+      {
+        slug: 'seedream-5-flash',
+        name: 'Seedream 5.0 Flash',
+        displayName: 'Seedream 5.0 Flash',
+        description: 'Быстрый Seedream — генерация и редактирование, одна цена до 2K',
+        type: 'image',
+        fixedCostPerGeneration: 0.0162,
+        tokensPerDollar: 90,
+        minTokenCost: 1.5,
+        sortOrder: 5.9,
+        capabilities: ['text_to_image', 'image_to_image'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'seedream/5-flash-text-to-image', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspect_ratio: '1:1', resolution: '1K' },
+        limits: { maxResolution: '2048x2048' },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: false, defaultValue: '1K',
+            options: [
+              { value: '1K', label: '1K' },
+              { value: '1.5K', label: '1.5K' },
+              { value: '2K', label: '2K' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Соотношение сторон', type: 'select', affectsPrice: false, defaultValue: '1:1',
+            options: [
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: '3:2', label: 'Фото (3:2)' },
+              { value: '2:3', label: 'Книга (2:3)' },
+              { value: '21:9', label: 'Панорама (21:9)' },
+            ],
+          },
+          {
+            key: 'outputFormat', label: 'Формат файла', type: 'select', affectsPrice: false, defaultValue: 'png',
+            options: [
+              { value: 'png', label: 'PNG' },
+              { value: 'jpeg', label: 'JPEG' },
+            ],
+          },
+        ],
+      },
       {
         slug: 'nano-banana-2',
         name: 'Nano Banana 2',
@@ -2777,7 +3002,8 @@ export class ProviderRegistryService implements OnModuleInit {
     { providerSlug: 'kie', modelId: 'bytedance/seedance-2-5', priority: 1, isActive: true },
   ],
   defaultParams: { aspectRatio: 'adaptive', duration: 5, resolution: '720p', sound: true },
-  limits: { maxDuration: 30 },
+  // KIE принимает промпт до 30 000 символов (у остальных видеомоделей — 10 000)
+  limits: { maxDuration: 30, maxPromptLength: 30000 },
   // KIE допускает до 30 картинок-референсов; держим 10, как у Seedance 2
   inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
   videoRefPricing: true,
@@ -2902,6 +3128,219 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── Gemini Omni Video (KIE jobs) ────────────────────
+      // 🆕 Wan 3.0 (Evolink) — $0.0375 / $0.075 / $0.15 за секунду (480p / 720p / 1080p)
+      {
+        slug: 'wan-3.0',
+        name: 'Wan 3.0',
+        displayName: 'Wan 3.0',
+        description: 'Видеогенерация Alibaba Wan 3.0 — текст/фото → видео, до 30с, звук',
+        type: 'video',
+        fixedCostPerGeneration: 0.375, // справочно: 720p × 5с
+        tokensPerDollar: 90,
+        minTokenCost: 6.8, // мин: 480p × 2с
+        sortOrder: 10.95,
+        isPremium: true,
+        capabilities: ['text_to_video', 'image_to_video', 'audio'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'wan3.0-text-to-video', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
+        limits: { maxDuration: 30 },
+        // Картинка = первый кадр (i2v). Последний кадр провайдер умеет, в UI пока не выведен.
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: (() => {
+          const rate: Record<string, number> = { '480p': 3.4, '720p': 6.8, '1080p': 13.5 };
+          const rows: any[] = [];
+          for (const resolution of ['480p', '720p', '1080p']) {
+            for (let d = 2; d <= 30; d++) {
+              const tokens = Math.round(rate[resolution] * d * 10) / 10;
+              rows.push({
+                conditions: { resolution, duration: d },
+                costInTokens: tokens,
+                costInDollars: Math.round((tokens / 90) * 1000) / 1000,
+                label: `${resolution} × ${d}с`,
+              });
+            }
+          }
+          return rows;
+        })(),
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '480p', label: '480p (3.4🔥/сек)' },
+              { value: '720p', label: '720p (6.8🔥/сек)' },
+              { value: '1080p', label: '1080p (13.5🔥/сек)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: (() => {
+              const o: any[] = [];
+              for (let d = 2; d <= 30; d++) o.push({ value: d, label: `${d} сек` });
+              return o;
+            })(),
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: 'adaptive', label: 'Авто (по кадру и промпту)' },
+            ],
+          },
+          {
+            key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: false, defaultValue: true,
+            options: [
+              { value: false, label: 'Без звука' },
+              { value: true, label: 'Со звуком' },
+            ],
+          },
+        ],
+      },
+      // 🆕 Wan 3.0 Prime (Evolink) — $0.0578 / $0.12 / $0.239 за секунду (480p / 720p / 1080p)
+      {
+        slug: 'wan-3.0-prime',
+        name: 'Wan 3.0 Prime',
+        displayName: 'Wan 3.0 Prime',
+        description: 'Ускоренная версия Wan 3.0 — текст/фото → видео, до 30с, звук',
+        type: 'video',
+        fixedCostPerGeneration: 0.6, // справочно: 720p × 5с
+        tokensPerDollar: 90,
+        minTokenCost: 10.4, // мин: 480p × 2с
+        sortOrder: 10.96,
+        isPremium: true,
+        capabilities: ['text_to_video', 'image_to_video', 'audio'],
+        providerMappings: [
+          { providerSlug: 'evolink', modelId: 'wan3.0-prime-text-to-video', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
+        limits: { maxDuration: 30 },
+        // Картинка = первый кадр (i2v). Последний кадр провайдер умеет, в UI пока не выведен.
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: (() => {
+          const rate: Record<string, number> = { '480p': 5.2, '720p': 10.8, '1080p': 21.5 };
+          const rows: any[] = [];
+          for (const resolution of ['480p', '720p', '1080p']) {
+            for (let d = 2; d <= 30; d++) {
+              const tokens = Math.round(rate[resolution] * d * 10) / 10;
+              rows.push({
+                conditions: { resolution, duration: d },
+                costInTokens: tokens,
+                costInDollars: Math.round((tokens / 90) * 1000) / 1000,
+                label: `${resolution} × ${d}с`,
+              });
+            }
+          }
+          return rows;
+        })(),
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '480p', label: '480p (5.2🔥/сек)' },
+              { value: '720p', label: '720p (10.8🔥/сек)' },
+              { value: '1080p', label: '1080p (21.5🔥/сек)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: (() => {
+              const o: any[] = [];
+              for (let d = 2; d <= 30; d++) o.push({ value: d, label: `${d} сек` });
+              return o;
+            })(),
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '4:3', label: 'Стандарт (4:3)' },
+              { value: '3:4', label: 'Портрет (3:4)' },
+              { value: 'adaptive', label: 'Авто (по кадру и промпту)' },
+            ],
+          },
+          {
+            key: 'sound', label: 'Звук', type: 'boolean', affectsPrice: false, defaultValue: true,
+            options: [
+              { value: false, label: 'Без звука' },
+              { value: true, label: 'Со звуком' },
+            ],
+          },
+        ],
+      },
+      // 🆕 Gemini Omni 1.1 Flash (KIE). Себестоимость и цены — как у Gemini Omni Video,
+      // плюс 360p по цене 720p. Видео-референс пока не подключён.
+      {
+        slug: 'gemini-omni-1.1-flash',
+        name: 'Gemini Omni 1.1 Flash',
+        displayName: 'Gemini Omni 1.1 Flash',
+        description: 'Видеогенерация Google Gemini Omni 1.1 Flash — текст/фото → видео, 360p–4K',
+        type: 'video',
+        fixedCostPerGeneration: 0.21,
+        tokensPerDollar: 90,
+        minTokenCost: 18.9,
+        sortOrder: 11.1,
+        capabilities: ['text_to_video', 'image_to_video'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'google/gemini-omni-flash-1-1', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: '16:9', duration: 8, resolution: '720p' },
+        limits: { maxDuration: 10 },
+        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        pricingMatrix: (() => {
+          const byDuration: Record<string, Record<number, number>> = {
+            '360p': { 4: 18.9, 6: 25.2, 8: 31.5, 10: 37.8 },
+            '720p': { 4: 18.9, 6: 25.2, 8: 31.5, 10: 37.8 },
+            '1080p': { 4: 18.9, 6: 25.2, 8: 31.5, 10: 37.8 },
+            '4k': { 4: 44.1, 6: 50.4, 8: 56.7, 10: 63 },
+          };
+          const rows: any[] = [];
+          for (const [resolution, prices] of Object.entries(byDuration)) {
+            for (const [duration, tokens] of Object.entries(prices)) {
+              rows.push({
+                conditions: { resolution, duration: Number(duration) },
+                costInTokens: tokens,
+                costInDollars: Math.round((tokens / 90) * 1000) / 1000,
+                label: `${resolution === '4k' ? '4K' : resolution} × ${duration}с`,
+              });
+            }
+          }
+          return rows;
+        })(),
+        uiParameters: [
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 8,
+            options: [
+              { value: 4, label: '4 секунды' },
+              { value: 6, label: '6 секунд' },
+              { value: 8, label: '8 секунд' },
+              { value: 10, label: '10 секунд' },
+            ],
+          },
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '360p', label: '360p (от 18.9🔥)' },
+              { value: '720p', label: '720p (от 18.9🔥)' },
+              { value: '1080p', label: '1080p (от 18.9🔥)' },
+              { value: '4k', label: '4K (от 44.1🔥)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: '16:9',
+            options: [
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+            ],
+          },
+        ],
+      },
       {
         slug: 'gemini-omni-video',
         name: 'Gemini Omni Video',

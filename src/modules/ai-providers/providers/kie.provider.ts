@@ -1,4 +1,6 @@
 // src/modules/ai-providers/providers/kie.provider.ts
+import { toClaudeMessages } from './claude-messages';
+import { outboundAxiosConfig } from '../../../common/net/outbound-proxy';
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import {
@@ -24,6 +26,7 @@ const KIE_MODEL_PARAMS: Record<string, {
   maxInputImages?: number;
   hasOutputFormat?: boolean;
   hasBackground?: boolean;   // 🆕 GPT Image 2.5: background auto|opaque|transparent
+  resolutionField?: string;  // 🆕 поле KIE для разрешения, если не `resolution` (Seedream 5 Flash: `size`)
 }> = {
   'flux-2/flex-text-to-image': {
     aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3'],
@@ -75,6 +78,22 @@ const KIE_MODEL_PARAMS: Record<string, {
     maxInputImages: 10,
     hasOutputFormat: true,
   },
+  // 🆕 Seedream 5.0 Flash — разрешение передаётся полем `size`, цена одна на 1K–2K
+  'seedream/5-flash-text-to-image': {
+    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '2:3', '3:2', '21:9'],
+    resolutions: ['1K', '1.5K', '2K'],
+    resolutionField: 'size',
+    hasOutputFormat: true,
+  },
+  'seedream/5-flash-image-to-image': {
+    aspectRatios: ['1:1', '4:3', '3:4', '16:9', '9:16', '2:3', '3:2', '21:9'],
+    resolutions: ['1K', '1.5K', '2K'],
+    resolutionField: 'size',
+    hasInputImages: true,
+    inputImagesField: 'image_urls',
+    maxInputImages: 10,
+    hasOutputFormat: true,
+  },
   'google/imagen4': {
     aspectRatios: ['1:1', '16:9', '9:16', '3:4', '4:3'],
     resolutions: [],
@@ -93,6 +112,15 @@ const KIE_MODEL_PARAMS: Record<string, {
     hasInputImages: true,
     inputImagesField: 'image_input',
     maxInputImages: 14,
+    hasOutputFormat: true,
+  },
+  // 🆕 Nano Banana 2.1 — тот же формат запроса, что у Nano Banana 2
+  'nano-banana-2-1': {
+    aspectRatios: ['1:1', '1:4', '1:8', '2:3', '3:2', '3:4', '4:1', '4:3', '4:5', '5:4', '8:1', '9:16', '16:9', '21:9', 'auto'],
+    resolutions: ['1K', '2K', '4K'],
+    hasInputImages: true,
+    inputImagesField: 'image_input',
+    maxInputImages: 10,
     hasOutputFormat: true,
   },
   //@ts-ignore
@@ -162,6 +190,12 @@ const KIE_MODEL_PARAMS: Record<string, {
   },
 };
 
+// Адрес, на который KIE шлёт уведомление о готовности (Suno требует его в запросе).
+// Результат мы всё равно забираем опросом, колбэк только логируется.
+const KIE_CALLBACK_URL =
+  process.env.KIE_CALLBACK_URL ||
+  `${(process.env.SITE_URL || 'https://spichki-ai.net').replace(/\/+$/, '')}/api/v1/webhooks/kie-callback`;
+
 // 🆕 GPT 5.6 модели — новый endpoint /codex/v1/responses (формат responses API)
 const KIE_CODEX_MODELS: Record<string, string> = {
   'gpt-5.6-luna': 'gpt-5-6-luna',
@@ -181,6 +215,37 @@ const KIE_CODEX_MODELS: Record<string, string> = {
 const KIE_GROK_MODELS: Record<string, string> = {
   'grok-4-5': 'grok-4-5',
 };
+
+// 🆕 DeepSeek V4.1 Flash — endpoint /openai/v1/responses (тот же responses-формат)
+const KIE_OPENAI_RESPONSES_MODELS: Record<string, string> = {
+  'deepseek-v4-1-flash': 'deepseek-v4-1-flash',
+};
+
+// Модели KIE на responses API: в какой эндпоинт и под каким именем слать.
+function kieResponsesRoute(
+  model: string,
+): { endpoint: string; model: string } | null {
+  if (KIE_GROK_MODELS[model]) {
+    return { endpoint: '/grok/v1/responses', model: KIE_GROK_MODELS[model] };
+  }
+  if (KIE_OPENAI_RESPONSES_MODELS[model]) {
+    return {
+      endpoint: '/openai/v1/responses',
+      model: KIE_OPENAI_RESPONSES_MODELS[model],
+    };
+  }
+  if (KIE_CODEX_MODELS[model]) {
+    return { endpoint: '/codex/v1/responses', model: KIE_CODEX_MODELS[model] };
+  }
+  return null;
+}
+
+// 🆕 Claude 5.5 — endpoint /claude/v1/messages (формат Anthropic Messages API)
+const KIE_CLAUDE_MODELS = new Set([
+  'claude-sonnet-5-5',
+  'claude-opus-5-5',
+  'claude-haiku-5-5',
+]);
 
 interface VideoModelConfig {
   kieModel: string;
@@ -406,6 +471,17 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['6', '10'],
     aspectRatios: [],
   },
+  // 🆕 Gemini Omni 1.1 Flash (KIE jobs) — тот же формат, что Gemini Omni Video, плюс 360p
+  'google/gemini-omni-flash-1-1': {
+    kieModel: 'google/gemini-omni-flash-1-1',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasResolution: true,
+    resolutionDefault: '720p',
+    durations: ['4', '6', '8', '10'],
+    aspectRatios: ['16:9', '9:16'],
+  },
   // ─── Gemini Omni Video (KIE jobs) ─────────────────────────────
   'gemini-omni-video': {
     kieModel: 'gemini-omni-video',
@@ -429,6 +505,7 @@ export class KieProvider extends BaseProvider {
   constructor(config: ProviderConfig) {
     super('kie', config);
     this.client = axios.create({
+      ...outboundAxiosConfig(),
       baseURL: config.baseUrl || 'https://api.kie.ai',
       timeout: config.timeout || 120000,
       headers: {
@@ -481,6 +558,13 @@ export class KieProvider extends BaseProvider {
         modelId = 'seedream/5-pro-text-to-image';
       }
 
+      // 🆕 Seedream 5 Flash: авто-переключение TTI ↔ ITI по наличию фото-референса
+      if (modelId === 'seedream/5-flash-text-to-image' && incomingUrls.length > 0) {
+        modelId = 'seedream/5-flash-image-to-image';
+      } else if (modelId === 'seedream/5-flash-image-to-image' && incomingUrls.length === 0) {
+        modelId = 'seedream/5-flash-text-to-image';
+      }
+
       const modelParams = KIE_MODEL_PARAMS[modelId];
 
       this.logger.debug(
@@ -517,7 +601,8 @@ export class KieProvider extends BaseProvider {
       if (modelParams?.hasQuality) {
         input.quality = (request as any).quality || 'basic';
       } else if (modelParams?.resolutions?.length > 0) {
-        input.resolution = (request as any).resolution || '1K';
+        input[modelParams.resolutionField || 'resolution'] =
+          (request as any).resolution || '1K';
       }
 
       if (modelId === 'mj_txt2img' || modelId === 'mj_img2img') {
@@ -2201,7 +2286,7 @@ export class KieProvider extends BaseProvider {
             model: sunoModel,
             callBackUrl:
               r.callBackUrl ||
-              'https://spichki.tw1.ru/api/v1/webhooks/kie-callback',
+              KIE_CALLBACK_URL,
           };
 
           if (defaultParamFlag) {
@@ -2261,7 +2346,7 @@ export class KieProvider extends BaseProvider {
           model: sunoModel,
           callBackUrl:
             r.callBackUrl ||
-            'https://spichki.tw1.ru/api/v1/webhooks/kie-callback',
+            KIE_CALLBACK_URL,
           style: r.style,
           title: r.title,
           negativeTags: r.negativeTags,
@@ -2460,8 +2545,13 @@ export class KieProvider extends BaseProvider {
     const start = Date.now();
 
     // 🆕 GPT 5.6 — отдельный codex endpoint
-    if (KIE_CODEX_MODELS[request.model] || KIE_GROK_MODELS[request.model]) {
+    if (kieResponsesRoute(request.model)) {
       return this.generateCodexText(request, start);
+    }
+
+    // 🆕 Claude 5.5 — Anthropic Messages API
+    if (KIE_CLAUDE_MODELS.has(request.model)) {
+      return this.generateClaudeText(request, start);
     }
 
     const endpoint = KieProvider.KIE_TEXT_MODELS[request.model];
@@ -2520,11 +2610,9 @@ export class KieProvider extends BaseProvider {
     request: TextGenerationRequest,
     start: number,
   ): Promise<GenerationResult> {
-    const isGrok = !!KIE_GROK_MODELS[request.model];
-    const codexModel = isGrok
-      ? KIE_GROK_MODELS[request.model]
-      : KIE_CODEX_MODELS[request.model];
-    const responsesEndpoint = isGrok ? '/grok/v1/responses' : '/codex/v1/responses';
+    const route = kieResponsesRoute(request.model);
+    const codexModel = route?.model;
+    const responsesEndpoint = route?.endpoint ?? '/codex/v1/responses';
 
     if (!codexModel) {
       return {
@@ -2699,8 +2787,14 @@ export class KieProvider extends BaseProvider {
     // 🆕 GPT 5.6 — codex API через настоящий SSE-стрим.
     // stream:true обходит Cloudflare 524 (origin_response_timeout 120с),
     // т.к. поток байтов идёт непрерывно и таймер "молчания" не срабатывает.
-    if (KIE_CODEX_MODELS[request.model] || KIE_GROK_MODELS[request.model]) {
+    if (kieResponsesRoute(request.model)) {
       yield* this.streamCodexText(request);
+      return;
+    }
+
+    // 🆕 Claude 5.5 — Anthropic Messages API
+    if (KIE_CLAUDE_MODELS.has(request.model)) {
+      yield* this.streamClaudeText(request);
       return;
     }
 
@@ -2735,6 +2829,9 @@ export class KieProvider extends BaseProvider {
 
       for await (const chunk of stream) {
         buffer += chunk.toString();
+        // Пульс: провайдер жив и шлёт байты, даже если текста ещё нет
+        // (reasoning, keep-alive). По нему сервис отличает «думает» от «завис».
+        yield { content: '', done: false };
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -2829,11 +2926,9 @@ export class KieProvider extends BaseProvider {
   private async *streamCodexText(
     request: TextGenerationRequest,
   ): AsyncGenerator<StreamChunk> {
-    const isGrok = !!KIE_GROK_MODELS[request.model];
-    const codexModel = isGrok
-      ? KIE_GROK_MODELS[request.model]
-      : KIE_CODEX_MODELS[request.model];
-    const responsesEndpoint = isGrok ? '/grok/v1/responses' : '/codex/v1/responses';
+    const route = kieResponsesRoute(request.model);
+    const codexModel = route?.model;
+    const responsesEndpoint = route?.endpoint ?? '/codex/v1/responses';
 
     if (!codexModel) {
       yield { content: '', done: true, error: `Codex/Grok model ${request.model} not supported by KIE` };
@@ -2887,6 +2982,9 @@ export class KieProvider extends BaseProvider {
 
       for await (const chunk of stream) {
         buffer += chunk.toString();
+        // Пульс: провайдер жив и шлёт байты, даже если текста ещё нет
+        // (reasoning, keep-alive). По нему сервис отличает «думает» от «завис».
+        yield { content: '', done: false };
 
         // SSE-события разделены двойным переводом строки
         const events = buffer.split('\n\n');
@@ -3025,6 +3123,190 @@ export class KieProvider extends BaseProvider {
   // ═══════════════════════════════════════════════════════
   // HEALTH CHECK
   // ═══════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════
+  // 🆕 CLAUDE 5.5 (KIE /claude/v1/messages, формат Anthropic Messages)
+  // ═══════════════════════════════════════════════════════
+
+  private buildClaudeBody(request: TextGenerationRequest, stream: boolean) {
+    const { system, messages } = toClaudeMessages(request.messages as any[]);
+    const body: Record<string, any> = {
+      model: request.model,
+      messages,
+      // max_tokens обязателен в Anthropic API
+      max_tokens: request.maxTokens || 8192,
+      stream,
+    };
+    if (system) body.system = system;
+    // У Claude temperature максимум 1.0 (у OpenAI — 2.0)
+    if (request.temperature !== undefined) {
+      body.temperature = Math.min(request.temperature, 1.0);
+    }
+    return body;
+  }
+
+  private async generateClaudeText(
+    request: TextGenerationRequest,
+    start: number,
+  ): Promise<GenerationResult> {
+    try {
+      const response = await this.client.post(
+        '/claude/v1/messages',
+        this.buildClaudeBody(request, false),
+        { timeout: 300000 },
+      );
+      const data = response.data;
+
+      // KIE возвращает часть ошибок с HTTP 200 и телом {code, msg}
+      if (data?.code !== undefined && Number(data.code) !== 200) {
+        throw new Error(data.msg || `KIE Claude error (code ${data.code})`);
+      }
+
+      const content = (Array.isArray(data?.content) ? data.content : [])
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text)
+        .join('');
+
+      return {
+        success: true,
+        data: {
+          content,
+          metadata: { model: data.model, stopReason: data.stop_reason },
+        },
+        usage: {
+          inputTokens: data.usage?.input_tokens,
+          outputTokens: data.usage?.output_tokens,
+          totalTokens:
+            (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
+          cachedTokens: data.usage?.cache_read_input_tokens,
+          cacheCreationTokens: data.usage?.cache_creation_input_tokens,
+        },
+        responseTimeMs: Date.now() - start,
+        providerSlug: this.slug,
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `KIE Claude generateText error: ${error?.response?.status} - ${error.message}`,
+      );
+      return this.handleError(error, start);
+    }
+  }
+
+  private async *streamClaudeText(
+    request: TextGenerationRequest,
+  ): AsyncGenerator<StreamChunk> {
+    try {
+      const response = await this.client.post(
+        '/claude/v1/messages',
+        this.buildClaudeBody(request, true),
+        { responseType: 'stream', timeout: 300000 },
+      );
+
+      let buffer = '';
+      let emittedContent = false;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let cachedTokens: number | undefined;
+
+      for await (const chunk of response.data) {
+        buffer += chunk.toString();
+        // Пульс: провайдер жив и шлёт байты, даже если текста ещё нет
+        yield { content: '', done: false };
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+
+          let parsed: any;
+          try {
+            parsed = JSON.parse(trimmed.slice(5).trim());
+          } catch {
+            continue; // служебная строка или неполный чанк
+          }
+
+          switch (parsed.type) {
+            case 'message_start':
+              inputTokens = parsed.message?.usage?.input_tokens || 0;
+              cachedTokens = parsed.message?.usage?.cache_read_input_tokens;
+              break;
+            case 'content_block_delta':
+              if (parsed.delta?.type === 'text_delta' && parsed.delta?.text) {
+                emittedContent = true;
+                yield { content: parsed.delta.text, done: false };
+              }
+              break;
+            case 'message_delta':
+              outputTokens = parsed.usage?.output_tokens || outputTokens;
+              break;
+            case 'message_stop':
+              yield {
+                content: '',
+                done: true,
+                usage: { inputTokens, outputTokens, cachedTokens },
+              };
+              return;
+            case 'error': {
+              const errMsg = parsed.error?.message || 'Claude stream failed';
+              this.logger.error(`KIE Claude stream event error: ${errMsg}`);
+              yield { content: '', done: true, error: errMsg };
+              return;
+            }
+          }
+        }
+      }
+
+      // Ошибка с HTTP 200 и обычным JSON {code, msg} вместо SSE
+      if (!emittedContent && buffer.trim().startsWith('{')) {
+        try {
+          const plain = JSON.parse(buffer.trim());
+          if (plain?.code !== undefined && Number(plain.code) !== 200) {
+            const errMsg = plain.msg || plain.message || `KIE error code ${plain.code}`;
+            this.logger.error(
+              `KIE Claude stream: non-SSE error body (model=${request.model}): code=${plain.code}, msg="${errMsg}"`,
+            );
+            yield { content: '', done: true, error: `KIE Claude: ${plain.code} - ${errMsg}` };
+            return;
+          }
+        } catch {
+          // не JSON — обычное завершение ниже
+        }
+      }
+
+      this.logger.warn(`KIE Claude stream ended without message_stop (model=${request.model})`);
+      yield {
+        content: '',
+        done: true,
+        usage: { inputTokens, outputTokens, cachedTokens },
+      };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      let errorMessage = error.message;
+      try {
+        if (error?.response?.data && typeof error.response.data.pipe === 'function') {
+          const chunks: Buffer[] = [];
+          for await (const c of error.response.data) {
+            chunks.push(Buffer.from(c));
+            if (chunks.length > 5) break;
+          }
+          const bodyStr = Buffer.concat(chunks).toString('utf8').substring(0, 500);
+          try {
+            const parsed = JSON.parse(bodyStr);
+            errorMessage = parsed?.error?.message || parsed?.msg || bodyStr;
+          } catch {
+            errorMessage = bodyStr || error.message;
+          }
+        } else if (typeof error?.response?.data === 'string') {
+          errorMessage = error.response.data.substring(0, 500);
+        }
+      } catch {
+        errorMessage = `HTTP ${status}: ${error.message}`;
+      }
+      this.logger.error(`KIE Claude stream error: status=${status}, message=${errorMessage}`);
+      yield { content: '', done: true, error: `KIE Claude: ${status || 'NETWORK'} - ${errorMessage}` };
+    }
+  }
+
   async healthCheck(): Promise<boolean> {
     try {
       const res = await this.client.get('/api/v1/jobs/recordInfo', {

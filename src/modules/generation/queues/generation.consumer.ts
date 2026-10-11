@@ -1,4 +1,5 @@
 // src/modules/generation/queues/generation.consumer.ts
+import { userFacingProviderError } from '../../../common/errors/provider-outage';
 import { Processor, Process, OnQueueFailed } from '@nestjs/bull';
 import { forwardRef, Inject, Logger } from '@nestjs/common';
 import { Job } from 'bull';
@@ -192,9 +193,14 @@ export class GenerationConsumer {
         return;
       }
 
+      // Сбой провайдера показываем понятным текстом; сырой — в логе выше.
+      const userMessage = userFacingProviderError(error.message, {
+        refunded: true,
+      });
+
       await this.generationService.updateGeneration(generationId, {
         status: GenerationStatus.FAILED,
-        errorMessage: error.message,
+        errorMessage: userMessage,
         completedAt: new Date(),
       });
 
@@ -203,7 +209,7 @@ export class GenerationConsumer {
       this.generationGateway.sendToUser(userId, 'generation:failed', {
         generationId,
         status: GenerationStatus.FAILED,
-        errorMessage: error.message,
+        errorMessage: userMessage,
         refunded: true,
       });
     } catch (handlerError: any) {

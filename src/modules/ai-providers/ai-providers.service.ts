@@ -27,6 +27,11 @@ import { BillingService } from '../billing/billing.service';
 
 
 
+// Сколько ждём от провайдера хоть какого-то сигнала в текстовом стриме,
+// прежде чем считать его зависшим и переключиться на запасного.
+const TEXT_STREAM_SILENCE_TIMEOUT_MS =
+  Number(process.env.TEXT_STREAM_SILENCE_TIMEOUT_MS) || 90000;
+
 @Injectable()
 export class AiProvidersService {
   private readonly logger = new Logger(AiProvidersService.name);
@@ -146,7 +151,29 @@ export class AiProvidersService {
 
 
 
-        for await (const chunk of stream) {
+        const iterator = stream[Symbol.asyncIterator]();
+        try {
+        while (true) {
+          const next = await this.nextChunkOrTimeout(
+            iterator,
+            TEXT_STREAM_SILENCE_TIMEOUT_MS,
+          );
+
+          // Провайдер молчит: ни текста, ни пульса. Не ждём его собственного
+          // таймаута (у reasoning-моделей он до 12 минут) — идём к запасному.
+          if (next === 'timeout') {
+            streamError = `No response from provider for ${TEXT_STREAM_SILENCE_TIMEOUT_MS / 1000}s (timeout)`;
+            this.logger.warn(
+              `Stream from ${provider.getSlug()} for ${modelSlug} went silent: ${streamError}`,
+            );
+            break;
+          }
+          if (next.done) break;
+          const chunk = next.value;
+
+          // Пульс от провайдера — только сбрасывает таймер тишины
+          if (!chunk.content && !chunk.done && !(chunk as any).error) continue;
+
           // Проверяем наличие ошибки в чанке
           if ((chunk as any).error) {
             streamError = (chunk as any).error;
@@ -177,6 +204,16 @@ export class AiProvidersService {
 
 
 
+          // Пустой ответ без ошибки (у KIE так выглядит часть отказов) —
+          // не отдаём его клиенту, а пробуем следующего провайдера.
+          if (chunk.done && !hasContent) {
+            streamError = 'Model returned empty response. Please try again.';
+            this.logger.warn(
+              `Empty stream from ${provider.getSlug()} for ${modelSlug}`,
+            );
+            break;
+          }
+
           yield chunk;
 
 
@@ -186,12 +223,26 @@ export class AiProvidersService {
             return;
           }
         }
+        } finally {
+          // Закрываем генератор провайдера. Не ждём: зависший запрос
+          // завершится сам по своему таймауту.
+          void iterator.return?.(undefined)?.catch(() => undefined);
+        }
+
+        // Поток закрылся, не прислав ни текста, ни завершающего чанка
+        if (!streamError && !hasContent) {
+          streamError = 'Stream ended with no response';
+        }
+
 
 
 
 
         if (streamError) {
           lastError = streamError;
+          // Часть ответа уже ушла пользователю — второй провайдер начал бы
+          // сначала и приклеил свой текст к обрывку.
+          if (hasContent) break;
           this.logger.warn(
             `Provider ${provider.getSlug()} failed for ${modelSlug}, trying next...`,
           );
@@ -368,6 +419,19 @@ export class AiProvidersService {
 
 
 
+  private nextChunkOrTimeout<T>(
+    iterator: AsyncIterator<T>,
+    timeoutMs: number,
+  ): Promise<IteratorResult<T> | 'timeout'> {
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), timeoutMs);
+    });
+    return Promise.race([iterator.next(), timeout]).finally(() =>
+      clearTimeout(timer),
+    );
+  }
+
   private async executeWithFallback(
     modelSlug: string,
     method:
@@ -429,7 +493,16 @@ export class AiProvidersService {
 
 
 
-        if (result.error?.retryable) {
+        // Для текста запасной провайдер отдаёт ту же модель, поэтому идём
+        // к нему при любой ошибке: KIE часть отказов присылает с HTTP 200
+        // и телом {code, msg}, и они сюда доходят как retryable=false.
+        // У картинок/видео запасной вариант — другая модель, там
+        // переключаемся только на явные 429/5xx.
+        if (result.error?.retryable || method === 'generateText') {
+          this.logger.warn(
+            `${method} via ${provider.getSlug()} failed for ${modelSlug}: ` +
+              `${result.error?.message} — trying next provider`,
+          );
           lastError = result;
           continue;
         }
