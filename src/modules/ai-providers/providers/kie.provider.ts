@@ -1106,7 +1106,19 @@ export class KieProvider extends BaseProvider {
     }
 
     if (r.videoUrls?.length > 0) {
-      input.video_urls = r.videoUrls;
+      if (config.kieModel.includes('gemini-omni')) {
+        // Gemini Omni принимает видео только в video_list: {url, start, ends},
+        // фрагмент не длиннее 10с. Поле video_urls KIE молча игнорировал,
+        // а пользователь платил цену «с видео».
+        // refVideoSeconds с фронта округлён вверх — отнимаем секунду,
+        // чтобы конец фрагмента не вышел за длину ролика.
+        const sec = Number(r.refVideoSeconds) || 11;
+        input.video_list = [
+          { url: r.videoUrls[0], start: 0, ends: Math.max(1, Math.min(10, Math.floor(sec) - 1)) },
+        ];
+      } else {
+        input.video_urls = r.videoUrls;
+      }
     }
 
     // ─── KLING 3.0 specific ───
@@ -1426,20 +1438,20 @@ export class KieProvider extends BaseProvider {
     if (r.firstFrameUrl) input.first_frame_url = r.firstFrameUrl;
     if (r.lastFrameUrl) input.last_frame_url = r.lastFrameUrl;
 
-    // reference_image_urls — картинки-референсы (персонаж/стиль); KIE допускает до 30,
-    // у нас лимит 10 (как у Seedance 2). Общий imgs (imageUrls/referenceImages),
-    // first/last сюда не попадают.
-    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 10);
+    // reference_image_urls — картинки-референсы (персонаж/стиль), лимит KIE — 30.
+    // Общий imgs (imageUrls/referenceImages), first/last сюда не попадают.
+    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 30);
 
     input.web_search = r.webSearch !== undefined ? !!r.webSearch : false;
 
     const vids: string[] = Array.isArray(r.videoUrls)
       ? r.videoUrls.filter(Boolean) : [];
-    if (vids.length > 0) input.reference_video_urls = vids.slice(0, 3);
+    // Лимиты KIE для 2.5: до 10 видео и до 10 аудио (каждое суммарно ≤ 30с)
+    if (vids.length > 0) input.reference_video_urls = vids.slice(0, 10);
 
     const auds: string[] = Array.isArray(r.audioUrls)
       ? r.audioUrls.filter(Boolean) : [];
-    if (auds.length > 0) input.reference_audio_urls = auds.slice(0, 3);
+    if (auds.length > 0) input.reference_audio_urls = auds.slice(0, 10);
 
     // 🆕 return_last_frame — нельзя true вместе с draft (у нас draft не используется)
     if (r.returnLastFrame !== undefined) {
@@ -1449,9 +1461,9 @@ export class KieProvider extends BaseProvider {
     // 🆕 output_format: mp4 | mov
     input.output_format = r.outputFormat === 'mov' ? 'mov' : 'mp4';
   } else {
-    // Seedance 2 / 2-fast — без изменений
+    // Seedance 2 / 2-fast — лимиты KIE: 9 картинок, 3 видео, 3 аудио
     input.web_search = r.webSearch !== undefined ? !!r.webSearch : false;
-    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 10);
+    if (imgs.length > 0) input.reference_image_urls = imgs.slice(0, 9);
 
     const vids: string[] = Array.isArray(r.videoUrls)
       ? r.videoUrls.filter(Boolean) : [];

@@ -63,6 +63,8 @@ const WAN3_MODELS = [
   'wan3.0-image-to-video',
   'wan3.0-prime-text-to-video',
   'wan3.0-prime-image-to-video',
+  'wan3.0-reference-video',
+  'wan3.0-prime-reference-video',
 ];
 
 export class EvolinkProvider extends BaseProvider {
@@ -930,28 +932,43 @@ export class EvolinkProvider extends BaseProvider {
  * generate_audio: bool
  */
   private buildWan3Body(request: VideoGenerationRequest): any {
-    const imgs: string[] = [];
-    if (request.imageUrl) imgs.push(request.imageUrl);
-    for (const u of (request as any).imageUrls || []) {
-      if (u && !imgs.includes(u)) imgs.push(u);
-    }
+    const r = request as any;
+    // Референс-фото (как у Seedance: imageUrls) и начальный/конечный кадр — разные режимы
+    const refs: string[] = (r.imageUrls || []).filter(Boolean);
+    const videos: string[] = (r.videoUrls || []).filter(Boolean);
+    const firstFrame: string | undefined = r.firstFrameUrl || request.imageUrl || undefined;
+    const lastFrame: string | undefined = r.lastFrameUrl || undefined;
 
-    // t2v ↔ i2v: модель выбираем по наличию первого кадра
-    const base = request.model.replace(/-(text|image)-to-video$/, '');
+    // Маршрут: с референсами — reference-video, с кадром — image-to-video,
+    // иначе text-to-video. Линейку (обычная / prime) берём из привязки модели.
+    const base = request.model.replace(/-(text-to-video|image-to-video|reference-video)$/, '');
+    const route =
+      videos.length > 0 || refs.length > 0
+        ? 'reference-video'
+        : firstFrame
+          ? 'image-to-video'
+          : 'text-to-video';
     const body: any = {
-      model: `${base}-${imgs.length > 0 ? 'image' : 'text'}-to-video`,
+      model: `${base}-${route}`,
       prompt: (request.prompt || '').substring(0, 20000),
     };
 
-    if (imgs.length > 0) {
-      body.image_start = imgs[0];
-      if (imgs[1]) body.image_end = imgs[1];
+    if (route === 'reference-video') {
+      // Лимиты Evolink: до 5 видео (суммарно ≤ 15с) и до 10 картинок
+      if (videos.length > 0) body.video_urls = videos.slice(0, 5);
+      if (refs.length > 0) body.image_urls = refs.slice(0, 10);
+    } else if (route === 'image-to-video') {
+      body.image_start = firstFrame;
+      if (lastFrame) body.image_end = lastFrame;
     }
 
     // duration: 2..30 сек (режим -1 «на усмотрение модели» не используем —
-    // цена считается заранее по выбранной длительности)
+    // цена считается заранее по выбранной длительности). С видео вход + выход ≤ 30с.
+    const refSec = route === 'reference-video'
+      ? Math.ceil(Number((request as any).refVideoSeconds) || 0)
+      : 0;
     const reqDur = Number(request.duration) || 5;
-    body.duration = Math.min(30, Math.max(2, Math.round(reqDur)));
+    body.duration = Math.min(30 - Math.min(refSec, 28), Math.max(2, Math.round(reqDur)));
 
     const q = request.resolution;
     body.quality = q === '480p' || q === '1080p' ? q : '720p';

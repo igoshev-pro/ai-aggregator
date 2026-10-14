@@ -69,6 +69,14 @@ export class OpenRouterProvider extends BaseProvider {
     });
   }
 
+  // Онлайн-поиск. Без него запасной канал отвечал «у меня нет доступа
+  // к интернету», хотя у основного провайдера поиск был включён.
+  private webSearchPlugin(request: TextGenerationRequest) {
+    return (request as any).webSearch === true
+      ? { plugins: [{ id: 'web' }] }
+      : {};
+  }
+
   async generateText(request: TextGenerationRequest): Promise<GenerationResult> {
     const start = Date.now();
     try {
@@ -82,6 +90,7 @@ export class OpenRouterProvider extends BaseProvider {
         top_p: request.topP ?? 1,
         stream: false,
         usage: { include: true },
+        ...this.webSearchPlugin(request),
       });
 
       const data = response.data;
@@ -152,6 +161,7 @@ export class OpenRouterProvider extends BaseProvider {
           stream: true,
           usage: { include: true },
           stream_options: { include_usage: true },
+          ...this.webSearchPlugin(request),
         },
         {
           responseType: 'stream',

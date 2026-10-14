@@ -1672,16 +1672,17 @@ export class ProviderRegistryService implements OnModuleInit {
       //     },
       //   ],
       // },
-      // 🆕 Nano Banana 2.1 (KIE) — $0.02 / $0.03 / $0.045 за 1K / 2K / 4K
+      // 🆕 Nano Banana 2.1 (KIE) — себестоимость $0.02 / $0.03 / $0.045 за 1K / 2K / 4K,
+      // цены заказчика (14.10.2026): 1.2 / 1.8 / 2.7
       {
         slug: 'nano-banana-2.1',
         name: 'Nano Banana 2.1',
         displayName: 'Nano Banana 2.1',
         description: 'Новая версия Nano Banana — 1K–4K, до 10 референсов',
         type: 'image',
-        fixedCostPerGeneration: 0.02,
+        fixedCostPerGeneration: 0.0133, // = минимальная цена / 90
         tokensPerDollar: 90,
-        minTokenCost: 1.8,
+        minTokenCost: 1.2,
         sortOrder: 9.1,
         capabilities: ['text_to_image', 'image_to_image'],
         providerMappings: [
@@ -1691,17 +1692,17 @@ export class ProviderRegistryService implements OnModuleInit {
         limits: { maxResolution: '4096x4096' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
         pricingMatrix: [
-          { conditions: { resolution: '4K' }, costInTokens: 4.1, costInDollars: 0.045, label: '4K разрешение' },
-          { conditions: { resolution: '2K' }, costInTokens: 2.7, costInDollars: 0.03, label: '2K разрешение' },
-          { conditions: { resolution: '1K' }, costInTokens: 1.8, costInDollars: 0.02, label: '1K разрешение' },
+          { conditions: { resolution: '4K' }, costInTokens: 2.7, costInDollars: 0.045, label: '4K разрешение' },
+          { conditions: { resolution: '2K' }, costInTokens: 1.8, costInDollars: 0.03, label: '2K разрешение' },
+          { conditions: { resolution: '1K' }, costInTokens: 1.2, costInDollars: 0.02, label: '1K разрешение' },
         ],
         uiParameters: [
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '1K',
             options: [
-              { value: '1K', label: '1K (1.8🔥)' },
-              { value: '2K', label: '2K (2.7🔥)' },
-              { value: '4K', label: '4K (4.1🔥)' },
+              { value: '1K', label: '1K (1.2🔥)' },
+              { value: '2K', label: '2K (1.8🔥)' },
+              { value: '4K', label: '4K (2.7🔥)' },
             ],
           },
           {
@@ -1723,16 +1724,17 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      // 🆕 Seedream 5.0 Flash (KIE) — $0.0162 за картинку, одна цена на 1K / 1.5K / 2K
+      // 🆕 Seedream 5.0 Flash (KIE) — себестоимость $0.0162 за картинку на 1K / 1.5K / 2K,
+      // цена заказчика (14.10.2026): 1 спичка за любое разрешение
       {
         slug: 'seedream-5-flash',
         name: 'Seedream 5.0 Flash',
         displayName: 'Seedream 5.0 Flash',
         description: 'Быстрый Seedream — генерация и редактирование, одна цена до 2K',
         type: 'image',
-        fixedCostPerGeneration: 0.0162,
+        fixedCostPerGeneration: 0.0111, // = цена / 90
         tokensPerDollar: 90,
-        minTokenCost: 1.5,
+        minTokenCost: 1,
         sortOrder: 5.9,
         capabilities: ['text_to_image', 'image_to_image'],
         providerMappings: [
@@ -1741,6 +1743,9 @@ export class ProviderRegistryService implements OnModuleInit {
         defaultParams: { aspect_ratio: '1:1', resolution: '1K' },
         limits: { maxResolution: '2048x2048' },
         inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        pricingMatrix: [
+          { conditions: {}, costInTokens: 1, costInDollars: 0.0162, label: 'Любое разрешение' },
+        ],
         uiParameters: [
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: false, defaultValue: '1K',
@@ -2818,7 +2823,8 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
         limits: { maxDuration: 15 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        // лимит KIE — 9 картинок-референсов
+        inputCapabilities: { acceptsImages: true, maxInputImages: 9 },
         // 🆕 Формула для видео-референса (videoRef=true считается в билинге, НЕ в матрице)
         videoRefPricing: true,
         videoRefRatePerSecond: { '480p': 3.45, '720p': 7.5, '1080p': 18.6, '4k': 38.4 },
@@ -2913,7 +2919,8 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
         limits: { maxDuration: 15 },
-        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        // лимит KIE — 9 картинок-референсов
+        inputCapabilities: { acceptsImages: true, maxInputImages: 9 },
         // 🆕 Формула для видео-референса
         videoRefPricing: true,
         videoRefRatePerSecond: { '480p': 2.7, '720p': 6 },
@@ -3004,15 +3011,16 @@ export class ProviderRegistryService implements OnModuleInit {
   defaultParams: { aspectRatio: 'adaptive', duration: 5, resolution: '720p', sound: true },
   // KIE принимает промпт до 30 000 символов (у остальных видеомоделей — 10 000)
   limits: { maxDuration: 30, maxPromptLength: 30000 },
-  // KIE допускает до 30 картинок-референсов; держим 10, как у Seedance 2
-  inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+  // лимит KIE — 30 картинок-референсов
+  inputCapabilities: { acceptsImages: true, maxInputImages: 30 },
   videoRefPricing: true,
-  videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4, '1080p': 20.6 },
+  // 1080p пересчитан по текущей цене KIE (95 / 158 кредитов/с × 0.3) — 14.10.2026
+  videoRefRatePerSecond: { '480p': 5.1, '720p': 11.4, '1080p': 28.5 },
   videoRefMaxSeconds: 30, // видео-референсы до 30с (у Seedance 2 — 15)
   // Матрица ТОЛЬКО для no-video (videoRef=false)
   pricingMatrix: (() => {
     const rows: any[] = [];
-    const rate: Record<string, number> = { '480p': 8.4, '720p': 18.9, '1080p': 34.2 };
+    const rate: Record<string, number> = { '480p': 8.4, '720p': 18.9, '1080p': 47.4 };
     const dollarsPerToken = 1 / 90;
     for (const resolution of ['480p', '720p', '1080p']) {
       for (let d = 1; d <= 30; d++) {
@@ -3033,7 +3041,7 @@ export class ProviderRegistryService implements OnModuleInit {
       options: [
         { value: '480p', label: '480p (от 8.4🔥/сек)' },
         { value: '720p', label: '720p (от 18.9🔥/сек)' },
-        { value: '1080p', label: '1080p (от 34.2🔥/сек)' },
+        { value: '1080p', label: '1080p (от 47.4🔥/сек)' },
       ],
     },
     {
@@ -3128,16 +3136,17 @@ export class ProviderRegistryService implements OnModuleInit {
       },
 
       // ─── Gemini Omni Video (KIE jobs) ────────────────────
-      // 🆕 Wan 3.0 (Evolink) — $0.0375 / $0.075 / $0.15 за секунду (480p / 720p / 1080p)
+      // 🆕 Wan 3.0 (Evolink) — себестоимость $0.0375 / $0.075 / $0.15 за секунду (480p / 720p / 1080p),
+      // цены заказчика (14.10.2026): 2.4 / 4.8 / 9.6 спички за секунду
       {
         slug: 'wan-3.0',
         name: 'Wan 3.0',
         displayName: 'Wan 3.0',
         description: 'Видеогенерация Alibaba Wan 3.0 — текст/фото → видео, до 30с, звук',
         type: 'video',
-        fixedCostPerGeneration: 0.375, // справочно: 720p × 5с
+        fixedCostPerGeneration: 0.053, // = минимальная цена / 90
         tokensPerDollar: 90,
-        minTokenCost: 6.8, // мин: 480p × 2с
+        minTokenCost: 4.8, // мин: 480p × 2с
         sortOrder: 10.95,
         isPremium: true,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
@@ -3146,10 +3155,15 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
         limits: { maxDuration: 30 },
-        // Картинка = первый кадр (i2v). Последний кадр провайдер умеет, в UI пока не выведен.
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Референс-фото: лимит Evolink — 10. Начальный/конечный кадр — отдельные поля (firstFrameUrl/lastFrameUrl).
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        // С видео-референсом (цены заказчика 14.10.2026): ставка × (длина видео + длина результата).
+        // Evolink: референсы суммарно до 15с, вместе с результатом — до 30с.
+        videoRefPricing: true,
+        videoRefRatePerSecond: { '480p': 2.4, '720p': 4.8, '1080p': 9.6 },
+        videoRefMaxSeconds: 15,
         pricingMatrix: (() => {
-          const rate: Record<string, number> = { '480p': 3.4, '720p': 6.8, '1080p': 13.5 };
+          const rate: Record<string, number> = { '480p': 2.4, '720p': 4.8, '1080p': 9.6 };
           const rows: any[] = [];
           for (const resolution of ['480p', '720p', '1080p']) {
             for (let d = 2; d <= 30; d++) {
@@ -3168,9 +3182,9 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '480p', label: '480p (3.4🔥/сек)' },
-              { value: '720p', label: '720p (6.8🔥/сек)' },
-              { value: '1080p', label: '1080p (13.5🔥/сек)' },
+              { value: '480p', label: '480p (2.4🔥/сек)' },
+              { value: '720p', label: '720p (4.8🔥/сек)' },
+              { value: '1080p', label: '1080p (9.6🔥/сек)' },
             ],
           },
           {
@@ -3201,16 +3215,17 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      // 🆕 Wan 3.0 Prime (Evolink) — $0.0578 / $0.12 / $0.239 за секунду (480p / 720p / 1080p)
+      // 🆕 Wan 3.0 Prime (Evolink) — себестоимость $0.0578 / $0.12 / $0.239 за секунду (480p / 720p / 1080p),
+      // цены заказчика (14.10.2026): 3.7 / 7.6 / 15.2 спички за секунду
       {
         slug: 'wan-3.0-prime',
         name: 'Wan 3.0 Prime',
         displayName: 'Wan 3.0 Prime',
         description: 'Ускоренная версия Wan 3.0 — текст/фото → видео, до 30с, звук',
         type: 'video',
-        fixedCostPerGeneration: 0.6, // справочно: 720p × 5с
+        fixedCostPerGeneration: 0.082, // = минимальная цена / 90
         tokensPerDollar: 90,
-        minTokenCost: 10.4, // мин: 480p × 2с
+        minTokenCost: 7.4, // мин: 480p × 2с
         sortOrder: 10.96,
         isPremium: true,
         capabilities: ['text_to_video', 'image_to_video', 'audio'],
@@ -3219,10 +3234,15 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
         defaultParams: { aspectRatio: '16:9', duration: 5, resolution: '720p', sound: true },
         limits: { maxDuration: 30 },
-        // Картинка = первый кадр (i2v). Последний кадр провайдер умеет, в UI пока не выведен.
-        inputCapabilities: { acceptsImages: true, maxInputImages: 1 },
+        // Референс-фото: лимит Evolink — 10. Начальный/конечный кадр — отдельные поля (firstFrameUrl/lastFrameUrl).
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        // С видео-референсом (цены заказчика 14.10.2026): ставка × (длина видео + длина результата).
+        // Evolink: референсы суммарно до 15с, вместе с результатом — до 30с.
+        videoRefPricing: true,
+        videoRefRatePerSecond: { '480p': 3.7, '720p': 7.6, '1080p': 15.2 },
+        videoRefMaxSeconds: 15,
         pricingMatrix: (() => {
-          const rate: Record<string, number> = { '480p': 5.2, '720p': 10.8, '1080p': 21.5 };
+          const rate: Record<string, number> = { '480p': 3.7, '720p': 7.6, '1080p': 15.2 };
           const rows: any[] = [];
           for (const resolution of ['480p', '720p', '1080p']) {
             for (let d = 2; d <= 30; d++) {
@@ -3241,9 +3261,9 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '480p', label: '480p (5.2🔥/сек)' },
-              { value: '720p', label: '720p (10.8🔥/сек)' },
-              { value: '1080p', label: '1080p (21.5🔥/сек)' },
+              { value: '480p', label: '480p (3.7🔥/сек)' },
+              { value: '720p', label: '720p (7.6🔥/сек)' },
+              { value: '1080p', label: '1080p (15.2🔥/сек)' },
             ],
           },
           {
@@ -3274,8 +3294,8 @@ export class ProviderRegistryService implements OnModuleInit {
           },
         ],
       },
-      // 🆕 Gemini Omni 1.1 Flash (KIE). Себестоимость и цены — как у Gemini Omni Video,
-      // плюс 360p по цене 720p. Видео-референс пока не подключён.
+      // 🆕 Gemini Omni 1.1 Flash (KIE). Цены заказчика (14.10.2026) — как у Gemini Omni Video,
+      // плюс 360p по цене 720p. С видео — фиксированно за генерацию.
       {
         slug: 'gemini-omni-1.1-flash',
         name: 'Gemini Omni 1.1 Flash',
@@ -3301,15 +3321,24 @@ export class ProviderRegistryService implements OnModuleInit {
             '4k': { 4: 44.1, 6: 50.4, 8: 56.7, 10: 63 },
           };
           const rows: any[] = [];
+          const shown = (r: string) => (r === '4k' ? '4K' : r);
           for (const [resolution, prices] of Object.entries(byDuration)) {
             for (const [duration, tokens] of Object.entries(prices)) {
               rows.push({
-                conditions: { resolution, duration: Number(duration) },
+                conditions: { resolution, duration: Number(duration), videoRef: false },
                 costInTokens: tokens,
                 costInDollars: Math.round((tokens / 90) * 1000) / 1000,
-                label: `${resolution === '4k' ? '4K' : resolution} × ${duration}с`,
+                label: `${shown(resolution)} × ${duration}с`,
               });
             }
+            // С видео длительность выбирает модель — цена за генерацию
+            const withVideo = resolution === '4k' ? 75.6 : 50.4;
+            rows.push({
+              conditions: { resolution, videoRef: true },
+              costInTokens: withVideo,
+              costInDollars: Math.round((withVideo / 90) * 1000) / 1000,
+              label: `${shown(resolution)} с видео`,
+            });
           }
           return rows;
         })(),

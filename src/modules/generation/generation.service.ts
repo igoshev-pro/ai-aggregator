@@ -368,6 +368,17 @@ export class GenerationService {
       );
     }
 
+    // 🆕 Wan 3.0: вход + выход не длиннее 30с — провайдер урежет результат,
+    // поэтому и цену считаем за ту длительность, которую реально отправим.
+    if (
+      dto.modelSlug.startsWith('wan-3.0') &&
+      Array.isArray(dto.videoUrls) &&
+      dto.videoUrls.length > 0
+    ) {
+      const refSec = Math.min(15, Math.ceil(Number(dto.refVideoSeconds) || 0));
+      effectiveDuration = Math.max(2, Math.min(Number(effectiveDuration) || 5, 30 - refSec));
+    }
+
     // 🔧 Дефолты из модели — чтобы pricingMatrix точно сматчилась.
     // resolution: Seedance/Wan/Runway матрицы зависят от него.
     // sound: приводим к явному boolean (undefined ломает матч по conditions.sound).
@@ -537,6 +548,8 @@ export class GenerationService {
           returnLastFrame: p.returnLastFrame,
           outputFormat: p.outputFormat,
           autoDuration: p.autoDuration,
+          // 🆕 длина видео-референсов: Gemini Omni (video_list) и Wan 3.0 (лимит 30с на вход+выход)
+          refVideoSeconds: p.refVideoSeconds,
         },
       },
       {
