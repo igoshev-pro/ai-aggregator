@@ -2676,10 +2676,11 @@ export class BillingService implements OnApplicationBootstrap {
 
         if (Number.isFinite(rate) && rate > 0) {
           const outSec = Math.max(0, Number(params?.duration) || 0);
-          const refSec = Math.min(
+          let refSec = Math.min(
             Number((model as any).videoRefMaxSeconds) || 15,
             Math.max(0, Math.ceil(Number(params?.refVideoSeconds) || 0)),
           );
+          if ((model as any).videoRefBillInputAtLeastOutput) refSec = Math.max(refSec, outSec);
           const totalSec = outSec + refSec;
 
           if (totalSec > 0) {

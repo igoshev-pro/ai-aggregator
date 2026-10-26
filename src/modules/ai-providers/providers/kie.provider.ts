@@ -344,6 +344,25 @@ const VIDEO_MODEL_MAP: Record<string, VideoModelConfig> = {
     durations: ['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'],
     aspectRatios: ['16:9', '9:16', '1:1'],
   },
+  // Kling 4.0: одна модель в UI, эндпоинт выбирается в generateKling4Video
+  'kling-4.0/reference-to-video': {
+    kieModel: 'kling-4.0/reference-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasResolution: true,
+    durations: Array.from({ length: 28 }, (_, i) => String(i + 3)), // 3–30 сек
+    aspectRatios: ['auto', '16:9', '9:16', '1:1', '21:9'],
+  },
+  'kling-4.0/keyframe-to-video': {
+    kieModel: 'kling-4.0/keyframe-to-video',
+    apiType: 'jobs',
+    statusApiType: 'jobs',
+    hasImageInput: true,
+    hasResolution: true,
+    durations: Array.from({ length: 28 }, (_, i) => String(i + 3)), // 3–30 сек
+    aspectRatios: ['auto', '16:9', '9:16', '1:1', '21:9'],
+  },
   'kling-3.0/motion-control': {
     kieModel: 'kling-3.0/motion-control',
     apiType: 'jobs',
@@ -780,6 +799,9 @@ export class KieProvider extends BaseProvider {
       if (config.kieModel.startsWith('bytedance/seedance')) {
         return await this.generateSeedanceVideo(request, config, start);
       }
+      if (config.kieModel.startsWith('kling-4.0/')) {
+        return await this.generateKling4Video(request, start);
+      }
       // 🆕 Topaz Video Upscale
       if (config.kieModel === 'topaz/video-upscale') {
         return await this.generateTopazUpscale(request, config, start);
@@ -1205,6 +1227,93 @@ export class KieProvider extends BaseProvider {
     return {
       success: true,
       data: { taskId, urls: [], metadata: { model: config.kieModel, apiType: config.statusApiType } },
+      responseTimeMs: Date.now() - start,
+      providerSlug: this.slug,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // 🆕 KLING 4.0 (KIE jobs)
+  // Начальный/конечный кадр → keyframe-to-video, иначе reference-to-video
+  // (фото до 10, видео до 5, элементы до 7, голоса до 3;
+  // без референсов — обычный text-to-video).
+  // Звук без видео-референса генерируется всегда.
+  // ═══════════════════════════════════════════════════════
+  private async generateKling4Video(
+    request: VideoGenerationRequest,
+    start: number,
+  ): Promise<GenerationResult> {
+    const r = request as any;
+    const isKeyframe = !!(r.firstFrameUrl || r.lastFrameUrl);
+    const kieModel = isKeyframe ? 'kling-4.0/keyframe-to-video' : 'kling-4.0/reference-to-video';
+
+    const input: Record<string, any> = {
+      prompt: request.prompt,
+      duration: Math.min(30, Math.max(3, Math.round(Number(r.duration) || 5))),
+      resolution: r.resolution === '1080p' ? '1080p' : '720p',
+    };
+    if (['auto', '16:9', '9:16', '1:1', '21:9'].includes(r.aspectRatio)) {
+      input.aspect_ratio = r.aspectRatio;
+    }
+
+    if (isKeyframe) {
+      // формат при кадрах KIE берёт из первого кадра
+      if (r.firstFrameUrl) input.first_frame_url = r.firstFrameUrl;
+      if (r.lastFrameUrl) input.last_frame_url = r.lastFrameUrl;
+    } else {
+      const images: string[] = Array.isArray(r.imageUrls) && r.imageUrls.length > 0
+        ? r.imageUrls.filter(Boolean)
+        : (r.imageUrl ? [r.imageUrl] : []);
+      if (images.length > 0) input.image_urls = images.slice(0, 10);
+      const videos: string[] = Array.isArray(r.videoUrls) ? r.videoUrls.filter(Boolean) : [];
+      if (videos.length > 0) {
+        input.video_urls = videos.slice(0, 5);
+        input.keep_original_sound = r.keepOriginalSound === true;
+      }
+      // элементы: персонаж/объект из 2–4 фото, в промпте — @name
+      if (Array.isArray(r.klingElements) && r.klingElements.length > 0) {
+        // видео-элемент: один ролик 3–8с, всегда персонаж (до 3 таких)
+        input.elements = r.klingElements
+          .filter((e: any) => e && e.name && (e.videoUrl || Array.isArray(e.elementInputUrls)))
+          .slice(0, 7)
+          .map((e: any) => {
+            const el: Record<string, any> = { name: String(e.name) };
+            if (e.videoUrl) {
+              el.video_url = e.videoUrl;
+              el.tag = 'character';
+            } else {
+              el.image_urls = e.elementInputUrls.filter(Boolean).slice(0, 4);
+            }
+            const desc = String(e.description || '').trim();
+            if (desc) el.description = desc.substring(0, 100); // лимит KIE — 100 символов
+            // голос привязывается только к персонажу; у фото-элемента tag не задаём
+            if (e.voiceUrl) el.voice_url = e.voiceUrl;
+            return el;
+          });
+      }
+      if (Array.isArray(r.klingVoices) && r.klingVoices.length > 0) {
+        input.voices = r.klingVoices
+          .filter((v: any) => v && v.name && v.audioUrl)
+          .slice(0, 3)
+          .map((v: any) => ({ name: String(v.name), audio_url: v.audioUrl }));
+      }
+    }
+
+    this.logger.debug(
+      `KIE Kling4 generate: model=${kieModel}, input=${JSON.stringify(input).substring(0, 500)}`,
+    );
+
+    const response = await this.client.post('/api/v1/jobs/createTask', { model: kieModel, input });
+    const data = response.data;
+    if (data.code !== 200) {
+      throw new Error(data.msg || `KIE Kling4 task creation failed (code ${data.code})`);
+    }
+    const taskId = data.data?.taskId;
+    if (!taskId) throw new Error('No taskId in KIE Kling4 response');
+
+    return {
+      success: true,
+      data: { taskId, urls: [], metadata: { model: kieModel, apiType: 'jobs' } },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };

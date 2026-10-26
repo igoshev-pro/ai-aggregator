@@ -306,6 +306,8 @@ export class ProviderRegistryService implements OnModuleInit {
         videoRefRatePerSecond:
           (modelData as any).videoRefRatePerSecond ?? {},
         videoRefMaxSeconds: (modelData as any).videoRefMaxSeconds ?? 15,
+        videoRefBillInputAtLeastOutput:
+          (modelData as any).videoRefBillInputAtLeastOutput ?? false,
       };
 
       const setOnCreate: Record<string, any> = {
@@ -432,6 +434,8 @@ export class ProviderRegistryService implements OnModuleInit {
           videoRefRatePerSecond:
             (modelData as any).videoRefRatePerSecond ?? {},
           videoRefMaxSeconds: (modelData as any).videoRefMaxSeconds ?? 15,
+          videoRefBillInputAtLeastOutput:
+            (modelData as any).videoRefBillInputAtLeastOutput ?? false,
         };
 
         const matrix = (modelData as any).pricingMatrix;
@@ -2353,6 +2357,86 @@ export class ProviderRegistryService implements OnModuleInit {
               { value: '16:9', label: 'Горизонталь (16:9)' },
               { value: '9:16', label: 'Вертикаль (9:16)' },
               { value: '1:1', label: 'Квадрат (1:1)' },
+            ],
+          },
+        ],
+      },
+
+      // ─── Kling 4.0 (KIE) — reference-to-video / keyframe-to-video ───
+      // KIE (26.10.2026): без видео 28.5 / 42.5 кредитов/с (720p / 1080p),
+      // с видео-референсом 17 / 25.5 кредитов/с, но вход тарифицируется
+      // не меньше длины результата. Спички = кредиты × 0.3.
+      {
+        slug: 'kling-4.0',
+        name: 'Kling 4.0',
+        displayName: 'Kling 4.0',
+        description: 'Kling 4.0 — референсы (фото и видео), ключевые кадры, звук, до 30с',
+        type: 'video',
+        fixedCostPerGeneration: 0.1425, // справочно (720p × 1с без видео)
+        tokensPerDollar: 90,
+        minTokenCost: 25.65, // мин: 720p × 3с без видео
+        sortOrder: 6.9,
+        isPremium: true,
+        capabilities: ['text_to_video', 'image_to_video', 'audio', 'reference_to_video', 'first_last_frame'],
+        providerMappings: [
+          { providerSlug: 'kie', modelId: 'kling-4.0/reference-to-video', priority: 1, isActive: true },
+        ],
+        defaultParams: { aspectRatio: 'auto', duration: 5, resolution: '720p' },
+        limits: { maxDuration: 30, maxPromptLength: 8000 },
+        // лимит KIE — 10 картинок-референсов
+        inputCapabilities: { acceptsImages: true, maxInputImages: 10 },
+        videoRefPricing: true,
+        videoRefRatePerSecond: { '720p': 5.1, '1080p': 7.65 },
+        videoRefMaxSeconds: 150, // до 5 видео по 30с
+        videoRefBillInputAtLeastOutput: true,
+        // Матрица ТОЛЬКО для no-video (videoRef=false)
+        pricingMatrix: (() => {
+          const rows: any[] = [];
+          const rate: Record<string, number> = { '720p': 8.55, '1080p': 12.75 };
+          for (const resolution of ['720p', '1080p']) {
+            for (let d = 3; d <= 30; d++) {
+              const tokens = Math.round(rate[resolution] * d * 100) / 100;
+              rows.push({
+                conditions: { resolution, videoRef: false, duration: d },
+                costInTokens: tokens,
+                costInDollars: Math.round((tokens / 90) * 1000) / 1000,
+                label: `${resolution} × ${d}с`,
+              });
+            }
+          }
+          return rows;
+        })(),
+        uiParameters: [
+          {
+            key: 'resolution', label: 'Разрешение', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '720p', label: '720p (8.55🔥/сек)' },
+              { value: '1080p', label: '1080p (12.75🔥/сек)' },
+            ],
+          },
+          {
+            key: 'duration', label: 'Длительность', type: 'select', affectsPrice: true, defaultValue: 5,
+            options: (() => {
+              const o: any[] = [];
+              for (let d = 3; d <= 30; d++) o.push({ value: d, label: `${d} сек` });
+              return o;
+            })(),
+          },
+          {
+            key: 'videoRef', label: 'Видео-референс', type: 'boolean', affectsPrice: true, defaultValue: false,
+            options: [
+              { value: false, label: 'Без видео' },
+              { value: true, label: 'С видео (платится и вход, и выход)' },
+            ],
+          },
+          {
+            key: 'aspectRatio', label: 'Формат', type: 'select', affectsPrice: false, defaultValue: 'auto',
+            options: [
+              { value: 'auto', label: 'Авто (по референсам)' },
+              { value: '16:9', label: 'Горизонталь (16:9)' },
+              { value: '9:16', label: 'Вертикаль (9:16)' },
+              { value: '1:1', label: 'Квадрат (1:1)' },
+              { value: '21:9', label: 'Кино (21:9)' },
             ],
           },
         ],

@@ -144,6 +144,30 @@ export class KlingElementDto {
   @ApiProperty({ description: 'Element image URLs (2-4 required)' })
   @IsArray()
   elementInputUrls: string[];
+
+  // 🆕 Kling 4.0: видео-элемент (персонаж по ролику 3–8с) вместо фото
+  @ApiPropertyOptional({ description: 'Kling 4.0: character video instead of images' })
+  @IsOptional()
+  @IsString()
+  videoUrl?: string;
+
+  // 🆕 Kling 4.0: голос, привязанный к персонажу
+  @ApiPropertyOptional({ description: 'Kling 4.0: voice bound to the element' })
+  @IsOptional()
+  @IsString()
+  voiceUrl?: string;
+}
+
+// 🆕 Kling 4.0 voice (named audio reference, @name in prompt)
+export class KlingVoiceDto {
+  @ApiProperty({ description: 'Voice name (referenced via @name in prompt)' })
+  @IsString()
+  @MaxLength(20)
+  name: string;
+
+  @ApiProperty({ description: 'Reference audio URL' })
+  @IsString()
+  audioUrl: string;
 }
 
 export class VideoGenerationDto {
@@ -328,6 +352,17 @@ export class VideoGenerationDto {
   @Type(() => KlingElementDto)
   klingElements?: KlingElementDto[];
 
+  // 🆕 Kling 4.0: голоса-референсы (до 3)
+  @ApiPropertyOptional({
+    description: 'Kling 4.0: referenced voices (up to 3)',
+    type: [KlingVoiceDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => KlingVoiceDto)
+  klingVoices?: KlingVoiceDto[];
+
   // 🆕 Kling 2.5 Turbo: cfg scale (креативность) 0-1
   @ApiPropertyOptional({ description: 'Kling 2.5: CFG scale 0-1 (creativity)' })
   @IsOptional()
@@ -370,7 +405,7 @@ export class VideoGenerationDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  @Max(60)
+  @Max(150) // Kling 4.0: до 5 видео по 30с
   refVideoSeconds?: number;
 
   // 🆕 Seedance 2.5: отдельные кадры (не путать с imageUrl/imageUrls = референсы)
@@ -400,6 +435,12 @@ export class VideoGenerationDto {
   @IsOptional()
   @IsBoolean()
   autoDuration?: boolean;
+
+  // 🆕 Kling 4.0: оставить звук видео-референсов (без видео звук генерируется всегда)
+  @ApiPropertyOptional({ description: 'Kling 4.0: keep original sound of reference videos' })
+  @IsOptional()
+  @IsBoolean()
+  keepOriginalSound?: boolean;
 }
 
 export class DialogueLineDto {

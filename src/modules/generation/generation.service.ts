@@ -393,6 +393,12 @@ export class GenerationService {
         ? dto.sound
         : (model.defaultParams as any)?.sound ?? false);
 
+    // 🆕 Kling 4.0: видео-элемент KIE тарифицирует как видео-вход
+    // (его секунды фронт добавляет в refVideoSeconds)
+    const hasVideoInput =
+      !!(dto.videoUrls && dto.videoUrls.length > 0) ||
+      !!dto.klingElements?.some((e) => !!e.videoUrl);
+
     const priceParams = {
       mode: dto.mode,
       duration: effectiveDuration,
@@ -402,7 +408,7 @@ export class GenerationService {
       sound: effectiveSound,
       generateAudio: dto.generateAudio,
       stable: dto.stable,
-      videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
+      videoRef: hasVideoInput,
       // 🆕 суммарные секунды видео-референсов (для посекундной формулы Seedance 2)
       refVideoSeconds: Number(dto.refVideoSeconds) || 0,
       hasInputImage:
@@ -467,6 +473,7 @@ export class GenerationService {
         multiShots: dto.multiShots,
         multiPrompt: dto.multiPrompt,
         klingElements: dto.klingElements,
+        klingVoices: dto.klingVoices,
         cfgScale: dto.cfgScale,
         nsfwChecker: dto.nsfwChecker,
         fixedLens: dto.fixedLens,
@@ -478,9 +485,10 @@ export class GenerationService {
         returnLastFrame: dto.returnLastFrame,
         outputFormat: dto.outputFormat,
         autoDuration: dto.autoDuration,
+        keepOriginalSound: dto.keepOriginalSound,
         // 🆕 для пересчёта той же цены в billing (recordMediaGeneration)
         refVideoSeconds: Number(dto.refVideoSeconds) || 0,
-        videoRef: !!(dto.videoUrls && dto.videoUrls.length > 0),
+        videoRef: hasVideoInput,
       },
       tokensCost: costInTokens,
       costInDollars,
@@ -537,6 +545,7 @@ export class GenerationService {
           multiShots: p.multiShots,
           multiPrompt: p.multiPrompt,
           klingElements: p.klingElements,
+          klingVoices: p.klingVoices,
           cfgScale: p.cfgScale,
           nsfwChecker: p.nsfwChecker,
           fixedLens: p.fixedLens,
@@ -548,6 +557,7 @@ export class GenerationService {
           returnLastFrame: p.returnLastFrame,
           outputFormat: p.outputFormat,
           autoDuration: p.autoDuration,
+          keepOriginalSound: p.keepOriginalSound,
           // 🆕 длина видео-референсов: Gemini Omni (video_list) и Wan 3.0 (лимит 30с на вход+выход)
           refVideoSeconds: p.refVideoSeconds,
         },

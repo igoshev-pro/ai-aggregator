@@ -230,6 +230,11 @@ export class AIModel {
   @Prop({ default: 15 })
   videoRefMaxSeconds!: number;
 
+  // Kling 4.0: вход тарифицируется не меньше длины результата —
+  // rate × (out + max(out, refVideoSeconds)). У Seedance/Wan — просто out + ref.
+  @Prop({ default: false })
+  videoRefBillInputAtLeastOutput!: boolean;
+
   // ═══════════════════════════════════════════════════════════════
   // ⚠️ DEPRECATED — оставлены для обратной совместимости и миграции.
   // BillingService использует их как fallback, если новые поля = 0.
