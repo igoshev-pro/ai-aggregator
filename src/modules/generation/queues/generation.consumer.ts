@@ -61,7 +61,11 @@ export class GenerationConsumer {
           result = await this.aiProvidersService.generateImage(modelSlug, request);
           break;
         case GenerationType.VIDEO:
-          result = await this.aiProvidersService.generateVideo(modelSlug, request);
+          // idempotencyKey — Higgsfield: повтор задачи вернёт тот же request_id
+          result = await this.aiProvidersService.generateVideo(modelSlug, {
+            ...request,
+            idempotencyKey: generationId,
+          });
           break;
         case GenerationType.AUDIO:
           result = await this.aiProvidersService.generateAudio(modelSlug, request);

@@ -11,6 +11,7 @@ import { OpenRouterImageProvider } from './openrouter-image.provider';
 import { EvolinkProvider } from './evolink.provider';
 import { KieProvider } from './kie.provider';
 import { ReplicateProvider } from './replicate.provider';
+import { HiggsfieldProvider } from './higgsfield.provider';
 import { Provider, ProviderDocument } from '../schemas/provider.schema';
 import { AIModel, ModelDocument } from '../schemas/model.schema';
 
@@ -96,6 +97,17 @@ export class ProviderRegistryService implements OnModuleInit {
         }),
       );
       this.logger.log('✅ Replicate provider initialized');
+    }
+
+    if (providerConfigs.higgsfield?.apiKey) {
+      this.providers.set(
+        'higgsfield',
+        new HiggsfieldProvider({
+          apiKey: providerConfigs.higgsfield.apiKey,
+          baseUrl: providerConfigs.higgsfield.baseUrl,
+        }),
+      );
+      this.logger.log('✅ Higgsfield provider initialized');
     }
 
     await this.syncProvidersToDB();
@@ -2499,6 +2511,53 @@ export class ProviderRegistryService implements OnModuleInit {
               for (let d = 3; d <= 30; d++) opts.push({ value: d, label: `${d} сек` });
               return opts;
             })(),
+          },
+        ],
+      },
+
+      // ─── Genjutsu (Higgsfield API) — перенос движения / замена объекта ─────
+      // Есть только у Higgsfield (на KIE/Evolink нет, 29.10.2026).
+      // Себестоимость за секунду (open.higgsfield.ai/pricing, без скидки 50%,
+      // которая действует сейчас): 480p $0.318, 720p $0.681, 1080p $1.632.
+      // Цена = $ × 60 (то же, что кредиты KIE × 0.3).
+      // Длина результата = длина исходника (4–30с, длиннее Higgsfield режет до 30),
+      // поэтому duration = секунды исходника, а цена — rate × duration через
+      // videoRefPricing (как у Topaz; refVideoSeconds не шлём).
+      {
+        slug: 'genjutsu',
+        name: 'Genjutsu',
+        displayName: 'Higgsfield Genjutsu',
+        description: 'Перенос движения из видео на персонажа с фото или замена объекта в видео',
+        type: 'video',
+        fixedCostPerGeneration: 1.272, // 480p × 4с в $
+        tokensPerDollar: 60,
+        minTokenCost: 76.32, // 480p × 4с
+        sortOrder: 8.5,
+        capabilities: ['video_to_video', 'motion_transfer'],
+        providerMappings: [
+          { providerSlug: 'higgsfield', modelId: 'higgsfield/genjutsu', priority: 1, isActive: true },
+        ],
+        defaultParams: { mode: 'motion-transfer', resolution: '720p', duration: 5 },
+        limits: { maxDuration: 30 },
+        inputCapabilities: { acceptsVideo: true, acceptsImages: true, maxInputImages: 8 },
+        videoRefPricing: true,
+        videoRefRatePerSecond: { '480p': 19.08, '720p': 40.86, '1080p': 97.92 },
+        pricingMatrix: [],
+        uiParameters: [
+          {
+            key: 'mode', label: 'Режим', type: 'select', affectsPrice: false, defaultValue: 'motion-transfer',
+            options: [
+              { value: 'motion-transfer', label: 'Перенос движения на персонажа' },
+              { value: 'object-swap', label: 'Замена объекта' },
+            ],
+          },
+          {
+            key: 'resolution', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: '720p',
+            options: [
+              { value: '480p', label: '480p (19.08🔥/сек)' },
+              { value: '720p', label: '720p (40.86🔥/сек)' },
+              { value: '1080p', label: '1080p (97.92🔥/сек)' },
+            ],
           },
         ],
       },

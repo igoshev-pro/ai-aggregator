@@ -379,6 +379,23 @@ export class GenerationService {
       effectiveDuration = Math.max(2, Math.min(Number(effectiveDuration) || 5, 30 - refSec));
     }
 
+    // 🆕 Genjutsu (Higgsfield): результат той же длины, что исходное видео
+    // (короче 4с не принимает, длиннее 30с режет). duration = секунды исходника,
+    // цена — ставка × duration (videoRefPricing). Без видео и фото Higgsfield
+    // отклонит запрос — проверяем до списания.
+    if (dto.modelSlug === 'genjutsu') {
+      if (!dto.videoUrls?.length) {
+        throw new BadRequestException('Genjutsu: загрузите исходное видео.');
+      }
+      if (!dto.imageUrls?.length) {
+        throw new BadRequestException('Genjutsu: добавьте хотя бы одно фото.');
+      }
+      if (dto.imageUrls.length > 8) {
+        throw new BadRequestException('Genjutsu: не больше 8 фото.');
+      }
+      effectiveDuration = Math.min(30, Math.max(4, Math.ceil(Number(effectiveDuration) || 5)));
+    }
+
     // 🔧 Дефолты из модели — чтобы pricingMatrix точно сматчилась.
     // resolution: Seedance/Wan/Runway матрицы зависят от него.
     // sound: приводим к явному boolean (undefined ломает матч по conditions.sound).

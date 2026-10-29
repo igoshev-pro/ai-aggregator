@@ -74,6 +74,7 @@ export interface VideoGenerationRequest {
   mode?: string;               // 🆕 Kling std/pro
   removeWatermark?: boolean;
   resizeMode?: string;
+  idempotencyKey?: string;     // 🆕 Higgsfield: id генерации, чтобы retry Bull не создавал вторую задачу
 }
 
 export interface AudioGenerationRequest {

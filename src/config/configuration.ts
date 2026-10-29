@@ -39,6 +39,16 @@ export default () => ({
     replicate: {
       apiKey: process.env.REPLICATE_API_KEY || '',
     },
+    // Higgsfield (Genjutsu): ключ из console.higgsfield.ai — пара ID + секрет.
+    // Можно задать одной строкой HIGGSFIELD_API_KEY="<id>:<secret>".
+    higgsfield: {
+      apiKey:
+        process.env.HIGGSFIELD_API_KEY ||
+        (process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_KEY_SECRET
+          ? `${process.env.HIGGSFIELD_API_KEY_ID}:${process.env.HIGGSFIELD_API_KEY_SECRET}`
+          : ''),
+      baseUrl: process.env.HIGGSFIELD_BASE_URL || 'https://api.higgsfield.ai',
+    },
   },
 
   payment: {
