@@ -18,6 +18,12 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3001);
   const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');
 
+  // За nginx: без этого req.ip = адрес прокси, и все лимиты по IP
+  // (ThrottlerGuard, регистрации) считаются одним счётчиком на весь сайт.
+  // Доверяем X-Forwarded-For только от локальных/приватных адресов
+  // (nginx на хосте, docker-сеть): прямой запрос извне подделать IP не сможет.
+  app.getHttpAdapter().getInstance().set('trust proxy', 'loopback, linklocal, uniquelocal');
+
   // Security
   app.use(helmet());
 

@@ -12,6 +12,7 @@ import { AdminBootstrapService } from './admin-bootstrap.service';
 import { BotAuthService } from './bot-auth.service';
 import { MailService } from './mail.service';
 import { PasswordResetService } from './password-reset.service';
+import { EmailDomainGuardService } from './email-domain-guard.service';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { PasswordResetService } from './password-reset.service';
     JwtStrategy,
     MailService,
     PasswordResetService,
+    EmailDomainGuardService,
   ],
   exports: [AuthService, AdminBootstrapService, BotAuthService],
 })

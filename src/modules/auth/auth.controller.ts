@@ -7,6 +7,7 @@ import {
   UseGuards,
   HttpCode,
   NotFoundException,
+  Ip,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -70,9 +71,10 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({ summary: 'Регистрация по почте и паролю' })
   @HttpCode(200)
-  async register(@Body() dto: RegisterEmailDto) {
+  async register(@Body() dto: RegisterEmailDto, @Ip() ip: string) {
     this.assertEmailAuthEnabled();
-    const result = await this.authService.registerWithEmail(dto);
+    // ip настоящий только при trust proxy в main.ts (за nginx иначе 127.0.0.1).
+    const result = await this.authService.registerWithEmail(dto, ip);
     return { success: true, data: result };
   }
 

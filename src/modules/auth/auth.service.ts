@@ -18,6 +18,7 @@ import { ReferralService } from '@/modules/referral/referral.service';
 import { AdminBootstrapService } from './admin-bootstrap.service';
 import { MailService } from './mail.service';
 import { PasswordResetService } from './password-reset.service';
+import { EmailDomainGuardService } from './email-domain-guard.service';
 
 /** Стоимость bcrypt. 12 — разумный баланс: ~250мс на вход. */
 const BCRYPT_ROUNDS = 12;
@@ -35,6 +36,7 @@ export class AuthService {
     private adminBootstrap: AdminBootstrapService,
     private mailService: MailService,
     private passwordReset: PasswordResetService,
+    private emailGuard: EmailDomainGuardService,
   ) {
     this.isDev = this.configService.get('NODE_ENV') !== 'production';
   }
@@ -205,7 +207,15 @@ export class AuthService {
    * восстановление: так пароль привяжется к существующему балансу, а не
    * появится дубль с нулевым.
    */
-  async registerWithEmail(dto: RegisterEmailDto): Promise<AuthResponseDto> {
+  async registerWithEmail(
+    dto: RegisterEmailDto,
+    ip?: string,
+  ): Promise<AuthResponseDto> {
+    // Анти-фарм стартовых спичек: временная почта, домен без MX,
+    // много регистраций с одного IP. См. EmailDomainGuardService.
+    await this.emailGuard.assertIpQuota(ip);
+    await this.emailGuard.assertEmailAllowed(dto.email);
+
     const existing = await this.usersService.findByEmail(dto.email);
 
     if (existing) {
@@ -229,6 +239,8 @@ export class AuthService {
       referralCode: dto.referralCode,
     });
 
+    await this.emailGuard.recordRegistration(ip);
+
     if (user.referredBy) {
       try {
         await this.referralService.recordReferral(
@@ -242,7 +254,7 @@ export class AuthService {
 
     await this.adminBootstrap.syncRoleFromEnv(user);
 
-    this.logger.log(`Регистрация по почте: ${dto.email}`);
+    this.logger.log(`Регистрация по почте: ${dto.email} (ip ${ip || '?'})`);
     return this.buildAuthResponse(user);
   }
 
