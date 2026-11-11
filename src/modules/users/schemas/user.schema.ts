@@ -20,7 +20,7 @@ export class User {
 
 
   // ─── Telegram Auth ────────────────────────────────────────
-  @Prop({ type: Number, default: null, sparse: true })
+  @Prop({ type: Number, default: null })
   telegramId: number | null;
 
 
@@ -33,7 +33,7 @@ export class User {
 
 
   // ─── Email Auth ───────────────────────────────────────────
-  @Prop({ type: String, default: null, sparse: true })
+  @Prop({ type: String, default: null })
   email: string | null;
 
 
@@ -56,7 +56,7 @@ export class User {
 
 
   // ─── Google Auth ──────────────────────────────────────────
-  @Prop({ type: String, default: null, sparse: true })
+  @Prop({ type: String, default: null })
   googleId: string | null;
 
 
@@ -282,30 +282,29 @@ export const UserSchema = SchemaFactory.createForClass(User);
 
 
 
-// Индексы с правильной конфигурацией
+// Уникальность способов входа.
+//
+// Раньше здесь стояло sparse + partialFilterExpression {$ne: null}, а у полей
+// в @Prop — ещё и sparse: true. Mongo не принимает $ne в фильтре частичного
+// индекса и не даёт совмещать его со sparse, а sparse из @Prop занимал имя
+// email_1 обычным (не уникальным) индексом. В итоге уникальных индексов в
+// базе не было вовсе, и параллельные регистрации заводили дубли.
+//
+// Частичный индекс только по реальным значениям: null у Telegram-пользователя
+// без почты (и наоборот) не участвует и не конфликтует. Фильтр через $gt, а
+// не $type: из {email: 'x'} планировщик выводит 'x' > '' и использует индекс
+// для поиска, а с $type такой вывод не гарантирован.
 UserSchema.index(
   { telegramId: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: { telegramId: { $ne: null } },
-  },
+  { unique: true, partialFilterExpression: { telegramId: { $gt: 0 } } },
 );
 UserSchema.index(
   { email: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: { email: { $ne: null } },
-  },
+  { unique: true, partialFilterExpression: { email: { $gt: '' } } },
 );
 UserSchema.index(
   { googleId: 1 },
-  {
-    unique: true,
-    sparse: true,
-    partialFilterExpression: { googleId: { $ne: null } },
-  },
+  { unique: true, partialFilterExpression: { googleId: { $gt: '' } } },
 );
 UserSchema.index({ username: 1 });
 UserSchema.index({ role: 1 });
