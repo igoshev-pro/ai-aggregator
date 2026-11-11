@@ -39,6 +39,10 @@ export class User {
 
 
 
+  /** Почта без точек/+меток (см. canonicalEmail) — только для поиска дублей. */
+  @Prop({ type: String, default: null, index: true })
+  emailCanonical: string | null;
+
   @Prop({ type: String, default: null, select: false })
   passwordHash: string | null;
 

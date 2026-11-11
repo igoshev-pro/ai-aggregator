@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
@@ -32,13 +33,93 @@ export function normalizeEmail(email: string): string {
   return (email || '').trim().toLowerCase();
 }
 
+const GMAIL_DOMAINS = new Set(['gmail.com', 'googlemail.com']);
+const YANDEX_DOMAINS = new Set([
+  'yandex.ru', 'ya.ru', 'yandex.com', 'yandex.by', 'yandex.kz', 'yandex.ua',
+]);
+
+/**
+ * Канонический вид ящика — для поиска дублей, НЕ для входа.
+ *
+ * Почтовики считают одним ящиком разные написания, и этим фармили бонус:
+ * aleks.l.e.ba.6.27@gmail.com и aleksleba627@gmail.com — одна и та же почта,
+ * а для нас это были разные строки и разные аккаунты.
+ *  - всё после «+» — метка, письмо приходит в основной ящик (Gmail, Яндекс,
+ *    Outlook, iCloud и большинство других);
+ *  - Gmail игнорирует точки в имени, googlemail.com = gmail.com;
+ *  - Яндекс не различает «.» и «-», ya.ru/yandex.com/… — один ящик.
+ *
+ * Логика продублирована в scripts/cleanup-disposable-users.js — менять вместе.
+ */
+export function canonicalEmail(email: string): string {
+  const normalized = normalizeEmail(email);
+  const at = normalized.lastIndexOf('@');
+  if (at <= 0) return normalized;
+
+  let local = normalized.slice(0, at);
+  let domain = normalized.slice(at + 1);
+
+  const plus = local.indexOf('+');
+  if (plus > 0) local = local.slice(0, plus);
+
+  if (GMAIL_DOMAINS.has(domain)) {
+    local = local.replace(/\./g, '');
+    domain = 'gmail.com';
+  } else if (YANDEX_DOMAINS.has(domain)) {
+    local = local.replace(/-/g, '.');
+    domain = 'yandex.ru';
+  }
+
+  return `${local}@${domain}`;
+}
+
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
   ) { }
+
+  /**
+   * Заполняет emailCanonical у аккаунтов, созданных до появления поля —
+   * без этого проверка дублей при регистрации их бы не видела.
+   * Идемпотентно: после первого прохода находит ноль документов.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const cursor = this.userModel
+        .find(
+          { email: { $type: 'string', $ne: '' }, emailCanonical: null },
+          { email: 1 },
+        )
+        .lean()
+        .cursor();
+
+      let batch: any[] = [];
+      let total = 0;
+      for await (const u of cursor) {
+        batch.push({
+          updateOne: {
+            filter: { _id: u._id },
+            update: { $set: { emailCanonical: canonicalEmail(u.email as string) } },
+          },
+        });
+        if (batch.length >= 500) {
+          await this.userModel.bulkWrite(batch, { ordered: false });
+          total += batch.length;
+          batch = [];
+        }
+      }
+      if (batch.length) {
+        await this.userModel.bulkWrite(batch, { ordered: false });
+        total += batch.length;
+      }
+      if (total) this.logger.log(`emailCanonical заполнен у ${total} пользователей`);
+    } catch (e: any) {
+      this.logger.error(`Не заполнил emailCanonical: ${e.message}`);
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // Регистрация / поиск
@@ -136,6 +217,11 @@ export class UsersService {
     return this.userModel.findOne({ email: normalizeEmail(email) }).select('+passwordHash');
   }
 
+  /** Есть ли аккаунт на тот же ящик в другом написании (точки, +метка). */
+  async existsByCanonicalEmail(email: string): Promise<boolean> {
+    return !!(await this.userModel.exists({ emailCanonical: canonicalEmail(email) }));
+  }
+
   async findByGoogleId(googleId: string): Promise<UserDocument | null> {
     return this.userModel.findOne({ googleId });
   }
@@ -199,6 +285,7 @@ export class UsersService {
     const user = new this.userModel({
       authProvider: AuthProvider.EMAIL,
       email,
+      emailCanonical: canonicalEmail(email),
       passwordHash: params.passwordHash,
       isEmailVerified: false,
       firstName: params.firstName || '',
@@ -269,6 +356,7 @@ export class UsersService {
       authProvider: AuthProvider.GOOGLE,
       googleId: profile.googleId,
       email: email || null,
+      emailCanonical: email ? canonicalEmail(email) : null,
       isEmailVerified: !!profile.emailVerified,
       firstName: profile.firstName || '',
       lastName: profile.lastName || '',

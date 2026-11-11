@@ -1,7 +1,10 @@
 // scripts/cleanup-disposable-users.js
 //
-// Удаляет аккаунты, зарегистрированные на временную почту (фарм бонусных
-// спичек). Запускается в mongosh внутри контейнера ai-mongo.
+// Удаляет аккаунты, которыми фармили бонусные спички:
+//   - зарегистрированные на временную почту;
+//   - дубли одного ящика (a.b.c@gmail.com, abc@gmail.com, abc+1@gmail.com —
+//     один и тот же Gmail): в группе остаётся один, самый старый.
+// Запускается в mongosh внутри контейнера ai-mongo.
 //
 //   Пробный прогон (ничего не меняет, только отчёт):
 //     mongosh ... ai-aggregator --quiet --eval 'load("/tmp/cleanup-disposable-users.js")'
@@ -51,9 +54,24 @@ function isDisposable(domain) {
   return false;
 }
 
-// ── 1. Кандидаты: почта с временного домена ─────────────────────────
-const candidates = [];
-db.users
+// Копия canonicalEmail из users.service.ts — менять вместе.
+const GMAIL = new Set(['gmail.com', 'googlemail.com']);
+const YANDEX = new Set(['yandex.ru', 'ya.ru', 'yandex.com', 'yandex.by', 'yandex.kz', 'yandex.ua']);
+function canonicalEmail(email) {
+  const n = String(email || '').trim().toLowerCase();
+  const at = n.lastIndexOf('@');
+  if (at <= 0) return n;
+  let local = n.slice(0, at);
+  let domain = n.slice(at + 1);
+  const plus = local.indexOf('+');
+  if (plus > 0) local = local.slice(0, plus);
+  if (GMAIL.has(domain)) { local = local.replace(/\./g, ''); domain = 'gmail.com'; }
+  else if (YANDEX.has(domain)) { local = local.replace(/-/g, '.'); domain = 'yandex.ru'; }
+  return `${local}@${domain}`;
+}
+
+// ── 1. Все пользователи с почтой ────────────────────────────────────
+const all = db.users
   .find(
     { email: { $type: 'string', $ne: '' } },
     {
@@ -61,71 +79,119 @@ db.users
       bonusTokens: 1, subscriptionPlan: 1, createdAt: 1, referredBy: 1,
     },
   )
-  .forEach((u) => {
-    const domain = u.email.split('@').pop();
-    if (domain && isDisposable(domain)) candidates.push(u);
-  });
+  .toArray();
 
-// ── 2. Отделяем тех, кого удалять нельзя ────────────────────────────
-const ids = candidates.map((u) => u._id);
+// ── 2. Кого удалять нельзя ни при каких условиях ────────────────────
+const allIds = all.map((u) => u._id);
 const paidIds = new Set(
   db.transactions
     .distinct('userId', {
-      userId: { $in: ids },
+      userId: { $in: allIds },
       type: { $in: ['deposit', 'subscription'] },
       paymentStatus: 'completed',
     })
     .map(String),
 );
 const withdrawalIds = new Set(
-  db.withdrawals.distinct('userId', { userId: { $in: ids } }).map(String),
+  db.withdrawals.distinct('userId', { userId: { $in: allIds } }).map(String),
 );
 const subIds = new Set(
-  db.subscriptions.distinct('userId', { userId: { $in: ids } }).map(String),
+  db.subscriptions.distinct('userId', { userId: { $in: allIds } }).map(String),
 );
+
+function protectReasons(u) {
+  const id = String(u._id);
+  const r = [];
+  if (u.telegramId) r.push('есть Telegram');
+  if (u.googleId) r.push('есть Google');
+  if (u.role && u.role !== 'user') r.push(`роль ${u.role}`);
+  if (paidIds.has(id)) r.push('платил');
+  if (subIds.has(id) || (u.subscriptionPlan && u.subscriptionPlan !== 'free')) r.push('подписка');
+  if (withdrawalIds.has(id)) r.push('вывод средств');
+  if ((u.tokenBalance || 0) > 0) r.push(`платный баланс ${u.tokenBalance}`);
+  return r;
+}
+
+// ── 3. Кандидаты ────────────────────────────────────────────────────
+// а) временная почта;
+// б) дубли одного ящика (a.b.c@gmail.com = abc@gmail.com = abc+1@gmail.com):
+//    в группе оставляем защищённые аккаунты, а если таких нет — самый
+//    старый; остальные — фарм.
+const why = new Map(); // id -> { u, reason }
+
+for (const u of all) {
+  const domain = u.email.split('@').pop();
+  if (domain && isDisposable(domain)) why.set(String(u._id), { u, reason: 'временная почта' });
+}
+
+const groups = {};
+for (const u of all) {
+  const c = canonicalEmail(u.email);
+  (groups[c] = groups[c] || []).push(u);
+}
+const dupGroups = Object.entries(groups).filter(([, us]) => us.length > 1);
+for (const [c, us] of dupGroups) {
+  us.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
+  const hasProtected = us.some((u) => protectReasons(u).length);
+  us.forEach((u, i) => {
+    if (protectReasons(u).length) return;
+    if (!hasProtected && i === 0) return; // самый старый — оставляем
+    if (!why.has(String(u._id))) why.set(String(u._id), { u, reason: `дубль ${c}` });
+  });
+}
 
 const toDelete = [];
 const kept = [];
-for (const u of candidates) {
-  const id = String(u._id);
-  const reasons = [];
-  if (u.telegramId) reasons.push('есть Telegram');
-  if (u.googleId) reasons.push('есть Google');
-  if (u.role && u.role !== 'user') reasons.push(`роль ${u.role}`);
-  if (paidIds.has(id)) reasons.push('платил');
-  if (subIds.has(id) || (u.subscriptionPlan && u.subscriptionPlan !== 'free')) reasons.push('подписка');
-  if (withdrawalIds.has(id)) reasons.push('вывод средств');
-  if ((u.tokenBalance || 0) > 0) reasons.push(`платный баланс ${u.tokenBalance}`);
-  (reasons.length ? kept : toDelete).push({ u, reasons });
+for (const { u, reason } of why.values()) {
+  const reasons = protectReasons(u);
+  (reasons.length ? kept : toDelete).push({ u, reason, reasons });
 }
 
-// ── 3. Отчёт ────────────────────────────────────────────────────────
-const byDomain = {};
-for (const { u } of toDelete) {
-  const d = u.email.split('@').pop();
-  byDomain[d] = (byDomain[d] || 0) + 1;
-}
+// ── 4. Отчёт ────────────────────────────────────────────────────────
 const bonusSum = toDelete.reduce((s, { u }) => s + (u.bonusTokens || 0), 0);
+const byReason = { disposable: 0, dup: 0 };
+toDelete.forEach(({ reason }) => (reason === 'временная почта' ? byReason.disposable++ : byReason.dup++));
 
 print(`\nДоменов в списке: ${blocked.size}`);
-print(`Аккаунтов на временной почте: ${candidates.length}`);
-print(`  к удалению: ${toDelete.length} (бонусных спичек на них: ${bonusSum})`);
-print(`  оставляем: ${kept.length}`);
+print(`Пользователей с почтой: ${all.length}`);
+print(`К удалению: ${toDelete.length} (бонусных спичек на них: ${bonusSum})`);
+print(`  временная почта: ${byReason.disposable}`);
+print(`  дубли одного ящика: ${byReason.dup} (групп с дублями: ${dupGroups.length})`);
+print(`Оставляем, хотя попали под подозрение: ${kept.length}`);
 
-print('\nТоп доменов среди удаляемых:');
-Object.entries(byDomain)
-  .sort((a, b) => b[1] - a[1])
-  .slice(0, 15)
-  .forEach(([d, n]) => print(`  ${String(n).padStart(5)}  ${d}`));
+const byDomain = {};
+toDelete
+  .filter(({ reason }) => reason === 'временная почта')
+  .forEach(({ u }) => {
+    const d = u.email.split('@').pop();
+    byDomain[d] = (byDomain[d] || 0) + 1;
+  });
+if (Object.keys(byDomain).length) {
+  print('\nТоп временных доменов:');
+  Object.entries(byDomain)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .forEach(([d, n]) => print(`  ${String(n).padStart(5)}  ${d}`));
+}
+
+if (dupGroups.length) {
+  print('\nКрупнейшие группы дублей (ящик — аккаунтов):');
+  dupGroups
+    .sort((a, b) => b[1].length - a[1].length)
+    .slice(0, 15)
+    .forEach(([c, us]) => print(`  ${String(us.length).padStart(5)}  ${c}`));
+}
 
 if (kept.length) {
   print('\nНЕ удаляем (проверьте вручную):');
-  kept.forEach(({ u, reasons }) => print(`  ${u._id}  ${u.email}  — ${reasons.join(', ')}`));
+  kept.forEach(({ u, reason, reasons }) =>
+    print(`  ${u._id}  ${u.email}  [${reason}] — ${reasons.join(', ')}`),
+  );
 }
 
 print('\nПервые 20 к удалению:');
-toDelete.slice(0, 20).forEach(({ u }) =>
-  print(`  ${u._id}  ${u.email}  бонус ${u.bonusTokens || 0}  ${u.createdAt ? u.createdAt.toISOString().slice(0, 10) : ''}`),
+toDelete.slice(0, 20).forEach(({ u, reason }) =>
+  print(`  ${u._id}  ${u.email}  бонус ${u.bonusTokens || 0}  ${u.createdAt ? u.createdAt.toISOString().slice(0, 10) : ''}  [${reason}]`),
 );
 
 if (!APPLY_MODE) {
@@ -134,7 +200,7 @@ if (!APPLY_MODE) {
 } else if (toDelete.length === 0) {
   print('\nУдалять нечего.\n');
 } else {
-  // ── 4. Удаление ───────────────────────────────────────────────────
+  // ── 5. Удаление ───────────────────────────────────────────────────
   const delIds = toDelete.map(({ u }) => u._id);
   const q = { userId: { $in: delIds } };
   const res = {};

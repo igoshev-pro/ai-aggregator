@@ -230,6 +230,15 @@ export class AuthService {
       );
     }
 
+    // Тот же ящик в другом написании: a.b.c@gmail.com = abc@gmail.com = abc+1@gmail.com.
+    if (await this.usersService.existsByCanonicalEmail(dto.email)) {
+      this.logger.warn(`Регистрация отклонена (дубль ящика): ${dto.email} (ip ${ip || '?'})`);
+      throw new BadRequestException(
+        'На этот почтовый ящик уже зарегистрирован аккаунт. Точки и «+» в адресе ' +
+          'не делают его новым — войдите или восстановите пароль',
+      );
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
 
     const user = await this.usersService.createWithEmail({
