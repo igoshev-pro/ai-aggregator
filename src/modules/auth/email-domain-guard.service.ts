@@ -10,7 +10,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { promises as dns } from 'dns';
 import Redis from 'ioredis';
-import { DISPOSABLE_DOMAINS } from './data/disposable-domains';
+import { DISPOSABLE_DOMAINS } from './disposable-domains';
 
 /**
  * Защита регистрации по почте от фарма стартовых спичек.
