@@ -70,6 +70,13 @@ function canonicalEmail(email) {
   return `${local}@${domain}`;
 }
 
+// Ящики, чью группу сносим целиком, включая самый старый аккаунт:
+//   --eval 'PURGE=["aleksleba627@gmail.com"]; load(...)'
+// Указывать в каноническом виде (как в отчёте «Крупнейшие группы дублей»).
+const PURGE_SET = new Set(
+  (typeof PURGE !== 'undefined' && Array.isArray(PURGE) ? PURGE : []).map((e) => canonicalEmail(e)),
+);
+
 // ── 1. Все пользователи с почтой ────────────────────────────────────
 const all = db.users
   .find(
@@ -108,7 +115,9 @@ function protectReasons(u) {
   if (paidIds.has(id)) r.push('платил');
   if (subIds.has(id) || (u.subscriptionPlan && u.subscriptionPlan !== 'free')) r.push('подписка');
   if (withdrawalIds.has(id)) r.push('вывод средств');
-  if ((u.tokenBalance || 0) > 0) r.push(`платный баланс ${u.tokenBalance}`);
+  // Ненулевой tokenBalance сам по себе ничего не значит: туда попадают
+  // возвраты за упавшие генерации и т.п., у фармеров он тоже бывает.
+  // Защищаем только по реальным оплатам (выше).
   return r;
 }
 
@@ -129,13 +138,14 @@ for (const u of all) {
   const c = canonicalEmail(u.email);
   (groups[c] = groups[c] || []).push(u);
 }
-const dupGroups = Object.entries(groups).filter(([, us]) => us.length > 1);
+const dupGroups = Object.entries(groups).filter(([c, us]) => us.length > 1 || PURGE_SET.has(c));
 for (const [c, us] of dupGroups) {
   us.sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0));
   const hasProtected = us.some((u) => protectReasons(u).length);
   us.forEach((u, i) => {
     if (protectReasons(u).length) return;
-    if (!hasProtected && i === 0) return; // самый старый — оставляем
+    // Самый старый — оставляем, если группу не сносим целиком.
+    if (!hasProtected && i === 0 && !PURGE_SET.has(c)) return;
     if (!why.has(String(u._id))) why.set(String(u._id), { u, reason: `дубль ${c}` });
   });
 }
