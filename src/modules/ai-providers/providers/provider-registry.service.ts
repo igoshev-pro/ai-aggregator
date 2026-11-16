@@ -137,13 +137,15 @@ export class ProviderRegistryService implements OnModuleInit {
     return this.providers;
   }
 
+  // slug — ключ провайдера в реестре (= mapping.providerSlug); по нему
+  // executeWithFallback пропускает провайдеров, уже проваливших задачу.
   async getProvidersForModel(modelSlug: string): Promise<
-    { provider: BaseProvider; modelId: string }[]
+    { provider: BaseProvider; modelId: string; slug: string }[]
   > {
     const model = await this.modelModel.findOne({ slug: modelSlug, isActive: true });
     if (!model) return [];
 
-    const result: { provider: BaseProvider; modelId: string }[] = [];
+    const result: { provider: BaseProvider; modelId: string; slug: string }[] = [];
 
     const sortedMappings = [...model.providerMappings]
       .filter((m) => m.isActive)
@@ -159,7 +161,7 @@ export class ProviderRegistryService implements OnModuleInit {
 
       const provider = this.providers.get(mapping.providerSlug);
       if (provider) {
-        result.push({ provider, modelId: mapping.modelId });
+        result.push({ provider, modelId: mapping.modelId, slug: mapping.providerSlug });
       }
     }
 
@@ -1219,6 +1221,9 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-image-2-5-flare-text-to-image', priority: 1, isActive: true },
+          // Запасной: GPT Image 2.5 на OpenRouter нет, ближайшая — GPT-5.4 Image 2
+          // (внутри GPT Image 2). Дороже KIE, включается только при сбое KIE.
+          { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5.4-image-2', priority: 2, isActive: true },
         ],
         defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
         limits: { maxResolution: '4096x4096' },
@@ -1273,6 +1278,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-image-2-5-sunburst-text-to-image', priority: 1, isActive: true },
+          // Запасной: ближайшая на OpenRouter — GPT-5.4 Image 2 (GPT Image 2.5 там нет)
+          { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5.4-image-2', priority: 2, isActive: true },
         ],
         defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
         limits: { maxResolution: '4096x4096' },
@@ -1327,6 +1334,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['text_rendering', 'image_editing'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'gpt-image-2-text-to-image', priority: 1, isActive: true },
+          // Запасной: GPT-5.4 Image 2 = GPT Image 2 на OpenRouter (openai/gpt-5-image — старый GPT Image 1)
+          { providerSlug: 'openrouter-image', modelId: 'openai/gpt-5.4-image-2', priority: 2, isActive: true },
         ],
         defaultParams: { aspect_ratio: 'auto', resolution: '1K' },
         limits: { maxResolution: '4096x4096' },
@@ -1703,6 +1712,8 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['text_to_image', 'image_to_image'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'nano-banana-2-1', priority: 1, isActive: true },
+          // Запасной при сбое KIE (id сверен с openrouter.ai/api/v1/models, 16.11.2026)
+          { providerSlug: 'openrouter-image', modelId: 'google/gemini-nano-banana-2.1', priority: 2, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '4096x4096' },
@@ -1807,6 +1818,8 @@ export class ProviderRegistryService implements OnModuleInit {
         providerMappings: [
           { providerSlug: 'kie', modelId: 'nano-banana-2', priority: 1, isActive: true },
           { providerSlug: 'evolink', modelId: 'nano-banana', priority: 2, isActive: true },
+          // Третий запасной: та же Nano Banana 2 (Gemini 3.1 Flash Image) на OpenRouter
+          { providerSlug: 'openrouter-image', modelId: 'google/gemini-3.1-flash-image', priority: 3, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '4096x4096' },
@@ -1859,6 +1872,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: ['text_to_image', 'image_to_image'],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'nano-banana-2-lite', priority: 1, isActive: true },
+          { providerSlug: 'openrouter-image', modelId: 'google/gemini-3.1-flash-lite-image', priority: 2, isActive: true },
         ],
         defaultParams: { aspect_ratio: 'auto' },
         limits: { maxResolution: '1024x1024' },
@@ -1898,6 +1912,7 @@ export class ProviderRegistryService implements OnModuleInit {
         capabilities: [],
         providerMappings: [
           { providerSlug: 'kie', modelId: 'nano-banana-pro', priority: 1, isActive: true },
+          { providerSlug: 'openrouter-image', modelId: 'google/gemini-3-pro-image', priority: 2, isActive: true },
         ],
         defaultParams: { width: 1024, height: 1024 },
         limits: { maxResolution: '4096x4096' },
@@ -2515,10 +2530,12 @@ export class ProviderRegistryService implements OnModuleInit {
         ],
       },
 
-      // ─── Genjutsu (Higgsfield API) — перенос движения / замена объекта ─────
+      // ─── Genjutsu Light (Higgsfield API) — перенос движения / замена объекта ─
       // Есть только у Higgsfield (на KIE/Evolink нет, 29.10.2026).
-      // Себестоимость за секунду (open.higgsfield.ai/pricing, без скидки 50%,
-      // которая действует сейчас): 480p $0.318, 720p $0.681, 1080p $1.632.
+      // 16.11.2026 полная Genjutsu заменена на Light по просьбе заказчика
+      // (slug оставлен 'genjutsu', чтобы не трогать фронт и историю).
+      // Себестоимость Light за секунду (dash.higgsfield.ai/api/v2/pricing/models):
+      // 480p $0.0739, 720p $0.1471, 1080p $0.2936.
       // Цена = $ × 60 (то же, что кредиты KIE × 0.3).
       // Длина результата = длина исходника (4–30с, длиннее Higgsfield режет до 30),
       // поэтому duration = секунды исходника, а цена — rate × duration через
@@ -2526,22 +2543,22 @@ export class ProviderRegistryService implements OnModuleInit {
       {
         slug: 'genjutsu',
         name: 'Genjutsu',
-        displayName: 'Higgsfield Genjutsu',
+        displayName: 'Higgsfield Genjutsu Light',
         description: 'Перенос движения из видео на персонажа с фото или замена объекта в видео',
         type: 'video',
-        fixedCostPerGeneration: 1.272, // 480p × 4с в $
+        fixedCostPerGeneration: 0.2956, // 480p × 4с в $
         tokensPerDollar: 60,
-        minTokenCost: 76.32, // 480p × 4с
+        minTokenCost: 17.74, // 480p × 4с
         sortOrder: 8.5,
         capabilities: ['video_to_video', 'motion_transfer'],
         providerMappings: [
-          { providerSlug: 'higgsfield', modelId: 'higgsfield/genjutsu', priority: 1, isActive: true },
+          { providerSlug: 'higgsfield', modelId: 'higgsfield/genjutsu-light', priority: 1, isActive: true },
         ],
         defaultParams: { mode: 'motion-transfer', resolution: '720p', duration: 5 },
         limits: { maxDuration: 30 },
         inputCapabilities: { acceptsVideo: true, acceptsImages: true, maxInputImages: 8 },
         videoRefPricing: true,
-        videoRefRatePerSecond: { '480p': 19.08, '720p': 40.86, '1080p': 97.92 },
+        videoRefRatePerSecond: { '480p': 4.434, '720p': 8.826, '1080p': 17.616 },
         pricingMatrix: [],
         uiParameters: [
           {
@@ -2554,9 +2571,9 @@ export class ProviderRegistryService implements OnModuleInit {
           {
             key: 'resolution', label: 'Качество', type: 'select', affectsPrice: true, defaultValue: '720p',
             options: [
-              { value: '480p', label: '480p (19.08🔥/сек)' },
-              { value: '720p', label: '720p (40.86🔥/сек)' },
-              { value: '1080p', label: '1080p (97.92🔥/сек)' },
+              { value: '480p', label: '480p (4.43🔥/сек)' },
+              { value: '720p', label: '720p (8.83🔥/сек)' },
+              { value: '1080p', label: '1080p (17.62🔥/сек)' },
             ],
           },
         ],

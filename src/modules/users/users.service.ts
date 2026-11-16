@@ -431,7 +431,7 @@ export class UsersService implements OnModuleInit {
 
       if (totalAvailable + FLOAT_EPSILON < chargeAmount) {
         throw new BadRequestException(
-          `Insufficient tokens. Required: ${chargeAmount}, Available: ${totalAvailable}`,
+          `Недостаточно спичек. Требуется: ${chargeAmount}🔥, у вас: ${totalAvailable}🔥. Пополните баланс.`,
         );
       }
 
@@ -554,6 +554,44 @@ export class UsersService implements OnModuleInit {
     );
     if (!user) throw new NotFoundException('User not found');
     return this.normalizeBalances(user);
+  }
+
+  /**
+   * Акция «x2 на первое пополнение»: атомарно запускает таймер,
+   * если он ещё не запущен. Возвращает фактическое время старта.
+   */
+  async startFirstTopupOffer(userId: string, at: Date = new Date()): Promise<Date | null> {
+    const updated = await this.userModel.findOneAndUpdate(
+      { _id: userId, firstTopupOfferStartedAt: null },
+      { $set: { firstTopupOfferStartedAt: at } },
+      { new: true },
+    );
+    if (updated) return updated.firstTopupOfferStartedAt ?? at;
+    const existing = await this.userModel
+      .findById(userId)
+      .select('firstTopupOfferStartedAt')
+      .lean();
+    return existing?.firstTopupOfferStartedAt ?? null;
+  }
+
+  /**
+   * Атомарно «захватывает» право на бонус первого пополнения.
+   * true — бонус ещё не выдавался и теперь помечен выданным.
+   */
+  async claimFirstTopupBonus(userId: string): Promise<boolean> {
+    const res = await this.userModel.updateOne(
+      { _id: userId, firstTopupBonusGrantedAt: null },
+      { $set: { firstTopupBonusGrantedAt: new Date() } },
+    );
+    return res.modifiedCount === 1;
+  }
+
+  /** Откат захвата, если начисление бонуса упало */
+  async releaseFirstTopupBonus(userId: string): Promise<void> {
+    await this.userModel.updateOne(
+      { _id: userId },
+      { $set: { firstTopupBonusGrantedAt: null } },
+    );
   }
 
   async addBonusTokens(

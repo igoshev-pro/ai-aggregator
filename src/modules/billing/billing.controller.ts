@@ -63,6 +63,20 @@ export class BillingController {
     return { success: true, data: result };
   }
 
+  /**
+   * Акция «x2 на первое пополнение».
+   * Ответ (без обёртки success/data):
+   *   { active: boolean, endsAt: string | null, multiplier: number, maxRub: number }
+   * Первый вызов запускает 48-часовой таймер, если оплат ещё не было.
+   */
+  @Get('first-topup-offer')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'First top-up bonus offer (x2, 48h timer)' })
+  async getFirstTopupOffer(@CurrentUser('sub') userId: string) {
+    return this.billingService.getFirstTopupOffer(userId);
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // Покупка токенов / подписки (с поддержкой промокода)
   // ═══════════════════════════════════════════════════════════════

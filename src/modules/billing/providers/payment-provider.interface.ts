@@ -5,6 +5,10 @@ export interface CreatePaymentDto {
   userId: string;
   description: string;
   returnUrl?: string;
+  /** Наш id транзакции (Transaction._id) — создаётся ДО вызова провайдера */
+  orderId?: string;
+  /** Сумма в рублях (для конвертации в Stars и т.п.) */
+  amountRub?: number;
 }
 
 export interface PaymentResult {

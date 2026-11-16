@@ -32,6 +32,13 @@ import { BillingService } from '../billing/billing.service';
 const TEXT_STREAM_SILENCE_TIMEOUT_MS =
   Number(process.env.TEXT_STREAM_SILENCE_TIMEOUT_MS) || 90000;
 
+// Опции медиа-генерации из очереди (не уходят провайдеру).
+// excludeProviders — ключи провайдеров (как в providerMappings), у которых
+// эта задача уже упала: повтор Bull начнёт со следующего по приоритету.
+export interface MediaExecutionOptions {
+  excludeProviders?: string[];
+}
+
 @Injectable()
 export class AiProvidersService {
   private readonly logger = new Logger(AiProvidersService.name);
@@ -340,8 +347,9 @@ export class AiProvidersService {
   async generateImage(
     modelSlug: string,
     request: Omit<ImageGenerationRequest, 'model'>,
+    options?: MediaExecutionOptions,
   ): Promise<GenerationResult> {
-    return this.executeWithFallback(modelSlug, 'generateImage', request);
+    return this.executeWithFallback(modelSlug, 'generateImage', request, options);
   }
 
 
@@ -350,8 +358,9 @@ export class AiProvidersService {
   async generateVideo(
     modelSlug: string,
     request: Omit<VideoGenerationRequest, 'model'>,
+    options?: MediaExecutionOptions,
   ): Promise<GenerationResult> {
-    return this.executeWithFallback(modelSlug, 'generateVideo', request);
+    return this.executeWithFallback(modelSlug, 'generateVideo', request, options);
   }
 
 
@@ -360,8 +369,9 @@ export class AiProvidersService {
   async generateAudio(
     modelSlug: string,
     request: Omit<AudioGenerationRequest, 'model'>,
+    options?: MediaExecutionOptions,
   ): Promise<GenerationResult> {
-    return this.executeWithFallback(modelSlug, 'generateAudio', request);
+    return this.executeWithFallback(modelSlug, 'generateAudio', request, options);
   }
 
 
@@ -441,14 +451,35 @@ export class AiProvidersService {
       | 'generateText'
       | 'generateLyrics',
     request: any,
+    options?: MediaExecutionOptions,
   ): Promise<GenerationResult> {
-    const providers = await this.registry.getProvidersForModel(modelSlug);
+    const allProviders = await this.registry.getProvidersForModel(modelSlug);
 
 
 
 
-    if (providers.length === 0) {
+    if (allProviders.length === 0) {
       throw new BadRequestException(`No providers available for ${modelSlug}`);
+    }
+
+    // Служебное поле не должно попасть в тело запроса провайдеру
+    const { excludeProviders: legacyExclude, ...cleanRequest } = request || {};
+    const exclude = new Set<string>(
+      [...(options?.excludeProviders || []), ...(Array.isArray(legacyExclude) ? legacyExclude : [])]
+        .filter(Boolean),
+    );
+
+    // Пропускаем провайдеров, на которых задача уже падала; если других
+    // нет — пробуем всех заново (лучше ещё попытка, чем сразу отказ).
+    let providers = allProviders;
+    if (exclude.size > 0) {
+      const rest = allProviders.filter((p) => !exclude.has(p.slug));
+      if (rest.length > 0) {
+        providers = rest;
+        this.logger.log(
+          `${method} ${modelSlug}: skipping failed providers [${[...exclude].join(', ')}] → ${rest.map((p) => p.slug).join(', ')}`,
+        );
+      }
     }
 
 
@@ -469,7 +500,7 @@ export class AiProvidersService {
 
 
         const result = await provider[method]({
-          ...request,
+          ...cleanRequest,
           model: modelId,
         });
 

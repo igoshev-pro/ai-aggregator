@@ -27,6 +27,10 @@ import { YookassaProvider } from './providers/yookassa.provider';
 import { CryptomusProvider } from './providers/cryptomus.provider';
 import { StarsProvider } from './providers/stars.provider';
 import {
+  CreatePaymentDto,
+  PaymentResult,
+} from './providers/payment-provider.interface';
+import {
   TransactionType,
   PaymentStatus,
   SubscriptionPlan,
@@ -59,6 +63,24 @@ const FLOAT_EPSILON = 1e-9;
 
 // Кэшбек от реферальных покупок (15% от купленных спичек)
 const REFERRAL_CASHBACK_RATE = 0.15;
+
+// Человекочитаемые имена провайдеров для сообщений пользователю
+const PROVIDER_LABELS: Record<string, string> = {
+  tochka: 'карту / СБП',
+  stars: 'Telegram Stars',
+  freedompay: 'FreedomPay',
+  heleket: 'криптовалюту (Heleket)',
+  yookassa: 'ЮKassa',
+  cryptomus: 'Cryptomus',
+};
+
+/** Ответ GET /billing/first-topup-offer */
+export interface FirstTopupOffer {
+  active: boolean;
+  endsAt: string | null;
+  multiplier: number;
+  maxRub: number;
+}
 
 
 function roundTokens(value: number): number {
@@ -1418,7 +1440,7 @@ export class BillingService implements OnApplicationBootstrap {
     if (!pack) throw new BadRequestException('Invalid package');
 
     const user = await this.usersService.findById(userId);
-    const paymentProvider = this.getPaymentProvider(provider);
+    this.getPaymentProvider(provider); // ранняя проверка имени провайдера
 
     const bonusTokensFromPack = Math.floor(
       (pack.tokens * (pack.bonusPercent || 0)) / 100,
@@ -1522,59 +1544,62 @@ export class BillingService implements OnApplicationBootstrap {
     }
 
     // ── Обычный поток с оплатой ─────────────────────────────────
+    // Transaction создаётся ДО обращения к провайдеру (PENDING), при ошибке
+    // провайдера — помечается FAILED с текстом ошибки. Так любая попытка
+    // оплаты остаётся в БД.
     const paymentAmount = this.convertPrice(finalPriceRub, currency);
-
-    const result = await paymentProvider.createPayment({
-      amount: paymentAmount,
-      currency,
-      tokens: totalTokens,
-      userId,
-      description: `Пополнение: ${pack.label}`,
-      returnUrl,
-    });
-
-    if (!result.success) {
-      throw new BadRequestException(result.error || 'Payment creation failed');
-    }
 
     const balanceSnapshot = roundTokens(
       user.tokenBalance + user.bonusTokens + (user.cashbackBalance || 0),
     );
 
-    await this.createTransaction(userId, {
-      type: TransactionType.DEPOSIT,
-      amount: totalTokens,
-      description: `Пополнение: ${pack.label}${bonusTokensFromPack > 0 ? ` (+${bonusTokensFromPack} бонус)` : ''
-        }${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
-      paymentStatus: PaymentStatus.PENDING,
-      externalPaymentId: result.paymentId,
-      paymentProvider: provider,
-      paymentAmountRub: finalPriceRub,
-      promoCode: promoValidation?.promo.code,
-      balanceBefore: balanceSnapshot,
-      balanceAfter: balanceSnapshot,
-      metadata: {
+    const firstTopupOffer = await this.snapshotFirstTopupOffer(userId);
+
+    const { result } = await this.startProviderPayment(userId, provider, {
+      tx: {
+        type: TransactionType.DEPOSIT,
+        amount: totalTokens,
+        description: `Пополнение: ${pack.label}${bonusTokensFromPack > 0 ? ` (+${bonusTokensFromPack} бонус)` : ''
+          }${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
+        paymentAmountRub: finalPriceRub,
+        promoCode: promoValidation?.promo.code,
+        balanceBefore: balanceSnapshot,
+        balanceAfter: balanceSnapshot,
+        metadata: {
+          currency,
+          paymentAmount,
+          packageId: pack.id,
+          originalPriceRub: pack.priceRub,
+          finalPriceRub,
+          baseTokens: pack.tokens,
+          bonusTokens: bonusTokensFromPack,
+          promoCodeApplied: promoValidation
+            ? {
+              promoId: promoValidation.promo._id.toString(),
+              code: promoValidation.promo.code,
+              type: promoValidation.promo.type,
+              discountRub: promoValidation.discountRub,
+              bonusTokens: promoValidation.bonusTokens,
+            }
+            : null,
+          firstTopupOffer: firstTopupOffer.active ? firstTopupOffer : null,
+        },
+      },
+      dto: {
+        amount: paymentAmount,
+        amountRub: finalPriceRub,
         currency,
-        paymentAmount,
-        originalPriceRub: pack.priceRub,
-        finalPriceRub,
-        baseTokens: pack.tokens,
-        bonusTokens: bonusTokensFromPack,
-        promoCodeApplied: promoValidation
-          ? {
-            promoId: promoValidation.promo._id.toString(),
-            code: promoValidation.promo.code,
-            type: promoValidation.promo.type,
-            discountRub: promoValidation.discountRub,
-            bonusTokens: promoValidation.bonusTokens,
-          }
-          : null,
+        tokens: totalTokens,
+        userId,
+        description: `Пополнение: ${pack.label}`,
+        returnUrl,
       },
     });
 
     return {
       paymentId: result.paymentId,
       paymentUrl: result.paymentUrl,
+      firstTopupOffer,
       package: {
         id: pack.id,
         label: pack.label,
@@ -1621,51 +1646,50 @@ export class BillingService implements OnApplicationBootstrap {
     const finalPriceRub = calc.rub;
 
     const user = await this.usersService.findById(userId);
-    const paymentProvider = this.getPaymentProvider(provider);
+    this.getPaymentProvider(provider); // ранняя проверка имени провайдера
 
     const paymentAmount = this.convertPrice(finalPriceRub, currency);
-
-    const result = await paymentProvider.createPayment({
-      amount: paymentAmount,
-      currency,
-      tokens,
-      userId,
-      description: `Пополнение: ${tokens} спичек`,
-      returnUrl,
-    });
-
-    if (!result.success) {
-      throw new BadRequestException(result.error || 'Payment creation failed');
-    }
 
     const balanceSnapshot = roundTokens(
       user.tokenBalance + user.bonusTokens + (user.cashbackBalance || 0),
     );
 
-    await this.createTransaction(userId, {
-      type: TransactionType.DEPOSIT,
-      amount: tokens,
-      description: `Пополнение: ${tokens} спичек (${calc.pricePerToken}₽/шт, −${calc.discountPct}%)`,
-      paymentStatus: PaymentStatus.PENDING,
-      externalPaymentId: result.paymentId,
-      paymentProvider: provider,
-      paymentAmountRub: finalPriceRub,
-      balanceBefore: balanceSnapshot,
-      balanceAfter: balanceSnapshot,
-      metadata: {
+    const firstTopupOffer = await this.snapshotFirstTopupOffer(userId);
+
+    const { result } = await this.startProviderPayment(userId, provider, {
+      tx: {
+        type: TransactionType.DEPOSIT,
+        amount: tokens,
+        description: `Пополнение: ${tokens} спичек (${calc.pricePerToken}₽/шт, −${calc.discountPct}%)`,
+        paymentAmountRub: finalPriceRub,
+        balanceBefore: balanceSnapshot,
+        balanceAfter: balanceSnapshot,
+        metadata: {
+          currency,
+          paymentAmount,
+          custom: true,
+          pricePerToken: calc.pricePerToken,
+          discountPct: calc.discountPct,
+          baseTokens: tokens,
+          bonusTokens: 0,
+          firstTopupOffer: firstTopupOffer.active ? firstTopupOffer : null,
+        },
+      },
+      dto: {
+        amount: paymentAmount,
+        amountRub: finalPriceRub,
         currency,
-        paymentAmount,
-        custom: true,
-        pricePerToken: calc.pricePerToken,
-        discountPct: calc.discountPct,
-        baseTokens: tokens,
-        bonusTokens: 0,
+        tokens,
+        userId,
+        description: `Пополнение: ${tokens} спичек`,
+        returnUrl,
       },
     });
 
     return {
       paymentId: result.paymentId,
       paymentUrl: result.paymentUrl,
+      firstTopupOffer,
       custom: {
         tokens,
         pricePerToken: calc.pricePerToken,
@@ -1835,6 +1859,15 @@ export class BillingService implements OnApplicationBootstrap {
         fresh.tokenBalance + fresh.bonusTokens + (fresh.cashbackBalance || 0),
       );
       await transaction.save();
+    }
+
+    // ─── АКЦИЯ «x2 НА ПЕРВОЕ ПОПОЛНЕНИЕ» ─────────────────────────
+    try {
+      await this.applyFirstTopupBonus(transaction);
+    } catch (err: any) {
+      this.logger.error(
+        `[FirstTopup] failed to apply bonus for tx=${transaction._id}: ${err.message}`,
+      );
     }
 
     // ─── РЕФЕРАЛЬНЫЙ КЭШБЕК ──────────────────────────────────────
@@ -2142,7 +2175,7 @@ export class BillingService implements OnApplicationBootstrap {
 
     if (balanceBefore + FLOAT_EPSILON < costInTokens) {
       throw new BadRequestException(
-        `Недостаточно токенов. Требуется: ${costInTokens}🔥, доступно: ${balanceBefore}🔥`,
+        `Недостаточно спичек. Требуется: ${costInTokens}🔥, у вас: ${balanceBefore}🔥. Пополните баланс.`,
       );
     }
 
@@ -2301,7 +2334,7 @@ export class BillingService implements OnApplicationBootstrap {
     if (!planConfig) throw new BadRequestException('Invalid plan');
 
     const effectivePlan = (PLAN_MIGRATION[plan] || plan) as SubscriptionPlan;
-    const paymentProvider = this.getPaymentProvider(provider);
+    this.getPaymentProvider(provider); // ранняя проверка имени провайдера
 
     let promoValidation: Awaited<
       ReturnType<typeof this.promoCodeService.validate>
@@ -2435,49 +2468,48 @@ export class BillingService implements OnApplicationBootstrap {
     // ── Обычный поток с оплатой ────────────────────────────────
     const paymentAmount = this.convertPrice(finalPriceRub, currency);
 
-    const result = await paymentProvider.createPayment({
-      amount: paymentAmount,
-      currency,
-      tokens: planConfig.tokensPerMonth,
-      userId,
-      description: `Подписка: ${planConfig.name}`,
-      returnUrl,
-    });
+    const firstTopupOffer = await this.snapshotFirstTopupOffer(userId);
 
-    if (!result.success) {
-      throw new BadRequestException(result.error || 'Subscription creation failed');
-    }
-
-    await this.createTransaction(userId, {
-      type: TransactionType.SUBSCRIPTION,
-      amount: planConfig.tokensPerMonth,
-      description: `Подписка: ${planConfig.name}${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
-      paymentStatus: PaymentStatus.PENDING,
-      externalPaymentId: result.paymentId,
-      paymentProvider: provider,
-      paymentAmountRub: finalPriceRub,
-      promoCode: promoValidation?.promo.code,
-      metadata: {
-        plan: effectivePlan,
+    const { result } = await this.startProviderPayment(userId, provider, {
+      tx: {
+        type: TransactionType.SUBSCRIPTION,
+        amount: planConfig.tokensPerMonth,
+        description: `Подписка: ${planConfig.name}${promoValidation ? ` [промокод ${promoValidation.promo.code}]` : ''}`,
+        paymentAmountRub: finalPriceRub,
+        promoCode: promoValidation?.promo.code,
+        metadata: {
+          plan: effectivePlan,
+          currency,
+          paymentAmount,
+          originalPriceRub: planConfig.priceRub,
+          finalPriceRub,
+          promoCodeApplied: promoValidation
+            ? {
+              promoId: promoValidation.promo._id.toString(),
+              code: promoValidation.promo.code,
+              type: promoValidation.promo.type,
+              discountRub: promoValidation.discountRub,
+              bonusTokens: promoValidation.bonusTokens,
+            }
+            : null,
+          firstTopupOffer: firstTopupOffer.active ? firstTopupOffer : null,
+        },
+      },
+      dto: {
+        amount: paymentAmount,
+        amountRub: finalPriceRub,
         currency,
-        paymentAmount,
-        originalPriceRub: planConfig.priceRub,
-        finalPriceRub,
-        promoCodeApplied: promoValidation
-          ? {
-            promoId: promoValidation.promo._id.toString(),
-            code: promoValidation.promo.code,
-            type: promoValidation.promo.type,
-            discountRub: promoValidation.discountRub,
-            bonusTokens: promoValidation.bonusTokens,
-          }
-          : null,
+        tokens: planConfig.tokensPerMonth,
+        userId,
+        description: `Подписка: ${planConfig.name}`,
+        returnUrl,
       },
     });
 
     return {
       paymentId: result.paymentId,
       paymentUrl: result.paymentUrl,
+      firstTopupOffer,
       plan: {
         id: effectivePlan,
         name: planConfig.name,
@@ -3213,6 +3245,419 @@ export class BillingService implements OnApplicationBootstrap {
       default:
         throw new BadRequestException(`Unknown payment provider: ${provider}`);
     }
+  }
+
+
+  /**
+   * Единая точка создания платежа у провайдера.
+   *
+   * 1. Создаёт Transaction(PENDING) ДО обращения к провайдеру — любая попытка
+   *    оплаты оставляет след в БД (раньше при ошибке провайдера не оставалось ничего).
+   * 2. Передаёт провайдеру orderId = Transaction._id (Stars кладёт его в payload,
+   *    Точка — в paymentLinkId, FreedomPay — в pg_order_id).
+   * 3. Успех → проставляет externalPaymentId (по нему матчатся вебхуки).
+   *    Ошибка → paymentStatus=FAILED + metadata.error и понятное сообщение юзеру.
+   */
+  private async startProviderPayment(
+    userId: string,
+    provider: ProviderName,
+    params: {
+      tx: Partial<Transaction>;
+      dto: Omit<CreatePaymentDto, 'orderId'>;
+    },
+  ): Promise<{ tx: TransactionDocument; result: PaymentResult }> {
+    const paymentProvider = this.getPaymentProvider(provider);
+    const amountRub = Number(params.dto.amountRub ?? params.tx.paymentAmountRub) || 0;
+
+    const metadata: Record<string, any> = { ...(params.tx.metadata || {}) };
+    if (provider === 'stars') {
+      metadata.starsAmount = this.starsProvider.rubToStars(amountRub);
+      metadata.starsRubPerStar = this.starsProvider.getRubPerStar();
+    }
+
+    const tx = await this.createTransaction(userId, {
+      ...params.tx,
+      paymentStatus: PaymentStatus.PENDING,
+      paymentProvider: provider,
+      metadata,
+    });
+    const txId = tx._id.toString();
+
+    this.logger.log(
+      `[Pay] attempt tx=${txId} user=${userId} provider=${provider} ` +
+      `type=${tx.type} amount=${params.dto.amount} ${params.dto.currency} (${amountRub}₽)` +
+      (metadata.starsAmount ? ` → ${metadata.starsAmount}⭐` : ''),
+    );
+
+    let result: PaymentResult;
+    try {
+      result = await paymentProvider.createPayment({
+        ...params.dto,
+        amountRub,
+        orderId: txId,
+      });
+    } catch (err: any) {
+      result = { success: false, paymentId: '', error: err?.message || String(err) };
+    }
+
+    if (!result.success || !result.paymentId) {
+      const errorText = result.error || 'Provider returned no paymentId';
+      await this.transactionModel.updateOne(
+        { _id: tx._id },
+        {
+          $set: {
+            paymentStatus: PaymentStatus.FAILED,
+            'metadata.error': errorText.slice(0, 2000),
+            'metadata.errorStage': 'create_payment',
+            'metadata.failedAt': new Date(),
+          },
+        },
+      );
+      this.logger.error(
+        `[Pay] ❌ createPayment FAILED tx=${txId} user=${userId} provider=${provider}: ${errorText}`,
+      );
+      const label = PROVIDER_LABELS[provider] || provider;
+      throw new BadRequestException(
+        `Не удалось создать платёж через ${label}. Попробуйте выбрать другой способ оплаты ` +
+        `или повторите попытку через пару минут.`,
+      );
+    }
+
+    await this.transactionModel.updateOne(
+      { _id: tx._id },
+      {
+        $set: {
+          externalPaymentId: result.paymentId,
+          'metadata.paymentUrl': result.paymentUrl || null,
+        },
+      },
+    );
+    tx.externalPaymentId = result.paymentId;
+
+    this.logger.log(
+      `[Pay] ✅ created tx=${txId} provider=${provider} external=${result.paymentId}`,
+    );
+
+    return { tx, result };
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // Акция «x2 на первое пополнение» (48 часов)
+  // ═══════════════════════════════════════════════════════════════
+
+  private getFirstTopupConfig() {
+    const num = (key: string, def: number) => {
+      const v = parseFloat(this.configService.get<string>(key) ?? '');
+      return Number.isFinite(v) && v > 0 ? v : def;
+    };
+    const enabledRaw = (this.configService.get<string>('FIRST_TOPUP_BONUS_ENABLED') ?? 'true')
+      .toString()
+      .trim()
+      .toLowerCase();
+    return {
+      enabled: !['false', '0', 'no', 'off'].includes(enabledRaw),
+      hours: num('FIRST_TOPUP_BONUS_HOURS', 48),
+      multiplier: num('FIRST_TOPUP_BONUS_MULTIPLIER', 2),
+      maxRub: num('FIRST_TOPUP_BONUS_MAX_RUB', 1000),
+    };
+  }
+
+  /** Были ли у пользователя оплаченные (реальными деньгами) пополнения/подписки */
+  private async hasCompletedPaidTopup(
+    userId: string | Types.ObjectId,
+    excludeTxId?: Types.ObjectId,
+  ): Promise<boolean> {
+    const filter: Record<string, any> = {
+      userId: new Types.ObjectId(userId.toString()),
+      type: { $in: [TransactionType.DEPOSIT, TransactionType.SUBSCRIPTION] },
+      paymentStatus: PaymentStatus.COMPLETED,
+      paymentAmountRub: { $gt: 0 },
+    };
+    if (excludeTxId) filter._id = { $ne: excludeTxId };
+    const found = await this.transactionModel.exists(filter);
+    return !!found;
+  }
+
+  /**
+   * GET /billing/first-topup-offer.
+   * Таймер стартует лениво при первом вызове (и при первой попытке оплаты),
+   * если у пользователя ещё не было оплаченных пополнений.
+   */
+  async getFirstTopupOffer(userId: string): Promise<FirstTopupOffer> {
+    const cfg = this.getFirstTopupConfig();
+    const base: FirstTopupOffer = {
+      active: false,
+      endsAt: null,
+      multiplier: cfg.multiplier,
+      maxRub: cfg.maxRub,
+    };
+    if (!cfg.enabled) return base;
+
+    const user = await this.usersService.findById(userId);
+    const hasPaid = await this.hasCompletedPaidTopup(userId);
+
+    let startedAt: Date | null = user.firstTopupOfferStartedAt
+      ? new Date(user.firstTopupOfferStartedAt)
+      : null;
+
+    if (hasPaid || user.firstTopupBonusGrantedAt) {
+      return {
+        ...base,
+        endsAt: startedAt
+          ? new Date(startedAt.getTime() + cfg.hours * 3_600_000).toISOString()
+          : null,
+      };
+    }
+
+    if (!startedAt) {
+      startedAt = await this.usersService.startFirstTopupOffer(userId);
+      if (startedAt) {
+        this.logger.log(`[FirstTopup] offer started for user ${userId} at ${startedAt.toISOString()}`);
+      }
+    }
+    if (!startedAt) return base;
+
+    const endsAt = new Date(startedAt.getTime() + cfg.hours * 3_600_000);
+    return {
+      ...base,
+      active: Date.now() < endsAt.getTime(),
+      endsAt: endsAt.toISOString(),
+    };
+  }
+
+  /** Снимок акции на момент создания платежа (не падает — акция не должна ломать оплату) */
+  private async snapshotFirstTopupOffer(userId: string): Promise<FirstTopupOffer> {
+    try {
+      return await this.getFirstTopupOffer(userId);
+    } catch (err: any) {
+      this.logger.warn(`[FirstTopup] snapshot failed for ${userId}: ${err.message}`);
+      const cfg = this.getFirstTopupConfig();
+      return { active: false, endsAt: null, multiplier: cfg.multiplier, maxRub: cfg.maxRub };
+    }
+  }
+
+  /**
+   * Начисление бонуса за первое пополнение. Вызывается из handlePaymentWebhook
+   * ПОСЛЕ атомарного перевода транзакции в COMPLETED (т.е. один раз на транзакцию).
+   * Защита от повторов между транзакциями — User.firstTopupBonusGrantedAt
+   * (атомарный claim).
+   */
+  private async applyFirstTopupBonus(transaction: TransactionDocument): Promise<void> {
+    if (
+      transaction.type !== TransactionType.DEPOSIT &&
+      transaction.type !== TransactionType.SUBSCRIPTION
+    ) {
+      return;
+    }
+    const amountRub = Number(transaction.paymentAmountRub) || 0;
+    if (amountRub <= 0) return;
+
+    const userId = transaction.userId.toString();
+    const cfg = this.getFirstTopupConfig();
+    const snap = transaction.metadata?.firstTopupOffer as
+      | { endsAt: string | null; multiplier: number; maxRub: number }
+      | null
+      | undefined;
+
+    // Условия акции: из снимка при создании платежа; если снимка нет — из
+    // текущего конфига и таймера пользователя.
+    let endsAt: Date | null = snap?.endsAt ? new Date(snap.endsAt) : null;
+    const multiplier = Number(snap?.multiplier) || cfg.multiplier;
+    const maxRub = Number(snap?.maxRub) || cfg.maxRub;
+
+    if (!snap) {
+      if (!cfg.enabled) return;
+      const user = await this.usersService.findById(userId);
+      if (!user.firstTopupOfferStartedAt) return;
+      endsAt = new Date(
+        new Date(user.firstTopupOfferStartedAt).getTime() + cfg.hours * 3_600_000,
+      );
+    }
+    if (!endsAt || multiplier <= 1) return;
+
+    const createdAt: Date | undefined = (transaction as any).createdAt;
+    if (!createdAt || createdAt.getTime() > endsAt.getTime()) return;
+
+    // Только первое оплаченное пополнение/подписка
+    if (await this.hasCompletedPaidTopup(userId, transaction._id as Types.ObjectId)) return;
+
+    let baseTokens = Number(transaction.amount) || 0;
+    if (transaction.type === TransactionType.SUBSCRIPTION && transaction.metadata?.plan) {
+      const planConfig = await this.getPlanConfig(transaction.metadata.plan as SubscriptionPlan);
+      if (planConfig) {
+        baseTokens = (planConfig.tokensPerMonth || 0) + (planConfig.bonusTokens || 0);
+      }
+    }
+    const bonus = roundTokens(
+      baseTokens * (multiplier - 1) * Math.min(1, maxRub / amountRub),
+    );
+    if (bonus <= 0) return;
+
+    const claimed = await this.usersService.claimFirstTopupBonus(userId);
+    if (!claimed) {
+      this.logger.log(`[FirstTopup] bonus already granted for user ${userId} — skip`);
+      return;
+    }
+
+    try {
+      await this.usersService.addBonusTokens(userId, bonus);
+    } catch (err) {
+      await this.usersService.releaseFirstTopupBonus(userId).catch(() => {});
+      throw err;
+    }
+
+    await this.createTransaction(userId, {
+      type: TransactionType.PROMO_CODE,
+      amount: bonus,
+      description: `Бонус x${multiplier} за первое пополнение: +${bonus} 🔥 спичек`,
+      paymentStatus: PaymentStatus.COMPLETED,
+      metadata: {
+        firstTopupBonus: true,
+        sourceTransactionId: transaction._id.toString(),
+        relatedPaymentId: transaction.externalPaymentId,
+        baseTokens,
+        multiplier,
+        maxRub,
+        paymentAmountRub: amountRub,
+      },
+    });
+
+    await this.transactionModel.updateOne(
+      { _id: transaction._id },
+      {
+        $set: {
+          'metadata.firstTopupBonus': { tokens: bonus, multiplier, maxRub, baseTokens },
+        },
+      },
+    );
+
+    this.logger.log(
+      `🎁 [FirstTopup] +${bonus}🔥 bonus → user ${userId} (tx=${transaction._id}, base=${baseTokens}, ${amountRub}₽)`,
+    );
+  }
+
+
+  // ═══════════════════════════════════════════════════════════════
+  // Telegram Stars (вызывается из TelegramBotUpdate)
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * pre_checkout_query: Telegram ждёт ответа ≤ 10 секунд.
+   * Проверяем, что транзакция существует, ещё PENDING, и сумма совпадает.
+   */
+  async handleStarsPreCheckout(query: {
+    invoice_payload: string;
+    currency: string;
+    total_amount: number;
+    from?: { id: number };
+  }): Promise<{ ok: true } | { ok: false; error: string }> {
+    const txId = StarsProvider.parsePayload(query.invoice_payload);
+    if (!txId) {
+      this.logger.warn(`[Stars] pre_checkout: bad payload "${query.invoice_payload}"`);
+      return { ok: false, error: 'Счёт устарел. Создайте новый платёж в приложении.' };
+    }
+
+    const tx = await this.transactionModel
+      .findById(txId)
+      .select('paymentStatus paymentProvider metadata userId')
+      .lean();
+
+    if (!tx || tx.paymentProvider !== 'stars') {
+      this.logger.warn(`[Stars] pre_checkout: tx ${txId} not found`);
+      return { ok: false, error: 'Платёж не найден. Создайте новый платёж в приложении.' };
+    }
+    if (tx.paymentStatus !== PaymentStatus.PENDING) {
+      this.logger.warn(`[Stars] pre_checkout: tx ${txId} status=${tx.paymentStatus}`);
+      return {
+        ok: false,
+        error: tx.paymentStatus === PaymentStatus.COMPLETED
+          ? 'Этот счёт уже оплачен.'
+          : 'Счёт недействителен. Создайте новый платёж в приложении.',
+      };
+    }
+    const expectedStars = Number(tx.metadata?.starsAmount) || 0;
+    if (query.currency !== 'XTR' || (expectedStars && query.total_amount !== expectedStars)) {
+      this.logger.warn(
+        `[Stars] pre_checkout: amount mismatch tx=${txId} got=${query.total_amount} ${query.currency} expected=${expectedStars} XTR`,
+      );
+      return { ok: false, error: 'Сумма счёта не совпадает. Создайте новый платёж.' };
+    }
+
+    this.logger.log(
+      `[Stars] pre_checkout OK tx=${txId} user=${tx.userId} tg=${query.from?.id} ${query.total_amount}⭐`,
+    );
+    return { ok: true };
+  }
+
+  /**
+   * message.successful_payment: сохраняем telegram_payment_charge_id (нужен
+   * для рефанда) и начисляем через общий handlePaymentWebhook('stars').
+   * Идемпотентно: повторная доставка не начислит второй раз
+   * (атомарный переход PENDING → COMPLETED внутри handlePaymentWebhook).
+   */
+  async handleStarsSuccessfulPayment(
+    payment: {
+      invoice_payload: string;
+      currency: string;
+      total_amount: number;
+      telegram_payment_charge_id: string;
+      provider_payment_charge_id?: string;
+    },
+    telegramUserId?: number,
+  ): Promise<{ credited: boolean; tokens?: number; alreadyProcessed?: boolean }> {
+    const txId = StarsProvider.parsePayload(payment.invoice_payload);
+    if (!txId) {
+      this.logger.error(
+        `[Stars] ⚠️ successful_payment with unknown payload "${payment.invoice_payload}" ` +
+        `charge=${payment.telegram_payment_charge_id} tg=${telegramUserId} — ДЕНЬГИ ПОЛУЧЕНЫ, НЕ ЗАЧИСЛЕНО`,
+      );
+      return { credited: false };
+    }
+
+    const tx = await this.transactionModel.findOneAndUpdate(
+      { _id: new Types.ObjectId(txId), paymentProvider: 'stars' },
+      {
+        $set: {
+          'metadata.telegramPaymentChargeId': payment.telegram_payment_charge_id,
+          'metadata.providerPaymentChargeId': payment.provider_payment_charge_id || null,
+          'metadata.paidStars': payment.total_amount,
+          'metadata.payerTelegramId': telegramUserId ?? null,
+        },
+      },
+      { new: true },
+    );
+
+    if (!tx) {
+      this.logger.error(
+        `[Stars] ⚠️ successful_payment for missing tx=${txId} charge=${payment.telegram_payment_charge_id} — НЕ ЗАЧИСЛЕНО`,
+      );
+      return { credited: false };
+    }
+    if (tx.paymentStatus === PaymentStatus.COMPLETED) {
+      this.logger.log(`[Stars] duplicate successful_payment tx=${txId}`);
+      return { credited: false, alreadyProcessed: true, tokens: tx.amount };
+    }
+    if (tx.paymentStatus !== PaymentStatus.PENDING) {
+      // Например, FAILED — но Telegram деньги списал: возвращаем в PENDING и начисляем
+      this.logger.warn(`[Stars] successful_payment for tx=${txId} in status ${tx.paymentStatus} — reviving`);
+      await this.transactionModel.updateOne(
+        { _id: tx._id, paymentStatus: tx.paymentStatus },
+        { $set: { paymentStatus: PaymentStatus.PENDING } },
+      );
+    }
+    if (!tx.externalPaymentId) {
+      await this.transactionModel.updateOne(
+        { _id: tx._id },
+        { $set: { externalPaymentId: StarsProvider.buildExternalId(txId) } },
+      );
+    }
+
+    const res = await this.handlePaymentWebhook('stars', payment, {});
+    return {
+      credited: res.processed === true && res.status === 'completed',
+      tokens: tx.amount,
+    };
   }
 
 

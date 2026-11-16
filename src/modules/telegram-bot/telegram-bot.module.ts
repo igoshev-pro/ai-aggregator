@@ -7,6 +7,7 @@ import { telegramAgent } from '../../common/net/outbound-proxy';
 import { UsersModule } from '../users/users.module';
 import { ReferralModule } from '../referral/referral.module';
 import { AuthModule } from '../auth/auth.module';
+import { BillingModule } from '../billing/billing.module';
 import { AIModel, AIModelSchema } from '../ai-providers/schemas/model.schema';
 
 @Module({
@@ -31,6 +32,8 @@ import { AIModel, AIModelSchema } from '../ai-providers/schemas/model.schema';
     forwardRef(() => UsersModule),
     forwardRef(() => ReferralModule),
     forwardRef(() => AuthModule),
+    // Stars: pre_checkout_query / successful_payment → BillingService
+    forwardRef(() => BillingModule),
   ],
   providers: [TelegramBotUpdate],
 })

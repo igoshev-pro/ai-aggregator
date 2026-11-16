@@ -294,9 +294,13 @@ export class GenerationService {
       },
       {
         priority: 2,
-        attempts: 3,
+        // 2 попытки: основной провайдер + запасной (excludeProviders),
+        // иначе худшее ожидание отказа доходило до ~40 минут
+        attempts: 2,
         backoff: { type: 'exponential', delay: 3000 },
-        timeout: 300000,
+        // > окна опроса картинки (8 мин, generation.consumer) + создание
+        // задачи (HTTP до 120с) + сохранение в S3
+        timeout: 780000,
       },
     );
 
@@ -583,7 +587,8 @@ export class GenerationService {
         priority: 3,
         attempts: 2,
         backoff: { type: 'exponential', delay: 5000 },
-        timeout: 600000,
+        // > окна опроса видео (15 мин) + создание задачи + скачивание в S3
+        timeout: 1200000,
       },
     );
 
@@ -740,7 +745,8 @@ export class GenerationService {
         priority: 2,
         attempts: 3,
         backoff: { type: 'exponential', delay: 3000 },
-        timeout: 600000,
+        // > окна опроса аудио (10 мин) + создание задачи + сохранение в S3
+        timeout: 900000,
       },
     );
 
@@ -1009,10 +1015,38 @@ export class GenerationService {
       return;
     }
 
+    // Спички уже вернули (генерацию признали упавшей, а осиротевший опрос
+    // всё же дождался результата) — не списываем повторно.
+    if (generation.isRefunded) {
+      this.logger.warn(
+        `recordSuccessfulGeneration: generation ${generationId} already refunded — skip billing`,
+      );
+      return;
+    }
+
     const isFree =
       !!(generation.metadata as any)?.freeAccess ||
       !generation.tokensCost ||
       generation.tokensCost <= 0;
+
+    // Атомарный захват: billingRecorded ставим ДО записи транзакции и только
+    // если возврата ещё не было — refundGeneration проверяет тот же флаг,
+    // так что «и возврат, и списание» по одной генерации невозможны.
+    const claimed = await this.generationModel.findOneAndUpdate(
+      {
+        _id: generation._id,
+        billingRecorded: { $ne: true },
+        isRefunded: { $ne: true },
+      },
+      { $set: { billingRecorded: true } },
+      { new: true },
+    );
+    if (!claimed) {
+      this.logger.warn(
+        `recordSuccessfulGeneration: generation ${generationId} already billed or refunded — skip`,
+      );
+      return;
+    }
 
     try {
       await this.billingService.recordMediaGeneration(
@@ -1031,17 +1065,15 @@ export class GenerationService {
         },
       );
 
-      // Помечаем чтобы не записать дважды (на случай retry в очереди)
-      await this.generationModel.updateOne(
-        { _id: generation._id },
-        { $set: { billingRecorded: true } },
-      );
-
       this.logger.log(
         `💰 Billing recorded: ${generation.modelSlug} | ${generation.tokensCost || 0}🔥${isFree ? ' (free)' : ''
         } | gen=${generationId}`,
       );
     } catch (err: any) {
+      // Транзакция не записалась — снимаем захват, чтобы можно было повторить
+      await this.generationModel
+        .updateOne({ _id: generation._id }, { $set: { billingRecorded: false } })
+        .catch(() => undefined);
       // Не валим всю генерацию из-за ошибки billing — но логируем громко
       this.logger.error(
         `❌ Failed to record billing for generation ${generationId}: ${err.message}`,

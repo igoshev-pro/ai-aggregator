@@ -13,6 +13,7 @@ import {
     TochkaCreatePaymentRequest,
     TochkaPaymentStatus,
 } from './tochka.types';
+import { getPaymentReturnUrls, isLegacyTopupUrl } from '../../../../config/payment-urls';
 
 /**
  * Платёжный провайдер Точка Банк.
@@ -37,12 +38,21 @@ export class TochkaProvider implements PaymentProviderInterface {
         private readonly verifier: TochkaWebhookVerifier,
         private readonly configService: ConfigService,
     ) {
+        // Дефолт: ${FRONTEND_URL}/?payment=success|fail (фронт читает ?payment=).
+        // Старые /topup/success|fail во фронте не существуют — игнорируем их.
+        const defaults = getPaymentReturnUrls(this.configService);
+        const envOk = this.configService.get<string>('TOCHKA_REDIRECT_URL');
+        const envFail = this.configService.get<string>('TOCHKA_FAIL_REDIRECT_URL');
+        if (isLegacyTopupUrl(envOk) || isLegacyTopupUrl(envFail)) {
+            this.logger.warn(
+                `[Tochka] TOCHKA_REDIRECT_URL/TOCHKA_FAIL_REDIRECT_URL указывают на /topup/* ` +
+                `(такой страницы нет) — используем ${defaults.successUrl} / ${defaults.failUrl}`,
+            );
+        }
         this.redirectUrl =
-            this.configService.get<string>('TOCHKA_REDIRECT_URL') ||
-            'https://spichki-ai.net/topup/success';
+            envOk && !isLegacyTopupUrl(envOk) ? envOk : defaults.successUrl;
         this.failRedirectUrl =
-            this.configService.get<string>('TOCHKA_FAIL_REDIRECT_URL') ||
-            'https://spichki-ai.net/topup/fail';
+            envFail && !isLegacyTopupUrl(envFail) ? envFail : defaults.failUrl;
         this.ttlMinutes = Number(
             this.configService.get<string>('TOCHKA_PAYMENT_TTL_MIN') || '60',
         );
@@ -70,12 +80,12 @@ export class TochkaProvider implements PaymentProviderInterface {
             };
         }
 
-        // paymentLinkId должен быть уникален. Используем userId+timestamp,
-        // потому что в BillingService Transaction создаётся ПОСЛЕ createPayment.
-        // Точка позволяет до 45 символов.
-        const paymentLinkId = this.buildPaymentLinkId(dto.userId);
-
-        const amountStr = this.formatAmount(dto.amount);
+        // paymentLinkId должен быть уникален (≤ 45 символов). Transaction
+        // создаётся ДО createPayment, поэтому используем её id (tx_<24hex>) —
+        // так платёж в кабинете Точки сразу сопоставляется с нашей записью.
+        const paymentLinkId = dto.orderId
+            ? `tx_${dto.orderId}`
+            : this.buildPaymentLinkId(dto.userId);
 
         try {
             const data: TochkaCreatePaymentRequest['Data'] = {
@@ -107,11 +117,18 @@ export class TochkaProvider implements PaymentProviderInterface {
                 paymentUrl: paymentLink,
             };
         } catch (err: any) {
+            const status = err?.response?.status;
+            const apiErrors = err?.response?.data?.errors || err?.response?.data?.Errors;
             const message =
-                err?.response?.data?.errors?.[0]?.message ||
+                (Array.isArray(apiErrors) && apiErrors.length
+                    ? apiErrors.map((e: any) => e?.message || e?.Message || JSON.stringify(e)).join('; ')
+                    : err?.response?.data?.message) ||
                 err?.message ||
                 'Unknown error';
-            this.logger.error(`[Tochka] createPayment failed: ${message}`);
+            this.logger.error(
+                `[Tochka] createPayment failed: http=${status ?? '-'} ${message}` +
+                (err?.response?.data ? ` body=${JSON.stringify(err.response.data).slice(0, 1000)}` : ''),
+            );
             return { success: false, paymentId: '', error: message };
         }
     }

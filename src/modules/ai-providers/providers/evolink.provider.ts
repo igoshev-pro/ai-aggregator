@@ -1,4 +1,5 @@
 import { outboundAxiosConfig } from '../../../common/net/outbound-proxy';
+import { isRetryableProviderError } from '../../../common/errors/provider-outage';
 import axios, { AxiosInstance } from 'axios';
 import {
   BaseProvider,
@@ -1163,8 +1164,16 @@ export class EvolinkProvider extends BaseProvider {
         error: errorMessage,
         eta,
       };
-    } catch (error) {
-      return { status: 'failed', error: 'Failed to check task status' };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      // 404 — задачи нет, ждать нечего; сеть/5xx/429 — временный сбой опроса,
+      // consumer считает его отдельно и не валит задачу с первого раза.
+      if (status === 404) {
+        return { status: 'failed', error: `Evolink task not found (404)` };
+      }
+      throw new Error(
+        `Evolink status check failed: ${status ? `HTTP ${status}` : error?.message || 'network error'}`,
+      );
     }
   }
 
@@ -1208,13 +1217,20 @@ export class EvolinkProvider extends BaseProvider {
     const status = error?.response?.status;
     const message =
       error?.response?.data?.error?.message || error.message || 'Unknown error';
+    // Код ошибки в теле (если Evolink его прислал) тоже учитываем
+    const bodyCode = Number(error?.response?.data?.error?.code);
 
     return {
       success: false,
       error: {
         code: `HTTP_${status || 'UNKNOWN'}`,
         message,
-        retryable: status === 429 || (status >= 500 && status < 600),
+        // Раньше сетевые сбои без HTTP-статуса считались неповторяемыми
+        retryable: isRetryableProviderError({
+          httpStatus: status,
+          bodyCode: Number.isFinite(bodyCode) ? bodyCode : undefined,
+          message,
+        }),
       },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,

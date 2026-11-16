@@ -17,6 +17,7 @@ import {
   verifySignature,
 } from './freedompay.utils';
 import { FreedomPayInitResponse, FreedomPayWebhookBody } from './freedompay.types';
+import { getPaymentReturnUrls } from '../../../../config/payment-urls';
 
 @Injectable()
 export class FreedomPayProvider implements PaymentProviderInterface {
@@ -68,7 +69,8 @@ export class FreedomPayProvider implements PaymentProviderInterface {
     // orderId = uuid (приходит из BillingService — либо id транзакции)
     // У тебя в dto его нет, но returnUrl есть. Используем как orderId сам uuid из вне.
     // Если у тебя orderId не пробрасывается — генерим тут:
-    const orderId = (dto as any).orderId ?? generateSalt(24);
+    const orderId = dto.orderId ?? generateSalt(24);
+    const returnUrls = getPaymentReturnUrls(this.config);
 
     const amount = this.convertAmount(dto.amount, dto.currency);
 
@@ -86,8 +88,11 @@ export class FreedomPayProvider implements PaymentProviderInterface {
       pg_lifetime: 1800,
       pg_result_url: `${this.publicUrl}/billing/webhook/freedompay`,
       pg_success_url:
-        dto.returnUrl || `https://t.me/${this.botUsername}/app?startapp=pay_success`,
-      pg_failure_url: `https://t.me/${this.botUsername}/app?startapp=pay_failure`,
+        dto.returnUrl ||
+        this.config.get<string>('FREEDOMPAY_SUCCESS_URL') ||
+        returnUrls.successUrl,
+      pg_failure_url:
+        this.config.get<string>('FREEDOMPAY_FAIL_URL') || returnUrls.failUrl,
       pg_success_url_method: 'GET',
       pg_failure_url_method: 'GET',
       pg_salt: salt,

@@ -148,7 +148,12 @@ export class Generation {
   responseTimeMs: number;
 
   @Prop()
-  errorMessage: string;
+  errorMessage: string; // текст для пользователя (по-русски)
+
+  // Сырой текст ошибки провайдера последней неудачной попытки:
+  // "[kie · attempt 1/3] ..." — для аудита (scripts/failures-report.js)
+  @Prop()
+  providerError: string;
 
   @Prop({ default: 0 })
   retryCount: number;

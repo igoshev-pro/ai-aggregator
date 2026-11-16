@@ -1,5 +1,5 @@
-import { Update, Start, Help, Command, Action, Ctx, InjectBot } from 'nestjs-telegraf';
-import { Logger, OnModuleInit } from '@nestjs/common';
+import { Update, Start, Help, Command, Action, Ctx, InjectBot, On } from 'nestjs-telegraf';
+import { Inject, Logger, OnModuleInit, forwardRef } from '@nestjs/common';
 import { Context, Markup, Telegraf } from 'telegraf';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -9,6 +9,7 @@ import { ReferralService } from '../referral/referral.service';
 import { BotAuthService } from '../auth/bot-auth.service';
 import { TelegramUser } from '@/common/interfaces';
 import { AIModel, ModelDocument } from '../ai-providers/schemas/model.schema';
+import { BillingService } from '../billing/billing.service';
 
 // 🆕 Категории для меню нейросетей
 const CATEGORIES: Record<
@@ -33,6 +34,8 @@ export class TelegramBotUpdate implements OnModuleInit {
     private readonly botAuthService: BotAuthService,
     // 🆕 read-only доступ к каталогу моделей
     @InjectModel(AIModel.name) private readonly modelModel: Model<ModelDocument>,
+    @Inject(forwardRef(() => BillingService))
+    private readonly billingService: BillingService,
   ) {}
 
   // ─── Bootstrap: команды + меню + описания (для Telegram Ads) ───
@@ -638,6 +641,79 @@ export class TelegramBotUpdate implements OnModuleInit {
     } catch (e: any) {
       this.logger.warn(`/ref failed for tg=${from.id}: ${e?.message}`);
       await ctx.reply('Сначала нажмите /start');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // Telegram Stars: pre_checkout_query → successful_payment
+  // Инвойс создаёт StarsProvider тем же TELEGRAM_BOT_TOKEN, поэтому
+  // апдейты об оплате приходят именно сюда.
+  // ═══════════════════════════════════════════════════════════════
+
+  @On('pre_checkout_query')
+  async onPreCheckoutQuery(@Ctx() ctx: Context) {
+    const q = (ctx.update as any).pre_checkout_query;
+    if (!q) return;
+    // Telegram ждёт ответ ≤ 10 секунд — страхуемся таймаутом в 8 секунд
+    let verdict: { ok: true } | { ok: false; error: string };
+    try {
+      verdict = await Promise.race([
+        this.billingService.handleStarsPreCheckout(q),
+        new Promise<{ ok: false; error: string }>((resolve) =>
+          setTimeout(
+            () => resolve({ ok: false, error: 'Сервис временно недоступен, попробуйте ещё раз.' }),
+            8_000,
+          ),
+        ),
+      ]);
+    } catch (e: any) {
+      this.logger.error(`[Stars] pre_checkout handler error: ${e?.message}`);
+      verdict = { ok: false, error: 'Не удалось проверить платёж, попробуйте ещё раз.' };
+    }
+    try {
+      if (verdict.ok) {
+        await ctx.answerPreCheckoutQuery(true);
+      } else {
+        await ctx.answerPreCheckoutQuery(false, verdict.error);
+      }
+    } catch (e: any) {
+      this.logger.error(`[Stars] answerPreCheckoutQuery failed: ${e?.message}`);
+    }
+  }
+
+  @On('successful_payment')
+  async onSuccessfulPayment(@Ctx() ctx: Context) {
+    const msg = ctx.message as any;
+    const sp = msg?.successful_payment;
+    if (!sp) return;
+    this.logger.log(
+      `[Stars] successful_payment tg=${ctx.from?.id} ${sp.total_amount} ${sp.currency} ` +
+        `payload=${sp.invoice_payload} charge=${sp.telegram_payment_charge_id}`,
+    );
+    try {
+      const res = await this.billingService.handleStarsSuccessfulPayment(sp, ctx.from?.id);
+      if (res.credited) {
+        await ctx.reply(
+          `✅ Оплата получена! Начислено ${res.tokens ?? ''} 🔥 спичек.\nБаланс: /balance`,
+        );
+      } else if (res.alreadyProcessed) {
+        // повторная доставка апдейта — молчим
+      } else {
+        await ctx.reply(
+          `⚠️ Оплата получена, но не удалось автоматически зачислить спички. ` +
+            `Напишите в поддержку ${this.getSupportHandle()} — мы всё исправим.`,
+        );
+      }
+    } catch (e: any) {
+      this.logger.error(
+        `[Stars] successful_payment processing FAILED charge=${sp.telegram_payment_charge_id}: ${e?.message}`,
+      );
+      await ctx
+        .reply(
+          `⚠️ Оплата получена, но при зачислении произошла ошибка. ` +
+            `Напишите в поддержку ${this.getSupportHandle()} — мы всё исправим.`,
+        )
+        .catch(() => {});
     }
   }
 }

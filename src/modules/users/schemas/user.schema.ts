@@ -250,6 +250,15 @@ export class User {
 
 
 
+  // ─── Акция «x2 на первое пополнение» ─────────────────────
+  /** Когда запущен 48-часовой таймер (лениво, при первом показе/платеже) */
+  @Prop({ type: Date, default: null })
+  firstTopupOfferStartedAt?: Date | null;
+
+  /** Когда начислен бонус за первое пополнение (защита от повторного начисления) */
+  @Prop({ type: Date, default: null })
+  firstTopupBonusGrantedAt?: Date | null;
+
   // ─── Settings ─────────────────────────────────────────────
   @Prop({ type: Object, default: {} })
   settings: {

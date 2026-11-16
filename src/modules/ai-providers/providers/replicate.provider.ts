@@ -174,8 +174,15 @@ export class ReplicateProvider extends BaseProvider {
           ? Math.max(0, (data.metrics.predict_time * 1.2) - (Date.now() - new Date(data.created_at).getTime()) / 1000)
           : undefined,
       };
-    } catch {
-      return { status: 'failed', error: 'Failed to check prediction status' };
+    } catch (error: any) {
+      const status = error?.response?.status;
+      // 404 — предсказания нет; сеть/5xx/429 — временный сбой опроса
+      if (status === 404) {
+        return { status: 'failed', error: 'Replicate prediction not found (404)' };
+      }
+      throw new Error(
+        `Replicate status check failed: ${status ? `HTTP ${status}` : error?.message || 'network error'}`,
+      );
     }
   }
 

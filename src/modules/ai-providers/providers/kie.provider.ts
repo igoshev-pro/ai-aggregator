@@ -1,6 +1,7 @@
 // src/modules/ai-providers/providers/kie.provider.ts
 import { toClaudeMessages } from './claude-messages';
 import { outboundAxiosConfig } from '../../../common/net/outbound-proxy';
+import { isRetryableProviderError } from '../../../common/errors/provider-outage';
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import {
@@ -675,7 +676,7 @@ export class KieProvider extends BaseProvider {
         `data=${JSON.stringify(data).substring(0, 800)}`
       );
 
-      if (data.code !== 200) throw new Error(data.msg || 'KIE image task creation failed');
+      if (data.code !== 200) throw this.kieBodyError(data, 'KIE image task creation failed');
 
       const taskId = data.data?.taskId;
       if (!taskId) throw new Error('No taskId in KIE response');
@@ -728,7 +729,7 @@ export class KieProvider extends BaseProvider {
 
       const data = response.data;
       if (data.code !== 200) {
-        throw new Error(data.msg || `KIE Gemini Omni Character task creation failed (code ${data.code})`);
+        throw this.kieBodyError(data, `KIE Gemini Omni Character task creation failed (code ${data.code})`);
       }
 
       const taskId = data.data?.taskId;
@@ -939,7 +940,7 @@ export class KieProvider extends BaseProvider {
     );
 
     if (data.code !== 200) {
-      throw new Error(data.msg || `KIE Veo task creation failed (code ${data.code})`);
+      throw this.kieBodyError(data, `KIE Veo task creation failed (code ${data.code})`);
     }
 
     const taskId = data.data?.taskId;
@@ -1015,7 +1016,7 @@ export class KieProvider extends BaseProvider {
 
       const data = response.data;
       if (data.code !== 200) {
-        throw new Error(data.msg || `KIE Kling2.5 task creation failed (code ${data.code})`);
+        throw this.kieBodyError(data, `KIE Kling2.5 task creation failed (code ${data.code})`);
       }
       const taskId = data.data?.taskId;
       if (!taskId) throw new Error('No taskId in KIE Kling2.5 response');
@@ -1081,7 +1082,7 @@ export class KieProvider extends BaseProvider {
 
       const data = response.data;
       if (data.code !== 200) {
-        throw new Error(data.msg || `KIE MotionControl task creation failed (code ${data.code})`);
+        throw this.kieBodyError(data, `KIE MotionControl task creation failed (code ${data.code})`);
       }
       const taskId = data.data?.taskId;
       if (!taskId) throw new Error('No taskId in KIE MotionControl response');
@@ -1218,7 +1219,7 @@ export class KieProvider extends BaseProvider {
 
     const data = response.data;
     if (data.code !== 200) {
-      throw new Error(data.msg || `KIE video task creation failed (code ${data.code})`);
+      throw this.kieBodyError(data, `KIE video task creation failed (code ${data.code})`);
     }
 
     const taskId = data.data?.taskId;
@@ -1306,7 +1307,7 @@ export class KieProvider extends BaseProvider {
     const response = await this.client.post('/api/v1/jobs/createTask', { model: kieModel, input });
     const data = response.data;
     if (data.code !== 200) {
-      throw new Error(data.msg || `KIE Kling4 task creation failed (code ${data.code})`);
+      throw this.kieBodyError(data, `KIE Kling4 task creation failed (code ${data.code})`);
     }
     const taskId = data.data?.taskId;
     if (!taskId) throw new Error('No taskId in KIE Kling4 response');
@@ -1398,7 +1399,7 @@ export class KieProvider extends BaseProvider {
       );
 
       if (data.code !== 200) {
-        throw new Error(data.msg || `KIE Wan2.5 task creation failed (code ${data.code})`);
+        throw this.kieBodyError(data, `KIE Wan2.5 task creation failed (code ${data.code})`);
       }
 
       const taskId = data.data?.taskId;
@@ -1453,7 +1454,7 @@ export class KieProvider extends BaseProvider {
     );
 
     if (data.code !== 200) {
-      throw new Error(data.msg || `KIE Wan task creation failed (code ${data.code})`);
+      throw this.kieBodyError(data, `KIE Wan task creation failed (code ${data.code})`);
     }
 
     const taskId = data.data?.taskId;
@@ -1598,7 +1599,7 @@ export class KieProvider extends BaseProvider {
   );
 
   if (data.code !== 200) {
-    throw new Error(data.msg || `KIE Seedance task creation failed (code ${data.code})`);
+    throw this.kieBodyError(data, `KIE Seedance task creation failed (code ${data.code})`);
   }
 
   const taskId = data.data?.taskId;
@@ -1646,7 +1647,7 @@ export class KieProvider extends BaseProvider {
     );
 
     if (data.code !== 200) {
-      throw new Error(data.msg || `KIE Topaz task creation failed (code ${data.code})`);
+      throw this.kieBodyError(data, `KIE Topaz task creation failed (code ${data.code})`);
     }
 
     const taskId = data.data?.taskId;
@@ -1690,7 +1691,7 @@ export class KieProvider extends BaseProvider {
     );
 
     if (data.code !== 200) {
-      throw new Error(data.msg || `Runway video creation failed (code ${data.code})`);
+      throw this.kieBodyError(data, `Runway video creation failed (code ${data.code})`);
     }
 
     const taskId = data.data?.taskId;
@@ -1733,11 +1734,16 @@ export class KieProvider extends BaseProvider {
       return await this.checkVeoTaskStatus(taskId);
     }
 
-    const jobsResult = await this.checkJobsTaskStatus(taskId);
-
-    if (jobsResult.status === 'failed' && jobsResult.error?.includes('recordInfo is null')) {
-      this.logger.debug(`Jobs API returned null for ${taskId}, trying Suno endpoint...`);
-      return await this.checkSunoTaskStatus(taskId);
+    let jobsResult: TaskStatusResult;
+    try {
+      jobsResult = await this.checkJobsTaskStatus(taskId);
+    } catch (error: any) {
+      // Jobs API не знает такую задачу — это Suno
+      if (String(error?.message || '').includes('recordInfo is null')) {
+        this.logger.debug(`Jobs API returned null for ${taskId}, trying Suno endpoint...`);
+        return await this.checkSunoTaskStatus(taskId);
+      }
+      throw error;
     }
 
     if (jobsResult.status === 'completed' && (!jobsResult.resultUrls || jobsResult.resultUrls.length === 0)) {
@@ -1761,8 +1767,10 @@ export class KieProvider extends BaseProvider {
       });
       const data = response.data;
 
+      // Код ≠ 200 в ответе на опрос — сбой опроса, а не провал задачи:
+      // бросаем, consumer посчитает это временной ошибкой.
       if (data.code !== 200) {
-        return { status: 'failed', error: data.msg || 'Failed to get Veo task status' };
+        throw this.kieBodyError(data, `Failed to get Veo task status (code ${data.code})`);
       }
 
       const task = data.data;
@@ -1789,15 +1797,22 @@ export class KieProvider extends BaseProvider {
         case 3:
           return {
             status: 'failed',
-            error: task.errorMessage || `Veo generation failed (flag=${task.successFlag})`,
+            error:
+              (task.errorMessage || `Veo generation failed (flag=${task.successFlag})`) +
+              (task.errorCode ? ` [errorCode=${task.errorCode}]` : ''),
           };
         case 0:
+        case undefined:
+        case null:
+          return { status: 'processing', progress: 0 };
         default:
+          this.logger.warn(`Veo task ${taskId}: unknown successFlag=${task.successFlag}, keep polling`);
           return { status: 'processing', progress: 0 };
       }
     } catch (error: any) {
+      // Сеть/HTTP/код тела — временный сбой опроса, пусть consumer решает
       this.logger.error(`Veo check task status error: ${error.message}`);
-      return { status: 'failed', error: `Status check failed: ${error.message}` };
+      throw error;
     }
   }
 
@@ -1809,7 +1824,7 @@ export class KieProvider extends BaseProvider {
       const data = response.data;
 
       if (data.code !== 200) {
-        return { status: 'failed', error: data.msg || 'Failed to get task status' };
+        throw this.kieBodyError(data, `Failed to get task status (code ${data.code})`);
       }
 
       const task = data.data;
@@ -1827,12 +1842,15 @@ export class KieProvider extends BaseProvider {
         fail: 'failed',
       };
 
+      if (task.state && !stateMap[task.state]) {
+        this.logger.warn(`ElevenLabs task ${taskId}: unknown state "${task.state}", keep polling`);
+      }
       const status = stateMap[task.state] || 'pending';
 
       if (status === 'failed') {
         return {
           status: 'failed',
-          error: task.failMsg || task.failCode || 'Generation failed',
+          error: this.kieFailText(task),
         };
       }
 
@@ -1861,10 +1879,7 @@ export class KieProvider extends BaseProvider {
       };
     } catch (error: any) {
       this.logger.error(`ElevenLabs check task status error: ${error.message}`);
-      return {
-        status: 'failed',
-        error: `Status check failed: ${error.message}`,
-      };
+      throw error;
     }
   }
 
@@ -1898,12 +1913,15 @@ export class KieProvider extends BaseProvider {
         SENSITIVE_WORD_ERROR: 'failed',
       };
 
+      if (state && !stateMap[state]) {
+        this.logger.warn(`Suno task ${taskId}: unknown status "${state}", keep polling`);
+      }
       const status = stateMap[state] || 'pending';
 
       if (status === 'failed') {
         return {
           status: 'failed',
-          error: task.errorMessage || 'Audio generation failed',
+          error: (task.errorMessage || 'Audio generation failed') + ` [status=${state}]`,
         };
       }
 
@@ -1971,7 +1989,7 @@ export class KieProvider extends BaseProvider {
       );
 
       if (data.code !== 200) {
-        return { status: 'failed', error: data.msg || 'Failed to get runway task status' };
+        throw this.kieBodyError(data, `Failed to get runway task status (code ${data.code})`);
       }
       const task = data.data;
       if (!task) {
@@ -2017,6 +2035,9 @@ export class KieProvider extends BaseProvider {
         failed: 'failed',
         fail: 'failed',
       };
+      if (task.state && !stateMap[task.state]) {
+        this.logger.warn(`Runway task ${taskId}: unknown state "${task.state}", keep polling`);
+      }
       const status = stateMap[task.state] || 'pending';
 
       if (status === 'failed') {
@@ -2050,7 +2071,7 @@ export class KieProvider extends BaseProvider {
       return { status, progress: task.progress || 0 };
     } catch (error: any) {
       this.logger.error(`Runway check task status error: ${error.message}`);
-      return { status: 'failed', error: `Status check failed: ${error.message}` };
+      throw error;
     }
   }
 
@@ -2058,8 +2079,10 @@ export class KieProvider extends BaseProvider {
     try {
       const response = await this.client.get('/api/v1/jobs/recordInfo', { params: { taskId } });
       const data = response.data;
+      // Код ≠ 200 — сбой опроса (или Suno-задача: "recordInfo is null"),
+      // а не провал генерации. Бросаем — разберутся checkTaskStatus/consumer.
       if (data.code !== 200) {
-        return { status: 'failed', error: data.msg || 'Failed to get jobs task status' };
+        throw this.kieBodyError(data, `Failed to get jobs task status (code ${data.code})`);
       }
       const task = data.data;
       if (!task) {
@@ -2079,12 +2102,15 @@ export class KieProvider extends BaseProvider {
         success: 'completed',
         fail: 'failed',
       };
+      if (task.state && !stateMap[task.state]) {
+        this.logger.warn(`Jobs task ${taskId}: unknown state "${task.state}", keep polling`);
+      }
       const status = stateMap[task.state] || 'pending';
 
       if (status === 'failed') {
         return {
           status: 'failed',
-          error: task.failMsg || task.failCode || 'Generation failed',
+          error: this.kieFailText(task),
         };
       }
 
@@ -2165,11 +2191,12 @@ export class KieProvider extends BaseProvider {
         progress: task.progress || 0,
       };
     } catch (error: any) {
-      this.logger.error(`Jobs check task status error: ${error.message}`);
-      return {
-        status: 'failed',
-        error: `Status check failed: ${error.message}`,
-      };
+      // Сеть/HTTP/код тела — временный сбой опроса, consumer посчитает его
+      // отдельно от настоящего state=fail.
+      if (!String(error?.message || '').includes('recordInfo is null')) {
+        this.logger.error(`Jobs check task status error: ${error.message}`);
+      }
+      throw error;
     }
   }
 
@@ -2356,7 +2383,7 @@ export class KieProvider extends BaseProvider {
           `fullData=${JSON.stringify(data).substring(0, 800)}`
         );
 
-        if (data.code !== 200) throw new Error(data.msg || 'KIE ElevenLabs task creation failed');
+        if (data.code !== 200) throw this.kieBodyError(data, 'KIE ElevenLabs task creation failed');
 
         const taskId = data.data?.taskId;
         if (!taskId) throw new Error('No taskId in KIE ElevenLabs response');
@@ -2438,7 +2465,7 @@ export class KieProvider extends BaseProvider {
           const data = response.data;
 
           if (data.code !== 200) {
-            throw new Error(data.msg || 'KIE Suno extend failed');
+            throw this.kieBodyError(data, 'KIE Suno extend failed');
           }
 
           const taskId = data.data?.taskId;
@@ -2486,7 +2513,7 @@ export class KieProvider extends BaseProvider {
         const response = await this.client.post('/api/v1/generate', body);
         const data = response.data;
 
-        if (data.code !== 200) throw new Error(data.msg || 'KIE Suno task creation failed');
+        if (data.code !== 200) throw this.kieBodyError(data, 'KIE Suno task creation failed');
 
         const taskId = data.data?.taskId;
         if (!taskId) throw new Error('No taskId in KIE Suno response');
@@ -2560,7 +2587,7 @@ export class KieProvider extends BaseProvider {
 
       const data = response.data;
       if (data.code !== 200) {
-        throw new Error(data.msg || `KIE Gemini Omni Audio task creation failed (code ${data.code})`);
+        throw this.kieBodyError(data, `KIE Gemini Omni Audio task creation failed (code ${data.code})`);
       }
 
       const taskId = data.data?.taskId;
@@ -2586,7 +2613,7 @@ export class KieProvider extends BaseProvider {
       });
       const data = response.data;
       if (data.code !== 200) {
-        throw new Error(data.msg || 'Lyrics generation failed');
+        throw this.kieBodyError(data, 'Lyrics generation failed');
       }
       return data.data.taskId;
     } catch (error: any) {
@@ -2799,7 +2826,7 @@ export class KieProvider extends BaseProvider {
 
       // KIE возвращает часть ошибок с HTTP 200 и телом {code, msg}
       if (data?.code !== undefined && Number(data.code) !== 200) {
-        throw new Error(data.msg || `KIE Codex error (code ${data.code})`);
+        throw this.kieBodyError(data, `KIE Codex error (code ${data.code})`);
       }
 
       // ─── Извлечение текста из output[].content[].text ───
@@ -3279,7 +3306,7 @@ export class KieProvider extends BaseProvider {
 
       // KIE возвращает часть ошибок с HTTP 200 и телом {code, msg}
       if (data?.code !== undefined && Number(data.code) !== 200) {
-        throw new Error(data.msg || `KIE Claude error (code ${data.code})`);
+        throw this.kieBodyError(data, `KIE Claude error (code ${data.code})`);
       }
 
       const content = (Array.isArray(data?.content) ? data.content : [])
@@ -3457,13 +3484,36 @@ export class KieProvider extends BaseProvider {
     return `${width / g}:${height / g}`;
   }
 
+  // KIE отвечает HTTP 200 с телом {code, msg} — код тела сохраняем в ошибке,
+  // чтобы handleError мог отличить перегрузку/кредиты от модерации и параметров.
+  private kieBodyError(data: any, fallback: string): Error & { kieCode?: number } {
+    const err: Error & { kieCode?: number } = new Error(data?.msg || fallback);
+    const code = Number(data?.code);
+    if (Number.isFinite(code)) err.kieCode = code;
+    return err;
+  }
+
+  // Текст провала jobs-задачи: failMsg + failCode (код помогает понять модерацию)
+  private kieFailText(task: any): string {
+    const msg = task?.failMsg || 'Generation failed';
+    return task?.failCode ? `${msg} [failCode=${task.failCode}]` : msg;
+  }
+
   private handleError(error: any, start: number): GenerationResult {
     const status = error?.response?.status;
     const responseData = error?.response?.data;
     const message = responseData?.msg || responseData?.message || error.message;
+    const bodyCode = Number(error?.kieCode ?? responseData?.code);
+    const kieCode = Number.isFinite(bodyCode) ? bodyCode : undefined;
+
+    const retryable = isRetryableProviderError({
+      httpStatus: status,
+      bodyCode: kieCode,
+      message,
+    });
 
     this.logger.error(
-      `KIE API Error Details: status=${status}, ` +
+      `KIE API Error Details: status=${status}, kieCode=${kieCode ?? '-'}, retryable=${retryable}, ` +
       `message="${message}", ` +
       `fullResponse=${JSON.stringify(responseData)?.substring(0, 500)}`
     );
@@ -3471,12 +3521,13 @@ export class KieProvider extends BaseProvider {
     return {
       success: false,
       error: {
-        code: `HTTP_${status || 'UNKNOWN'}`,
+        code: status ? `HTTP_${status}` : kieCode ? `KIE_${kieCode}` : 'HTTP_UNKNOWN',
         message,
-        retryable: status === 429 || status >= 500,
+        retryable,
       },
       responseTimeMs: Date.now() - start,
       providerSlug: this.slug,
     };
   }
+
 }

@@ -9,6 +9,7 @@ import {
     PaymentResult,
     WebhookResult,
 } from './payment-provider.interface';
+import { getPaymentReturnUrls, isLegacyTopupUrl } from '../../../config/payment-urls';
 
 @Injectable()
 export class HeleketProvider implements PaymentProviderInterface {
@@ -18,6 +19,7 @@ export class HeleketProvider implements PaymentProviderInterface {
     private readonly baseUrl: string;
     private readonly webhookUrl: string;
     private readonly publicReturnUrl: string;
+    private readonly publicFailUrl: string;
 
     constructor(private readonly configService: ConfigService) {
         const rawMerchant =
@@ -42,9 +44,17 @@ export class HeleketProvider implements PaymentProviderInterface {
         this.webhookUrl =
             this.configService.get<string>('HELEKET_WEBHOOK_URL') ||
             `${apiPublicUrl}/api/v1/billing/webhook/heleket`;
+        // Дефолт: ${FRONTEND_URL}/?payment=success (страницы /topup/* во фронте нет)
+        const envReturn = this.configService.get<string>('HELEKET_RETURN_URL');
+        const defaults = getPaymentReturnUrls(this.configService);
+        if (isLegacyTopupUrl(envReturn)) {
+            this.logger.warn(
+                `[Heleket] HELEKET_RETURN_URL указывает на /topup/* — используем ${defaults.successUrl}`,
+            );
+        }
         this.publicReturnUrl =
-            this.configService.get<string>('HELEKET_RETURN_URL') ||
-            `${apiPublicUrl}/topup/success`;
+            envReturn && !isLegacyTopupUrl(envReturn) ? envReturn : defaults.successUrl;
+        this.publicFailUrl = defaults.failUrl;
 
         // 🔍 ДИАГНОСТИКА — особенно важно: сравниваем длину ДО и ПОСЛЕ trim
         this.logger.log(
@@ -65,14 +75,17 @@ export class HeleketProvider implements PaymentProviderInterface {
         try {
             const amount = dto.amount.toFixed(2);
             const currency = dto.currency;
-            const orderId = `order_${Date.now()}_${dto.userId}`;
+            const orderId = dto.orderId
+                ? `order_${dto.orderId}`
+                : `order_${Date.now()}_${dto.userId}`;
 
             const body: Record<string, any> = {
                 amount,
                 currency,
                 order_id: orderId,
                 url_callback: this.webhookUrl,
-                url_return: dto.returnUrl || this.publicReturnUrl,
+                // url_return — кнопка «вернуться» (оплата не завершена)
+                url_return: dto.returnUrl || this.publicFailUrl,
                 url_success: dto.returnUrl || this.publicReturnUrl,
                 lifetime: 3600,
                 additional_data: JSON.stringify({
